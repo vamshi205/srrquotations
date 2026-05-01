@@ -105,7 +105,7 @@ body {
 .apple-input {
   width: 100%;
   background: var(--apple-gray-1);
-  border: 1.5px solid transparent;
+  border: 1px solid #000000;
   border-radius: var(--radius-md);
   padding: 14px 18px;
   font-size: 15px;
@@ -114,6 +114,16 @@ body {
   outline: none;
   transition: border-color 0.2s ease, background 0.2s ease;
 }
+
+/* Global pure black 1px border for all inputs in the designer/app */
+input:not([type="file"]), textarea, select {
+  border: 1px solid #000000 !important;
+}
+
+input:not([type="file"]):focus, textarea:focus, select:focus {
+  border: 1px solid var(--emerald) !important;
+}
+
 .apple-input:focus {
   background: #fff;
   border-color: var(--emerald);
