@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import QuotationTemplate from './components/QuotationTemplate';
 import LibraryCard from './components/LibraryCard';
 import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
+import { toJpeg } from 'html-to-image';
 import { PDFDocument } from 'pdf-lib';
 import { 
   Download, 
@@ -23,7 +23,8 @@ import {
   FilePlus2,
   Building2,
   FileUp,
-  Save
+  Save,
+  Search
 } from 'lucide-react';
 
 function App() {
@@ -90,6 +91,51 @@ function App() {
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [regeneratingItem, setRegeneratingItem] = useState(null);
+
+  useEffect(() => {
+    if (!regeneratingItem) return;
+    const generateHistoryPDF = async () => {
+      setIsGenerating(true);
+      try {
+        const element = document.getElementById('history-quotation-template');
+        const dataUrl = await toJpeg(element, { quality: 0.95, backgroundColor: '#ffffff', pixelRatio: 2 });
+        const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+        pdf.addImage(dataUrl, 'JPEG', 0, 0, 210, 297);
+        const coverArrayBuffer = pdf.output('arraybuffer');
+        
+        let finalPdfBytes;
+        const selectedAttachment = regeneratingItem.requiresAttachment ? attachments.find(a => a.label === regeneratingItem.formData.make) : null;
+        if (selectedAttachment) {
+          const mergedPdf = await PDFDocument.create();
+          const coverDoc = await PDFDocument.load(coverArrayBuffer);
+          const [coverPage] = await mergedPdf.copyPages(coverDoc, [0]);
+          mergedPdf.addPage(coverPage);
+          const attachmentDoc = await PDFDocument.load(selectedAttachment.data);
+          const pages = await mergedPdf.copyPages(attachmentDoc, attachmentDoc.getPageIndices());
+          pages.forEach(page => mergedPdf.addPage(page));
+          finalPdfBytes = await mergedPdf.save();
+        } else {
+          finalPdfBytes = coverArrayBuffer;
+        }
+
+        const blob = new Blob([finalPdfBytes], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a'); 
+        link.href = url; 
+        link.download = `Quotation_${regeneratingItem.formData.hospitalName}.pdf`; 
+        link.click();
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setIsGenerating(false);
+        setRegeneratingItem(null);
+      }
+    };
+    
+    setTimeout(generateHistoryPDF, 150);
+  }, [regeneratingItem, attachments]);
 
   useEffect(() => { localStorage.setItem('srr_company_data', JSON.stringify(companyData)); }, [companyData]);
   useEffect(() => { localStorage.setItem('srr_attachments', JSON.stringify(attachments)); }, [attachments]);
@@ -134,10 +180,9 @@ function App() {
     setIsGenerating(true);
     try {
       const element = document.getElementById('quotation-template');
-      const canvas = await html2canvas(element, { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff', width: 210 * 3.7795, height: 297 * 3.7795 });
-      const imgData = canvas.toDataURL('image/jpeg', 0.95);
+      const dataUrl = await toJpeg(element, { quality: 0.95, backgroundColor: '#ffffff', pixelRatio: 2 });
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-      pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297);
+      pdf.addImage(dataUrl, 'JPEG', 0, 0, 210, 297);
       const coverArrayBuffer = pdf.output('arraybuffer');
       let finalPdfBytes;
       const selectedAttachment = draftRequiresAttachment ? attachments.find(a => a.label === formData.make) : null;
@@ -159,7 +204,10 @@ function App() {
         hospital: formData.hospitalName,
         date: formData.date,
         ref: formData.referenceNumber,
-        templateName: templates.find(t => t.id === formData.selectedTemplateId)?.name || 'Custom'
+        templateName: templates.find(t => t.id === formData.selectedTemplateId)?.name || 'Custom',
+        formData: JSON.parse(JSON.stringify(formData)),
+        draftContent: JSON.parse(JSON.stringify(draftContent)),
+        requiresAttachment: draftRequiresAttachment
       };
       setQuotationHistory([historyItem, ...quotationHistory]);
 
@@ -460,15 +508,28 @@ function App() {
                             ))}
                           </tbody>
                         </table>
-                        <button
-                          onClick={() => {
-                            const nc = [...editingTemplate.content]; nc[idx].rows.push(Array(block.headers.length).fill(''));
-                            setEditingTemplate({ ...editingTemplate, content: nc });
-                          }}
-                          className="w-full py-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--emerald)] hover:bg-[var(--emerald-light)] transition-colors"
-                        >
-                          + Add Row
-                        </button>
+                        <div className="flex border-t border-[var(--apple-gray-2)]">
+                          <button
+                            onClick={() => {
+                              const nc = [...editingTemplate.content]; nc[idx].rows.push(Array(block.headers.length).fill(''));
+                              setEditingTemplate({ ...editingTemplate, content: nc });
+                            }}
+                            className="flex-1 py-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--emerald)] hover:bg-[var(--emerald-light)] transition-colors border-r border-[var(--apple-gray-2)]"
+                          >
+                            + Add Row
+                          </button>
+                          <button
+                            onClick={() => {
+                              const nc = [...editingTemplate.content]; 
+                              nc[idx].headers.push('NEW COL');
+                              nc[idx].rows.forEach(row => row.push(''));
+                              setEditingTemplate({ ...editingTemplate, content: nc });
+                            }}
+                            className="flex-1 py-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--coral)] hover:bg-red-50 transition-colors"
+                          >
+                            + Add Col
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -549,7 +610,19 @@ function App() {
                             <table className="w-full text-left text-[12px]">
                               <thead>
                                 <tr>
-                                  {block.headers.map((h, hi) => <th key={hi} className="p-2 border-b border-[var(--apple-gray-2)] font-semibold">{h}</th>)}
+                                  {block.headers.map((h, hi) => (
+                                    <th key={hi} className="p-2 border-b border-[var(--apple-gray-2)] font-semibold">
+                                      <input 
+                                        value={h}
+                                        onChange={e => {
+                                          const nc = [...draftContent]; nc[idx].headers[hi] = e.target.value;
+                                          setDraftContent(nc);
+                                        }}
+                                        className="w-full bg-transparent outline-none uppercase font-bold text-[var(--apple-black)]"
+                                        placeholder={`Column ${hi + 1}`}
+                                      />
+                                    </th>
+                                  ))}
                                 </tr>
                               </thead>
                               <tbody>
@@ -571,15 +644,28 @@ function App() {
                                 ))}
                               </tbody>
                             </table>
-                            <button
-                              onClick={() => {
-                                const nc = [...draftContent]; nc[idx].rows.push(Array(block.headers.length).fill(''));
-                                setDraftContent(nc);
-                              }}
-                              className="text-[10px] font-bold text-[var(--emerald)] uppercase tracking-widest mt-2 hover:underline"
-                            >
-                              + Add Row
-                            </button>
+                            <div className="flex gap-4 mt-2">
+                              <button
+                                onClick={() => {
+                                  const nc = [...draftContent]; nc[idx].rows.push(Array(block.headers.length).fill(''));
+                                  setDraftContent(nc);
+                                }}
+                                className="text-[10px] font-bold text-[var(--emerald)] uppercase tracking-widest hover:underline"
+                              >
+                                + Add Row
+                              </button>
+                              <button
+                                onClick={() => {
+                                  const nc = [...draftContent]; 
+                                  nc[idx].headers.push('New Col');
+                                  nc[idx].rows.forEach(row => row.push(''));
+                                  setDraftContent(nc);
+                                }}
+                                className="text-[10px] font-bold text-[var(--coral)] uppercase tracking-widest hover:underline"
+                              >
+                                + Add Column
+                              </button>
+                            </div>
                           </div>
                         )}
                       </div>
@@ -637,24 +723,55 @@ function App() {
         {view === 'history' && (
           <div className="h-full overflow-y-auto px-8 py-12 md:px-16 md:py-16">
             <div className="max-w-4xl mx-auto">
-              <h1 className="apple-title-1 mb-2">History</h1>
-              <p className="apple-subtitle mb-12">Recent quotations generated.</p>
+              <div className="flex flex-col md:flex-row md:items-end justify-between mb-12 gap-6">
+                <div>
+                  <h1 className="apple-title-1 mb-2">History</h1>
+                  <p className="apple-subtitle">Recent quotations generated.</p>
+                </div>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--apple-gray-4)] w-4 h-4" />
+                  <input 
+                    type="text" 
+                    placeholder="Search hospital or ref..." 
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="apple-input !pl-10 !py-2.5 w-full md:w-[280px]"
+                  />
+                </div>
+              </div>
 
-              {quotationHistory.length === 0 ? (
+              {quotationHistory.filter(item => 
+                item.hospital.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                item.ref.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                item.templateName.toLowerCase().includes(searchQuery.toLowerCase())
+              ).length === 0 ? (
                 <div className="text-center py-20 opacity-40">
                   <LayoutDashboard size={48} className="mx-auto mb-4" />
-                  <p className="font-semibold text-lg">No history available</p>
+                  <p className="font-semibold text-lg">No history matches found</p>
                 </div>
               ) : (
                 <div className="apple-card overflow-hidden">
-                  {quotationHistory.map((item, idx) => (
+                  {quotationHistory.filter(item => 
+                    item.hospital.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                    item.ref.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                    item.templateName.toLowerCase().includes(searchQuery.toLowerCase())
+                  ).map((item, idx) => (
                     <div key={item.id} className="p-6 border-b border-[var(--apple-gray-2)] last:border-0 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 hover:bg-[var(--apple-gray-1)] transition-colors">
                       <div>
                         <h3 className="text-[17px] font-semibold text-[var(--apple-black)]">{item.hospital}</h3>
                         <p className="text-[13px] text-[var(--apple-gray-5)] mt-1 font-medium">{item.templateName} • Ref: {item.ref}</p>
                       </div>
-                      <div className="flex items-center gap-4 text-[13px] font-semibold text-[var(--apple-gray-5)]">
-                        <span>{item.date}</span>
+                      <div className="flex items-center gap-4 text-[13px] font-semibold">
+                        <span className="text-[var(--apple-gray-5)]">{item.date}</span>
+                        {item.formData && (
+                          <button 
+                            onClick={() => setRegeneratingItem(item)}
+                            disabled={isGenerating || regeneratingItem}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-[var(--apple-gray-2)] rounded-md text-[var(--emerald)] hover:border-[var(--emerald)] transition-colors disabled:opacity-50"
+                          >
+                            <Download size={14} /> Download
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -751,6 +868,15 @@ function App() {
           </div>
         )}
       </main>
+
+      {/* HIDDEN REGENERATION TEMPLATE */}
+      {regeneratingItem && (
+        <div style={{ position: 'absolute', left: '-9999px', top: 0 }}>
+          <div id="history-quotation-template">
+            <QuotationTemplate data={regeneratingItem.formData} content={regeneratingItem.draftContent} company={companyData} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import React from 'react';
 
-const QuotationTemplate = ({ data, company, template }) => {
+const QuotationTemplate = ({ data, company, content }) => {
   const { hospitalName, address, date, referenceNumber, discount, payment, gst, validity, make } = data;
   const { name: companyName, address: companyAddress, phone: companyPhone, email: companyEmail, website: companyWebsite } = company;
 
@@ -11,12 +11,12 @@ const QuotationTemplate = ({ data, company, template }) => {
   };
 
   return (
-    <div id="quotation-template" className="quotation-page bg-white text-black font-['Roboto'] select-none p-[10mm]" style={{ width: '210mm', minHeight: '297mm', display: 'flex', flexDirection: 'column' }}>
+    <div id="quotation-template" className="quotation-page bg-white text-black font-sans select-none p-[10mm]" style={{ width: '210mm', height: '297mm', maxHeight: '297mm', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
       
       {/* Header */}
       <div className="flex justify-between items-center mb-2">
         <div className="flex-1">
-          <h1 className="text-[20pt] font-bold text-slate-900 leading-tight uppercase tracking-tight whitespace-nowrap">{companyName}</h1>
+          <h1 className="text-[20pt] font-bold text-slate-900 leading-tight uppercase whitespace-nowrap">{companyName}</h1>
           <div className="text-[9pt] text-slate-700 font-medium mt-1 leading-relaxed">
             <p>{companyAddress}</p>
             <p>Phone: {companyPhone}</p>
@@ -39,7 +39,11 @@ const QuotationTemplate = ({ data, company, template }) => {
         <p className="font-bold mb-1">To</p>
         <div className="max-w-md">
           <p className="font-bold uppercase text-[12pt] mb-1">{hospitalName || '[HOSPITAL NAME]'}</p>
-          <p className="whitespace-pre-wrap">{address || '[HOSPITAL ADDRESS]'}</p>
+          <div className="text-left">
+            {(address || '[HOSPITAL ADDRESS]').split('\n').map((line, i) => (
+              <React.Fragment key={i}>{line}<br/></React.Fragment>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -49,18 +53,22 @@ const QuotationTemplate = ({ data, company, template }) => {
       </div>
 
       {/* RENDER DYNAMIC TEMPLATE CONTENT */}
-      <div className="flex-1">
-        {template ? (
-          template.content.map((block, idx) => (
+      <div className="mb-4">
+        {content && content.length > 0 ? (
+          content.map((block, idx) => (
             <div key={idx} className="mb-6 text-[11pt] leading-[1.6]">
               {block.type === 'text' ? (
-                <p className="text-justify whitespace-pre-wrap">{block.value}</p>
+                <div className="text-left">
+                  {(block.value || '').split('\n').map((line, i) => (
+                    <React.Fragment key={i}>{line}<br/></React.Fragment>
+                  ))}
+                </div>
               ) : (
-                <table className="w-full border-collapse border border-slate-300 mt-2">
+                <table className="w-full border-collapse mt-2" style={{ border: '1px solid #111' }}>
                   <thead>
-                    <tr className="bg-slate-50">
+                    <tr style={{ backgroundColor: '#f4f4f6' }}>
                       {block.headers.map((h, hi) => (
-                        <th key={hi} className="border border-slate-300 p-2 text-center font-bold text-[10pt] uppercase">{h}</th>
+                        <th key={hi} className="p-2 text-center font-bold text-[10pt] uppercase" style={{ border: '1px solid #111' }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -68,7 +76,7 @@ const QuotationTemplate = ({ data, company, template }) => {
                     {block.rows.map((row, ri) => (
                       <tr key={ri}>
                         {row.map((cell, ci) => (
-                          <td key={ci} className="border border-slate-300 p-2 text-center text-[10pt]">{cell}</td>
+                          <td key={ci} className="p-2 text-center text-[10pt]" style={{ border: '1px solid #111' }}>{cell}</td>
                         ))}
                       </tr>
                     ))}
