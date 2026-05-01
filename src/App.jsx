@@ -189,7 +189,7 @@ function App() {
           ───────────────────────────────────────── */}
       <nav className="apple-nav">
         <div className="flex items-center gap-2 mr-8">
-          <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center">
+          <div className="w-8 h-8 bg-[var(--coral)] rounded-lg flex items-center justify-center">
             <FileUp className="text-white w-4 h-4" />
           </div>
           <span className="font-bold text-lg tracking-tight">OrthoGen</span>
@@ -232,7 +232,7 @@ function App() {
                     });
                     setView('builder');
                   }} 
-                  className="btn-black"
+                  className="btn-primary"
                 >
                   <Plus size={18} /> New Template
                 </button>
@@ -364,7 +364,7 @@ function App() {
                     setEditingTemplate(null);
                     setView('library');
                   }}
-                  className="btn-black w-full"
+                  className="btn-primary w-full"
                 >
                   <Save size={18} /> Save Template
                 </button>
@@ -529,7 +529,7 @@ function App() {
                     {draftContent.map((block, idx) => (
                       <div key={idx} className="bg-[var(--apple-gray-1)] p-4 rounded-xl border border-[var(--apple-gray-2)]">
                         <div className="flex items-center gap-2 mb-3">
-                          <span className="w-5 h-5 rounded flex items-center justify-center bg-[var(--apple-black)] text-white text-[10px] font-bold">{idx + 1}</span>
+                          <span className="w-5 h-5 rounded flex items-center justify-center bg-[var(--coral)] text-white text-[10px] font-bold">{idx + 1}</span>
                           <span className="text-[11px] font-bold text-[var(--apple-gray-5)] uppercase tracking-wider">
                             {block.type === 'text' ? 'Text' : 'Table'}
                           </span>
@@ -616,7 +616,7 @@ function App() {
               </div>
 
               <div className="p-8 mt-auto pt-4 bg-white border-t border-[var(--apple-gray-2)] sticky bottom-0">
-                <button onClick={generatePDF} disabled={isGenerating} className="btn-black w-full">
+                <button onClick={generatePDF} disabled={isGenerating} className="btn-primary w-full">
                   {isGenerating ? 'Processing...' : <><Download size={18} /> Generate PDF</>}
                 </button>
               </div>
@@ -679,7 +679,7 @@ function App() {
                 <p className="text-[15px] text-[var(--apple-gray-5)] mb-8">Select a PDF to map to a brand name.</p>
                 
                 <input type="file" accept=".pdf" onChange={handleFileUpload} className="hidden" id="admin-upload" />
-                <label htmlFor="admin-upload" className="btn-black">
+                <label htmlFor="admin-upload" className="btn-primary">
                   <Plus size={18} /> Select PDF
                 </label>
               </div>
@@ -744,7 +744,7 @@ function App() {
                 </div>
                 
                 <div className="pt-6 border-t border-[var(--apple-gray-2)]">
-                  <button onClick={() => setView('library')} className="btn-black w-full">Save Changes</button>
+                  <button onClick={() => setView('library')} className="btn-primary w-full">Save Changes</button>
                 </div>
               </div>
             </div>

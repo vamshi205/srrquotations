@@ -11,7 +11,7 @@
   /* Apple palette */
   --apple-bg:       #F5F5F7;
   --apple-surface:  #FFFFFF;
-  --apple-black:    #1D1D1F;
+  --apple-black:    #2B1D18;
   --apple-gray-1:   #F5F5F7;
   --apple-gray-2:   #E8E8ED;
   --apple-gray-3:   #D2D2D7;
@@ -129,12 +129,12 @@ textarea.apple-input {
 /* ─────────────────────────────────────────
    Apple-style Buttons
    ───────────────────────────────────────── */
-.btn-black {
+.btn-primary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  background: var(--apple-black);
+  background: var(--coral);
   color: #fff;
   border: none;
   border-radius: 980px;
@@ -146,8 +146,8 @@ textarea.apple-input {
   transition: background 0.2s ease, transform 0.1s ease;
   white-space: nowrap;
 }
-.btn-black:hover { background: #2d2d2f; }
-.btn-black:active { transform: scale(0.97); }
+.btn-primary:hover { background: #ea580c; }
+.btn-primary:active { transform: scale(0.97); }
 
 .btn-outline {
   display: inline-flex;
