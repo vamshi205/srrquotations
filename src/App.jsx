@@ -6,9 +6,10 @@ import { toJpeg } from 'html-to-image';
 import { PDFDocument } from 'pdf-lib';
 import JSZip from 'jszip';
 import Login from './components/Login';
-import { auth, db, hasFirebaseConfig } from './firebase';
+import { auth, db, storage, hasFirebaseConfig } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc, setDoc, collection, getDocs, writeBatch } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { 
   Download, 
   Plus, 
@@ -111,6 +112,20 @@ function App() {
       }
     });
     return `${prefix}${String(maxNum + 1).padStart(3, '0')}`;
+  };
+
+  const getFileData = async (dataOrUrl) => {
+    if (!dataOrUrl) return null;
+    if (dataOrUrl.startsWith('http')) {
+      const response = await fetch(dataOrUrl);
+      const blob = await response.blob();
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.readAsDataURL(blob);
+      });
+    }
+    return dataOrUrl;
   };
 
   const [formData, setFormData] = useState({
@@ -240,7 +255,9 @@ function App() {
           const coverDoc = await PDFDocument.load(coverArrayBuffer);
           const [coverPage] = await mergedPdf.copyPages(coverDoc, [0]);
           mergedPdf.addPage(coverPage);
-          const base64Data = selectedAttachment.data.includes('base64,') ? selectedAttachment.data.split(',')[1] : selectedAttachment.data;
+          
+          const fileData = await getFileData(selectedAttachment.data);
+          const base64Data = fileData.includes('base64,') ? fileData.split(',')[1] : fileData;
           const attachmentDoc = await PDFDocument.load(base64Data);
           // A4 dimensions in points (595.28 x 841.89)
           const A4_WIDTH = 595.28;
@@ -310,7 +327,7 @@ function App() {
   }, [companyData, user]);
 
   useEffect(() => { 
-    localStorage.setItem('srr_attachments', JSON.stringify(attachments)); 
+    localStorage.setItem('srr_attachments', JSON.stringify(attachments.map(a => ({ ...a, data: a.data.startsWith('http') ? a.data : 'REMOVED_FOR_QUOTA' })))); 
     if (user) setDoc(doc(db, 'users', user.uid), { attachments: JSON.stringify(attachments) }, { merge: true }).catch(console.error);
   }, [attachments, user]);
 
@@ -325,7 +342,13 @@ function App() {
   }, [quotationHistory, user]);
 
   useEffect(() => { 
-    localStorage.setItem('srr_drive', JSON.stringify(driveFiles)); 
+    localStorage.setItem('srr_drive', JSON.stringify({
+      srr: (driveFiles.srr || []).map(f => ({ ...f, data: f.data.startsWith('http') ? f.data : 'REMOVED_FOR_QUOTA' })),
+      vendor: (driveFiles.vendor || []).map(folder => ({
+        ...folder,
+        files: (folder.files || []).map(f => ({ ...f, data: f.data.startsWith('http') ? f.data : 'REMOVED_FOR_QUOTA' }))
+      }))
+    })); 
     if (user) setDoc(doc(db, 'users', user.uid), { driveFiles: JSON.stringify(driveFiles) }, { merge: true }).catch(console.error);
   }, [driveFiles, user]);
 
@@ -355,16 +378,24 @@ function App() {
     setView('drafting');
   };
 
-  const handleFileUpload = (e) => {
+  const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     const label = prompt("Enter Brand Name (e.g. Zimmer, Stryker):");
     if (file && label) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const newAttachment = { id: Date.now().toString(), label, data: e.target.result, fileName: file.name };
+      setIsGenerating(true); // Reuse loading state
+      try {
+        const storageRef = ref(storage, `brands/${Date.now()}_${file.name}`);
+        const snapshot = await uploadBytes(storageRef, file);
+        const url = await getDownloadURL(snapshot.ref);
+        
+        const newAttachment = { id: Date.now().toString(), label, data: url, fileName: file.name };
         setAttachments([...attachments, newAttachment]);
-      };
-      reader.readAsDataURL(file);
+      } catch (err) {
+        console.error("Upload failed:", err);
+        alert("Upload failed. Check console for details.");
+      } finally {
+        setIsGenerating(false);
+      }
     }
   };
 
@@ -390,7 +421,9 @@ function App() {
         const coverDoc = await PDFDocument.load(coverArrayBuffer);
         const [coverPage] = await mergedPdf.copyPages(coverDoc, [0]);
         mergedPdf.addPage(coverPage);
-        const base64Data = selectedAttachment.data.includes('base64,') ? selectedAttachment.data.split(',')[1] : selectedAttachment.data;
+        
+        const fileData = await getFileData(selectedAttachment.data);
+        const base64Data = fileData.includes('base64,') ? fileData.split(',')[1] : fileData;
         const attachmentDoc = await PDFDocument.load(base64Data);
         // A4 dimensions in points (595.28 x 841.89)
         const A4_WIDTH = 595.28;
@@ -1275,16 +1308,34 @@ function App() {
                       </div>
                     </div>
                     <div>
-                      <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={(e) => {
+                      <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={async (e) => {
                         const file = e.target.files[0];
                         if (!file) return;
                         const label = prompt('Enter document name (e.g. GST Certificate):');
                         if (!label) return;
-                        const reader = new FileReader();
-                        reader.onload = (ev) => {
-                          setDriveFiles(prev => ({ ...prev, srr: [...(prev.srr || []), { id: Date.now().toString(), label, data: ev.target.result, fileName: file.name, type: file.type, uploadedAt: new Date().toLocaleDateString('en-GB') }] }));
-                        };
-                        reader.readAsDataURL(file);
+                        
+                        setIsGenerating(true);
+                        try {
+                          const storageRef = ref(storage, `drive/srr/${Date.now()}_${file.name}`);
+                          const snapshot = await uploadBytes(storageRef, file);
+                          const url = await getDownloadURL(snapshot.ref);
+                          
+                          setDriveFiles(prev => ({ 
+                            ...prev, 
+                            srr: [...(prev.srr || []), { 
+                              id: Date.now().toString(), 
+                              label, 
+                              data: url, 
+                              fileName: file.name, 
+                              type: file.type, 
+                              uploadedAt: new Date().toLocaleDateString('en-GB') 
+                            }] 
+                          }));
+                        } catch (err) {
+                          console.error("Upload failed:", err);
+                        } finally {
+                          setIsGenerating(false);
+                        }
                         e.target.value = '';
                       }} className="hidden" id="srr-drive-upload" />
                       <label htmlFor="srr-drive-upload" className="btn-primary cursor-pointer !bg-[var(--emerald)] !text-[13px] !py-2 !px-4">
@@ -1388,14 +1439,35 @@ function App() {
                             <button onClick={() => downloadFolderAsZip(folder)} className="btn-outline !text-[12px] !py-1.5 !px-3">
                               <Download size={14} /> Download All
                             </button>
-                            <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={(e) => {
+                            <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={async (e) => {
                               const file = e.target.files[0];
                               if (!file) return;
-                              const reader = new FileReader();
-                              reader.onload = (ev) => {
-                                setDriveFiles(prev => ({ ...prev, vendor: prev.vendor.map(f => f.id === folder.id ? { ...f, files: [...(f.files || []), { id: Date.now().toString(), label: file.name, data: ev.target.result, fileName: file.name, type: file.type, uploadedAt: new Date().toLocaleDateString('en-GB') }] } : f) }));
-                              };
-                              reader.readAsDataURL(file);
+                              
+                              setIsGenerating(true);
+                              try {
+                                const storageRef = ref(storage, `drive/vendor/${folder.id}/${Date.now()}_${file.name}`);
+                                const snapshot = await uploadBytes(storageRef, file);
+                                const url = await getDownloadURL(snapshot.ref);
+                                
+                                setDriveFiles(prev => ({ 
+                                  ...prev, 
+                                  vendor: prev.vendor.map(f => f.id === folder.id ? { 
+                                    ...f, 
+                                    files: [...(f.files || []), { 
+                                      id: Date.now().toString(), 
+                                      label: file.name, 
+                                      data: url, 
+                                      fileName: file.name, 
+                                      type: file.type, 
+                                      uploadedAt: new Date().toLocaleDateString('en-GB') 
+                                    }] 
+                                  } : f) 
+                                }));
+                              } catch (err) {
+                                console.error("Upload failed:", err);
+                              } finally {
+                                setIsGenerating(false);
+                              }
                               e.target.value = '';
                             }} className="hidden" id="vendor-folder-upload" />
                             <label htmlFor="vendor-folder-upload" className="btn-primary cursor-pointer !text-[12px] !py-1.5 !px-3">
