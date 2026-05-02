@@ -78,6 +78,8 @@ function App() {
         } catch (e) {
           console.error("Firestore sync error:", e);
         }
+      } else {
+        setUser(null);
       }
       setIsAuthLoading(false);
     });
