@@ -28,7 +28,8 @@ import {
   Building2,
   FileUp,
   Save,
-  Search
+  Search,
+  Share2
 } from 'lucide-react';
 
 function App() {
@@ -91,11 +92,24 @@ function App() {
     return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
   };
 
+  const getNextRefNumber = (history) => {
+    const year = new Date().getFullYear();
+    const prefix = `SRR/${year}/`;
+    let maxNum = 0;
+    (history || []).forEach(item => {
+      if (item.ref && item.ref.startsWith(prefix)) {
+        const num = parseInt(item.ref.replace(prefix, ''), 10);
+        if (!isNaN(num) && num > maxNum) maxNum = num;
+      }
+    });
+    return `${prefix}${String(maxNum + 1).padStart(3, '0')}`;
+  };
+
   const [formData, setFormData] = useState({
     hospitalName: '',
     address: '',
     date: getTodayFormatted(),
-    referenceNumber: `SRR/${new Date().getFullYear()}/001`,
+    referenceNumber: '',
     subject: 'Quotation for Orthopedic Implants & instruments',
     discount: '40%',
     payment: '30 days',
@@ -155,6 +169,15 @@ function App() {
     return saved ? JSON.parse(saved) : [];
   });
 
+  // Set initial ref number from history
+  const refInitialized = React.useRef(false);
+  useEffect(() => {
+    if (!refInitialized.current && quotationHistory !== undefined) {
+      refInitialized.current = true;
+      setFormData(prev => ({ ...prev, referenceNumber: prev.referenceNumber || getNextRefNumber(quotationHistory) }));
+    }
+  }, [quotationHistory]);
+
   const [isGenerating, setIsGenerating] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -190,9 +213,11 @@ function App() {
           // A4 dimensions in points (595.28 x 841.89)
           const A4_WIDTH = 595.28;
           const A4_HEIGHT = 841.89;
-          for (const pageIndex of attachmentDoc.getPageIndices()) {
-            const [embeddedPage] = await mergedPdf.embedPages(attachmentDoc, [pageIndex]);
-            const { width: origW, height: origH } = embeddedPage.size();
+          const attachmentPages = attachmentDoc.getPages();
+          for (const page of attachmentPages) {
+            const embeddedPage = await mergedPdf.embedPage(page);
+            const origW = embeddedPage.width;
+            const origH = embeddedPage.height;
             const scaleX = A4_WIDTH / origW;
             const scaleY = A4_HEIGHT / origH;
             const scale = Math.min(scaleX, scaleY);
@@ -212,11 +237,29 @@ function App() {
         }
 
         const blob = new Blob([finalPdfBytes], { type: 'application/pdf' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a'); 
-        link.href = url; 
-        link.download = `Quotation_${regeneratingItem.formData.hospitalName}.pdf`; 
-        link.click();
+        const fileName = `Quotation_${regeneratingItem.formData.hospitalName}.pdf`;
+
+        if (regeneratingItem._shareMode && navigator.share && navigator.canShare) {
+          const file = new File([blob], fileName, { type: 'application/pdf' });
+          if (navigator.canShare({ files: [file] })) {
+            try {
+              await navigator.share({
+                title: `Quotation - ${regeneratingItem.formData.hospitalName}`,
+                text: `Quotation ${regeneratingItem.formData.referenceNumber} for ${regeneratingItem.formData.hospitalName}`,
+                files: [file]
+              });
+            } catch (shareErr) {
+              if (shareErr.name !== 'AbortError') console.error('Share failed:', shareErr);
+            }
+          } else {
+            // Fallback: download
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a'); link.href = url; link.download = fileName; link.click();
+          }
+        } else {
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a'); link.href = url; link.download = fileName; link.click();
+        }
       } catch (e) {
         console.error(e);
       } finally {
@@ -259,7 +302,7 @@ function App() {
       hospitalName: '',
       address: '',
       date: getTodayFormatted(),
-      referenceNumber: formData.referenceNumber, // Keep reference number so user can increment it manually, or we could reset it
+      referenceNumber: getNextRefNumber(quotationHistory),
       selectedTemplateId: template.id,
       subject: template.subject || 'Quotation for Orthopedic Implants & instruments',
       make: template.defaultMake || '',
@@ -315,9 +358,11 @@ function App() {
         // A4 dimensions in points (595.28 x 841.89)
         const A4_WIDTH = 595.28;
         const A4_HEIGHT = 841.89;
-        for (const pageIndex of attachmentDoc.getPageIndices()) {
-          const [embeddedPage] = await mergedPdf.embedPages(attachmentDoc, [pageIndex]);
-          const { width: origW, height: origH } = embeddedPage.size();
+        const attachmentPages = attachmentDoc.getPages();
+        for (const page of attachmentPages) {
+          const embeddedPage = await mergedPdf.embedPage(page);
+          const origW = embeddedPage.width;
+          const origH = embeddedPage.height;
           const scaleX = A4_WIDTH / origW;
           const scaleY = A4_HEIGHT / origH;
           const scale = Math.min(scaleX, scaleY);
@@ -336,6 +381,14 @@ function App() {
         finalPdfBytes = coverArrayBuffer;
       }
       
+      // Check ref number uniqueness
+      const isDuplicateRef = quotationHistory.some(h => h.ref === formData.referenceNumber);
+      if (isDuplicateRef) {
+        alert(`Reference number ${formData.referenceNumber} already exists. Please use a unique reference number.`);
+        setIsGenerating(false);
+        return;
+      }
+
       const historyItem = {
         id: Date.now().toString(),
         hospital: formData.hospitalName,
@@ -1019,11 +1072,11 @@ function App() {
         {/* VIEW: HISTORY */}
         {view === 'history' && (
           <div className="h-full overflow-y-auto px-8 py-12 md:px-16 md:py-16">
-            <div className="max-w-4xl mx-auto">
+            <div className="max-w-5xl mx-auto">
               <div className="flex flex-col md:flex-row md:items-end justify-between mb-12 gap-6">
                 <div>
                   <h1 className="apple-title-1 mb-2">History</h1>
-                  <p className="apple-subtitle">Recent quotations generated.</p>
+                  <p className="apple-subtitle">Recent quotations generated. <span className="font-semibold text-[var(--apple-black)]">{quotationHistory.length}</span> total</p>
                 </div>
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--apple-gray-4)] w-4 h-4" />
@@ -1037,43 +1090,78 @@ function App() {
                 </div>
               </div>
 
-              {quotationHistory.filter(item => 
-                item.hospital.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                item.ref.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                item.templateName.toLowerCase().includes(searchQuery.toLowerCase())
-              ).length === 0 ? (
-                <div className="text-center py-20 opacity-40">
-                  <LayoutDashboard size={48} className="mx-auto mb-4" />
-                  <p className="font-semibold text-lg">No history matches found</p>
-                </div>
-              ) : (
-                <div className="apple-card overflow-hidden">
-                  {quotationHistory.filter(item => 
-                    item.hospital.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                    item.ref.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                    item.templateName.toLowerCase().includes(searchQuery.toLowerCase())
-                  ).map((item, idx) => (
-                    <div key={item.id} className="p-6 border-b border-[var(--apple-gray-2)] last:border-0 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 hover:bg-[var(--apple-gray-1)] transition-colors">
-                      <div>
-                        <h3 className="text-[17px] font-semibold text-[var(--apple-black)]">{item.hospital}</h3>
-                        <p className="text-[13px] text-[var(--apple-gray-5)] mt-1 font-medium">{item.templateName} • Ref: {item.ref}</p>
-                      </div>
-                      <div className="flex items-center gap-4 text-[13px] font-semibold">
-                        <span className="text-[var(--apple-gray-5)]">{item.date}</span>
-                        {item.formData && (
-                          <button 
-                            onClick={() => setRegeneratingItem(item)}
-                            disabled={isGenerating || regeneratingItem}
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-[var(--apple-gray-2)] rounded-md text-[var(--emerald)] hover:border-[var(--emerald)] transition-colors disabled:opacity-50"
-                          >
-                            <Download size={14} /> Download
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+              {(() => {
+                const filtered = quotationHistory.filter(item => 
+                  item.hospital.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                  item.ref.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                  item.templateName.toLowerCase().includes(searchQuery.toLowerCase())
+                );
+                if (filtered.length === 0) return (
+                  <div className="text-center py-20 opacity-40">
+                    <LayoutDashboard size={48} className="mx-auto mb-4" />
+                    <p className="font-semibold text-lg">No history matches found</p>
+                  </div>
+                );
+                return (
+                  <div className="apple-card overflow-hidden">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="bg-[var(--apple-gray-1)] border-b border-[var(--apple-gray-2)]">
+                          <th className="text-left py-3 px-5 text-[11px] font-bold uppercase tracking-wider text-[var(--apple-gray-5)]">Ref No.</th>
+                          <th className="text-left py-3 px-5 text-[11px] font-bold uppercase tracking-wider text-[var(--apple-gray-5)]">Hospital</th>
+                          <th className="text-left py-3 px-5 text-[11px] font-bold uppercase tracking-wider text-[var(--apple-gray-5)] hidden md:table-cell">Template</th>
+                          <th className="text-left py-3 px-5 text-[11px] font-bold uppercase tracking-wider text-[var(--apple-gray-5)]">Date</th>
+                          <th className="text-right py-3 px-5 text-[11px] font-bold uppercase tracking-wider text-[var(--apple-gray-5)]">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filtered.map((item) => (
+                          <tr key={item.id} className="border-b border-[var(--apple-gray-2)] last:border-0 hover:bg-[var(--apple-gray-1)] transition-colors">
+                            <td className="py-4 px-5">
+                              <span className="text-[13px] font-bold text-[var(--emerald)] bg-[var(--emerald-light)] px-2.5 py-1 rounded-md whitespace-nowrap">{item.ref}</span>
+                            </td>
+                            <td className="py-4 px-5">
+                              <span className="text-[15px] font-semibold text-[var(--apple-black)]">{item.hospital}</span>
+                            </td>
+                            <td className="py-4 px-5 hidden md:table-cell">
+                              <span className="text-[13px] text-[var(--apple-gray-5)] font-medium">{item.templateName}</span>
+                            </td>
+                            <td className="py-4 px-5">
+                              <span className="text-[13px] text-[var(--apple-gray-5)] font-medium">{item.date}</span>
+                            </td>
+                            <td className="py-4 px-5">
+                              <div className="flex items-center justify-end gap-2">
+                                {item.formData && (
+                                  <>
+                                    <button 
+                                      onClick={() => setRegeneratingItem(item)}
+                                      disabled={isGenerating || regeneratingItem}
+                                      className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-[var(--apple-gray-2)] rounded-lg text-[12px] font-semibold text-[var(--emerald)] hover:border-[var(--emerald)] hover:bg-[var(--emerald-light)] transition-colors disabled:opacity-50"
+                                      title="Download PDF"
+                                    >
+                                      <Download size={13} /> Download
+                                    </button>
+                                    <button 
+                                      onClick={async () => {
+                                        setRegeneratingItem({ ...item, _shareMode: true });
+                                      }}
+                                      disabled={isGenerating || regeneratingItem}
+                                      className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-[var(--apple-gray-2)] rounded-lg text-[12px] font-semibold text-[var(--coral)] hover:border-[var(--coral)] hover:bg-red-50 transition-colors disabled:opacity-50"
+                                      title="Share PDF"
+                                    >
+                                      <Share2 size={13} /> Share
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         )}
