@@ -1527,34 +1527,29 @@ function App() {
                       </div>
                     </div>
                     <div>
-                      <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={async (e) => {
+                      <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={(e) => {
                         const file = e.target.files[0];
                         if (!file) return;
                         const label = prompt('Enter document name (e.g. GST Certificate):');
                         if (!label) return;
                         
-                        setIsGenerating(true);
-                        try {
-                          const storageRef = ref(storage, `drive/srr/${Date.now()}_${file.name}`);
-                          const snapshot = await uploadBytes(storageRef, file);
-                          const url = await getDownloadURL(snapshot.ref);
-                          
+                        const reader = new FileReader();
+                        reader.onload = async (ev) => {
+                          const newFile = { 
+                            id: Date.now().toString(), 
+                            label, 
+                            data: ev.target.result, 
+                            fileName: file.name, 
+                            type: file.type, 
+                            uploadedAt: new Date().toLocaleDateString('en-GB') 
+                          };
                           setDriveFiles(prev => ({ 
                             ...prev, 
-                            srr: [...(prev.srr || []), { 
-                              id: Date.now().toString(), 
-                              label, 
-                              data: url, 
-                              fileName: file.name, 
-                              type: file.type, 
-                              uploadedAt: new Date().toLocaleDateString('en-GB') 
-                            }] 
+                            srr: [...(prev.srr || []), newFile] 
                           }));
-                        } catch (err) {
-                          console.error("Upload failed:", err);
-                        } finally {
-                          setIsGenerating(false);
-                        }
+                          await syncItem('drive_srr', newFile);
+                        };
+                        reader.readAsDataURL(file);
                         e.target.value = '';
                       }} className="hidden" id="srr-drive-upload" />
                       <label htmlFor="srr-drive-upload" className="btn-primary cursor-pointer !bg-[var(--emerald)] !text-[13px] !py-2 !px-4">
