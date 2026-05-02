@@ -6,10 +6,9 @@ import { toJpeg } from 'html-to-image';
 import { PDFDocument } from 'pdf-lib';
 import JSZip from 'jszip';
 import Login from './components/Login';
-import { auth, db, storage, hasFirebaseConfig } from './firebase';
+import { auth, db, hasFirebaseConfig } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { doc, getDoc, setDoc, collection, getDocs, writeBatch } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { doc, getDoc, setDoc, collection, getDocs, deleteDoc, query, orderBy } from 'firebase/firestore';
 import { 
   Download, 
   Plus, 
@@ -66,27 +65,44 @@ function App() {
         setUser(currentUser);
         setAuthError('');
         try {
+          // 1. Fetch Basic Settings & Templates
           const docRef = doc(db, 'users', currentUser.uid);
           const docSnap = await getDoc(docRef);
           if (docSnap.exists()) {
             const data = docSnap.data();
             if (data.companyData) setCompanyData(typeof data.companyData === 'string' ? JSON.parse(data.companyData) : data.companyData);
             if (data.templates) setTemplates(typeof data.templates === 'string' ? JSON.parse(data.templates) : data.templates);
-            if (data.quotationHistory) setQuotationHistory(typeof data.quotationHistory === 'string' ? JSON.parse(data.quotationHistory) : data.quotationHistory);
-            if (data.attachments) setAttachments(typeof data.attachments === 'string' ? JSON.parse(data.attachments) : data.attachments);
-            if (data.driveFiles) setDriveFiles(typeof data.driveFiles === 'string' ? JSON.parse(data.driveFiles) : data.driveFiles);
-          } else {
-            // First login: migrate local data
-            await setDoc(docRef, { 
-              companyData: JSON.stringify(companyData), 
-              templates: JSON.stringify(templates), 
-              quotationHistory: JSON.stringify(quotationHistory), 
-              attachments: JSON.stringify(attachments),
-              driveFiles: JSON.stringify(driveFiles) 
-            });
           }
+
+          // 2. Fetch Attachments (Sub-collection)
+          const attsSnap = await getDocs(collection(db, 'users', currentUser.uid, 'attachments'));
+          const attsList = attsSnap.docs.map(d => d.data());
+          if (attsList.length > 0) setAttachments(attsList);
+
+          // 3. Fetch Quotation History (Sub-collection)
+          const historySnap = await getDocs(query(collection(db, 'users', currentUser.uid, 'history'), orderBy('id', 'desc')));
+          const historyList = historySnap.docs.map(d => d.data());
+          if (historyList.length > 0) setQuotationHistory(historyList);
+
+          // 4. Fetch Drive Files (SRR)
+          const srrSnap = await getDocs(collection(db, 'users', currentUser.uid, 'drive_srr'));
+          const srrList = srrSnap.docs.map(d => d.data());
+
+          // 5. Fetch Drive Folders & Files (Vendor)
+          const foldersSnap = await getDocs(collection(db, 'users', currentUser.uid, 'drive_folders'));
+          const foldersList = foldersSnap.docs.map(d => d.data());
+          const vFilesSnap = await getDocs(collection(db, 'users', currentUser.uid, 'drive_vendor_files'));
+          const vFilesList = vFilesSnap.docs.map(d => d.data());
+
+          const fullFolders = foldersList.map(folder => ({
+            ...folder,
+            files: vFilesList.filter(f => f.folderId === folder.id)
+          }));
+
+          setDriveFiles({ srr: srrList, vendor: fullFolders });
+
         } catch (e) {
-          console.error("Firestore sync error:", e);
+          console.error("Firestore loading error:", e);
         }
       } else {
         setUser(null);
@@ -206,6 +222,15 @@ function App() {
     }
   }, [quotationHistory]);
 
+  const syncItem = async (colName, item, isDelete = false) => {
+    if (!user) return;
+    try {
+      const itemRef = doc(db, 'users', user.uid, colName, item.id);
+      if (isDelete) { await deleteDoc(itemRef); }
+      else { await setDoc(itemRef, item); }
+    } catch (err) { console.error(`Sync error (${colName}):`, err); }
+  };
+
   const [isGenerating, setIsGenerating] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -320,37 +345,34 @@ function App() {
     setTimeout(generateHistoryPDF, 150);
   }, [regeneratingItem, attachments]);
 
-  // Sync to Firestore instead of just localStorage
+  // Sync metadata to Firestore & LocalStorage (Truncated data for Quota)
   useEffect(() => { 
     localStorage.setItem('srr_company_data', JSON.stringify(companyData)); 
-    if (user) setDoc(doc(db, 'users', user.uid), { companyData: JSON.stringify(companyData) }, { merge: true }).catch(console.error);
+    if (user) setDoc(doc(db, 'users', user.uid), { companyData }, { merge: true }).catch(console.error);
   }, [companyData, user]);
 
   useEffect(() => { 
-    localStorage.setItem('srr_attachments', JSON.stringify(attachments.map(a => ({ ...a, data: a.data.startsWith('http') ? a.data : 'REMOVED_FOR_QUOTA' })))); 
-    if (user) setDoc(doc(db, 'users', user.uid), { attachments: JSON.stringify(attachments) }, { merge: true }).catch(console.error);
-  }, [attachments, user]);
+    localStorage.setItem('srr_attachments', JSON.stringify(attachments.map(a => ({ ...a, data: 'TRUNCATED_FOR_QUOTA' })))); 
+  }, [attachments]);
 
   useEffect(() => { 
     localStorage.setItem('srr_templates', JSON.stringify(templates)); 
-    if (user) setDoc(doc(db, 'users', user.uid), { templates: JSON.stringify(templates) }, { merge: true }).catch(console.error);
+    if (user) setDoc(doc(db, 'users', user.uid), { templates }, { merge: true }).catch(console.error);
   }, [templates, user]);
 
   useEffect(() => { 
-    localStorage.setItem('srr_history', JSON.stringify(quotationHistory)); 
-    if (user) setDoc(doc(db, 'users', user.uid), { quotationHistory: JSON.stringify(quotationHistory) }, { merge: true }).catch(console.error);
-  }, [quotationHistory, user]);
+    localStorage.setItem('srr_history', JSON.stringify(quotationHistory.slice(0, 10))); // Only last 10 in localStorage
+  }, [quotationHistory]);
 
   useEffect(() => { 
     localStorage.setItem('srr_drive', JSON.stringify({
-      srr: (driveFiles.srr || []).map(f => ({ ...f, data: f.data.startsWith('http') ? f.data : 'REMOVED_FOR_QUOTA' })),
+      srr: (driveFiles.srr || []).map(f => ({ ...f, data: 'TRUNCATED_FOR_QUOTA' })),
       vendor: (driveFiles.vendor || []).map(folder => ({
         ...folder,
-        files: (folder.files || []).map(f => ({ ...f, data: f.data.startsWith('http') ? f.data : 'REMOVED_FOR_QUOTA' }))
+        files: (folder.files || []).map(f => ({ ...f, data: 'TRUNCATED_FOR_QUOTA' }))
       }))
     })); 
-    if (user) setDoc(doc(db, 'users', user.uid), { driveFiles: JSON.stringify(driveFiles) }, { merge: true }).catch(console.error);
-  }, [driveFiles, user]);
+  }, [driveFiles]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -378,24 +400,17 @@ function App() {
     setView('drafting');
   };
 
-  const handleFileUpload = async (e) => {
+  const handleFileUpload = (e) => {
     const file = e.target.files[0];
     const label = prompt("Enter Brand Name (e.g. Zimmer, Stryker):");
     if (file && label) {
-      setIsGenerating(true); // Reuse loading state
-      try {
-        const storageRef = ref(storage, `brands/${Date.now()}_${file.name}`);
-        const snapshot = await uploadBytes(storageRef, file);
-        const url = await getDownloadURL(snapshot.ref);
-        
-        const newAttachment = { id: Date.now().toString(), label, data: url, fileName: file.name };
+      const reader = new FileReader();
+      reader.onload = async (ev) => {
+        const newAttachment = { id: Date.now().toString(), label, data: ev.target.result, fileName: file.name };
         setAttachments([...attachments, newAttachment]);
-      } catch (err) {
-        console.error("Upload failed:", err);
-        alert("Upload failed. Check console for details.");
-      } finally {
-        setIsGenerating(false);
-      }
+        await syncItem('attachments', newAttachment);
+      };
+      reader.readAsDataURL(file);
     }
   };
 
@@ -470,6 +485,7 @@ function App() {
         requiresAttachment: draftRequiresAttachment
       };
       setQuotationHistory([historyItem, ...quotationHistory]);
+      await syncItem('history', historyItem);
 
       const blob = new Blob([finalPdfBytes], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
@@ -588,7 +604,10 @@ function App() {
                     template={t} 
                     onUse={useTemplate} 
                     onEdit={(t) => { setEditingTemplate(JSON.parse(JSON.stringify(t))); setView('builder'); }} 
-                    onDelete={(id) => setTemplates(templates.filter(temp => temp.id !== id))} 
+                    onDelete={async (id) => {
+                      const item = templates.find(temp => temp.id === id);
+                      setTemplates(templates.filter(temp => temp.id !== id));
+                    }} 
                   />
                 ))}
                 {templates.length === 0 && (
@@ -1272,7 +1291,11 @@ function App() {
                         </div>
                       </div>
                       <button 
-                        onClick={() => setAttachments(attachments.filter(a => a.id !== att.id))} 
+                        onClick={() => {
+                          const att = attachments.find(a => a.id === att.id);
+                          setAttachments(attachments.filter(a => a.id !== att.id));
+                          if (att) syncItem('attachments', att, true);
+                        }} 
                         className="w-10 h-10 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 bg-[var(--apple-gray-1)] hover:bg-red-50 rounded-full transition-colors"
                       >
                         <Trash2 size={18} />
@@ -1364,7 +1387,10 @@ function App() {
                           <a href={file.data} download={file.fileName} className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-[var(--emerald)] rounded-lg transition-colors" title="Download">
                             <Download size={15} />
                           </a>
-                          <button onClick={() => confirmDelete(() => setDriveFiles(prev => ({ ...prev, srr: prev.srr.filter(f => f.id !== file.id) })))} className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 rounded-lg transition-colors" title="Delete">
+                          <button onClick={() => confirmDelete(async () => {
+                            setDriveFiles(prev => ({ ...prev, srr: prev.srr.filter(f => f.id !== file.id) }));
+                            await syncItem('drive_srr', file, true);
+                          })} className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 rounded-lg transition-colors" title="Delete">
                             <Trash2 size={15} />
                           </button>
                         </div>
@@ -1390,7 +1416,9 @@ function App() {
                     <button onClick={() => {
                       const name = prompt('Enter vendor/folder name:');
                       if (!name) return;
-                      setDriveFiles(prev => ({ ...prev, vendor: [...(prev.vendor || []), { id: Date.now().toString(), name, createdAt: new Date().toLocaleDateString('en-GB'), files: [] }] }));
+                      const newFolder = { id: Date.now().toString(), name, createdAt: new Date().toLocaleDateString('en-GB'), files: [] };
+                      setDriveFiles(prev => ({ ...prev, vendor: [...(prev.vendor || []), newFolder] }));
+                      await syncItem('drive_folders', newFolder);
                     }} className="btn-outline !text-[13px] !py-2 !px-4">
                       <Plus size={16} /> New Folder
                     </button>
@@ -1416,7 +1444,10 @@ function App() {
                             <button onClick={(e) => { e.stopPropagation(); downloadFolderAsZip(folder); }} className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-[var(--apple-black)] rounded-lg transition-colors" title="Download folder as ZIP">
                               <Download size={14} />
                             </button>
-                            <button onClick={(e) => { e.stopPropagation(); confirmDelete(() => setDriveFiles(prev => ({ ...prev, vendor: prev.vendor.filter(f => f.id !== folder.id) }))); }} className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 rounded-lg transition-colors" title="Delete folder">
+                            <button onClick={(e) => { e.stopPropagation(); confirmDelete(async () => {
+                              setDriveFiles(prev => ({ ...prev, vendor: prev.vendor.filter(f => f.id !== folder.id) }));
+                              await syncItem('drive_folders', folder, true);
+                            }); }} className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 rounded-lg transition-colors" title="Delete folder">
                               <Trash2 size={14} />
                             </button>
                           </div>
@@ -1439,35 +1470,27 @@ function App() {
                             <button onClick={() => downloadFolderAsZip(folder)} className="btn-outline !text-[12px] !py-1.5 !px-3">
                               <Download size={14} /> Download All
                             </button>
-                            <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={async (e) => {
+                            <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={(e) => {
                               const file = e.target.files[0];
                               if (!file) return;
-                              
-                              setIsGenerating(true);
-                              try {
-                                const storageRef = ref(storage, `drive/vendor/${folder.id}/${Date.now()}_${file.name}`);
-                                const snapshot = await uploadBytes(storageRef, file);
-                                const url = await getDownloadURL(snapshot.ref);
-                                
+                              const reader = new FileReader();
+                              reader.onload = async (ev) => {
+                                const newFile = { 
+                                  id: Date.now().toString(), 
+                                  folderId: folder.id,
+                                  label: file.name, 
+                                  data: ev.target.result, 
+                                  fileName: file.name, 
+                                  type: file.type, 
+                                  uploadedAt: new Date().toLocaleDateString('en-GB') 
+                                };
                                 setDriveFiles(prev => ({ 
                                   ...prev, 
-                                  vendor: prev.vendor.map(f => f.id === folder.id ? { 
-                                    ...f, 
-                                    files: [...(f.files || []), { 
-                                      id: Date.now().toString(), 
-                                      label: file.name, 
-                                      data: url, 
-                                      fileName: file.name, 
-                                      type: file.type, 
-                                      uploadedAt: new Date().toLocaleDateString('en-GB') 
-                                    }] 
-                                  } : f) 
+                                  vendor: prev.vendor.map(f => f.id === folder.id ? { ...f, files: [...(f.files || []), newFile] } : f) 
                                 }));
-                              } catch (err) {
-                                console.error("Upload failed:", err);
-                              } finally {
-                                setIsGenerating(false);
-                              }
+                                await syncItem('drive_vendor_files', newFile);
+                              };
+                              reader.readAsDataURL(file);
                               e.target.value = '';
                             }} className="hidden" id="vendor-folder-upload" />
                             <label htmlFor="vendor-folder-upload" className="btn-primary cursor-pointer !text-[12px] !py-1.5 !px-3">
@@ -1503,7 +1526,10 @@ function App() {
                                   <a href={file.data} download={file.fileName} className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-[var(--apple-black)] rounded-lg transition-colors" title="Download">
                                     <Download size={15} />
                                   </a>
-                                  <button onClick={() => confirmDelete(() => setDriveFiles(prev => ({ ...prev, vendor: prev.vendor.map(f => f.id === folder.id ? { ...f, files: f.files.filter(fi => fi.id !== file.id) } : f) })))} className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 rounded-lg transition-colors" title="Delete">
+                                  <button onClick={() => confirmDelete(async () => {
+                                    setDriveFiles(prev => ({ ...prev, vendor: prev.vendor.map(f => f.id === folder.id ? { ...f, files: f.files.filter(fi => fi.id !== file.id) } : f) }));
+                                    await syncItem('drive_vendor_files', file, true);
+                                  })} className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 rounded-lg transition-colors" title="Delete">
                                     <Trash2 size={15} />
                                   </button>
                                 </div>
