@@ -272,7 +272,7 @@ function App() {
     const template = templates.find(t => t.id === templateId);
     const templateName = template?.name || 'Quotation';
     
-    let baseMessage = `Dear Sir/Madam,\n\nPlease find the attached ${templateName} for your kind perusal.`;
+    let baseMessage = `Dear Sir/Madam,\n\nPlease find the attached Quotation for ${templateName} for your kind perusal.`;
     
     if (selectedFiles.length > 0) {
       const fileNames = selectedFiles.map(f => f.label || f.fileName).join(', ');
