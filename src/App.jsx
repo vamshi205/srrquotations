@@ -4,6 +4,7 @@ import LibraryCard from './components/LibraryCard';
 import jsPDF from 'jspdf';
 import { toJpeg } from 'html-to-image';
 import { PDFDocument } from 'pdf-lib';
+import JSZip from 'jszip';
 import Login from './components/Login';
 import { auth, db, hasFirebaseConfig } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
@@ -32,6 +33,7 @@ import {
   Share2,
   HardDrive,
   FolderOpen,
+  Folder,
   Award,
   FileCheck
 } from 'lucide-react';
@@ -193,6 +195,25 @@ function App() {
   const [editingTemplate, setEditingTemplate] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [regeneratingItem, setRegeneratingItem] = useState(null);
+  const [openVendorFolder, setOpenVendorFolder] = useState(null);
+
+  const confirmDelete = (callback) => {
+    const pw = prompt('Enter admin password to delete:');
+    if (pw === 'srrortho') { callback(); }
+    else if (pw !== null) { alert('Incorrect password.'); }
+  };
+
+  const downloadFolderAsZip = async (folder) => {
+    if (!folder.files || folder.files.length === 0) return alert('Folder is empty.');
+    const zip = new JSZip();
+    for (const file of folder.files) {
+      const base64 = file.data.includes('base64,') ? file.data.split(',')[1] : file.data;
+      zip.file(file.fileName, base64, { base64: true });
+    }
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a'); link.href = url; link.download = `${folder.name}.zip`; link.click();
+  };
 
   useEffect(() => {
     if (!regeneratingItem) return;
@@ -1234,80 +1255,67 @@ function App() {
         {/* VIEW: DRIVE */}
         {view === 'drive' && (
           <div className="h-full overflow-y-auto px-8 py-12 md:px-16 md:py-16">
-            <div className="max-w-5xl mx-auto">
+            <div className="max-w-4xl mx-auto">
               <header className="mb-12">
                 <h1 className="apple-title-1 mb-2">Drive</h1>
-                <p className="apple-subtitle">Upload and manage your business documents and vendor files.</p>
+                <p className="apple-subtitle">Manage your business documents and vendor files.</p>
               </header>
 
               {/* ── SRR DRIVE (HIGHLIGHTED) ── */}
               <div className="mb-12">
-                <div className="relative overflow-hidden rounded-2xl border-2 border-[var(--emerald)] bg-gradient-to-br from-emerald-50 via-white to-teal-50 p-8 mb-6">
-                  <div className="absolute top-0 right-0 w-64 h-64 bg-[var(--emerald)] opacity-[0.04] rounded-full -translate-y-1/2 translate-x-1/2"></div>
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
-                    <div className="flex items-center gap-4">
-                      <div className="w-14 h-14 bg-[var(--emerald)] rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-200">
-                        <Award size={28} className="text-white" />
+                <div className="relative overflow-hidden rounded-2xl border-2 border-[var(--emerald)] bg-gradient-to-br from-emerald-50 via-white to-teal-50 p-6 mb-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-11 h-11 bg-[var(--emerald)] rounded-xl flex items-center justify-center shadow-md shadow-emerald-200">
+                        <Award size={22} className="text-white" />
                       </div>
                       <div>
-                        <h2 className="text-[24px] font-bold tracking-tight text-[var(--apple-black)]">SRR Drive</h2>
-                        <p className="text-[14px] text-[var(--apple-gray-5)] font-medium">Your business certificates & company documents</p>
+                        <h2 className="text-[20px] font-bold tracking-tight">SRR Drive</h2>
+                        <p className="text-[13px] text-[var(--apple-gray-5)]">Business certificates & documents • {(driveFiles.srr || []).length} files</p>
                       </div>
                     </div>
                     <div>
                       <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={(e) => {
                         const file = e.target.files[0];
                         if (!file) return;
-                        const label = prompt('Enter document name (e.g. GST Certificate, Trade License):');
+                        const label = prompt('Enter document name (e.g. GST Certificate):');
                         if (!label) return;
                         const reader = new FileReader();
                         reader.onload = (ev) => {
-                          const newFile = { id: Date.now().toString(), label, data: ev.target.result, fileName: file.name, type: file.type, uploadedAt: new Date().toLocaleDateString('en-GB') };
-                          setDriveFiles(prev => ({ ...prev, srr: [...(prev.srr || []), newFile] }));
+                          setDriveFiles(prev => ({ ...prev, srr: [...(prev.srr || []), { id: Date.now().toString(), label, data: ev.target.result, fileName: file.name, type: file.type, uploadedAt: new Date().toLocaleDateString('en-GB') }] }));
                         };
                         reader.readAsDataURL(file);
                         e.target.value = '';
                       }} className="hidden" id="srr-drive-upload" />
-                      <label htmlFor="srr-drive-upload" className="btn-primary cursor-pointer !bg-[var(--emerald)] hover:!bg-emerald-600">
-                        <Plus size={18} /> Upload Document
+                      <label htmlFor="srr-drive-upload" className="btn-primary cursor-pointer !bg-[var(--emerald)] !text-[13px] !py-2 !px-4">
+                        <Plus size={16} /> Upload
                       </label>
                     </div>
                   </div>
                 </div>
 
                 {(driveFiles.srr || []).length === 0 ? (
-                  <div className="text-center py-16 border-2 border-dashed border-emerald-200 rounded-2xl bg-emerald-50/30">
-                    <FileCheck size={40} className="mx-auto mb-3 text-emerald-300" />
-                    <p className="text-[15px] font-medium text-[var(--apple-gray-5)]">No certificates uploaded yet</p>
-                    <p className="text-[13px] text-[var(--apple-gray-4)] mt-1">Upload GST, Trade License, ISO certificates, etc.</p>
+                  <div className="text-center py-10 border-2 border-dashed border-emerald-200 rounded-xl bg-emerald-50/20">
+                    <p className="text-[14px] text-[var(--apple-gray-4)]">No certificates uploaded yet</p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {(driveFiles.srr || []).map(file => (
-                      <div key={file.id} className="apple-card p-0 overflow-hidden border-2 border-emerald-100 hover:border-[var(--emerald)] transition-colors group">
-                        <div className="h-40 bg-gradient-to-br from-emerald-50 to-teal-50 flex items-center justify-center overflow-hidden">
-                          {file.type && file.type.startsWith('image/') ? (
-                            <img src={file.data} alt={file.label} className="w-full h-full object-cover" />
-                          ) : (
-                            <embed src={file.data + '#toolbar=0&navpanes=0&view=FitH'} type="application/pdf" className="w-full h-full" />
-                          )}
+                  <div className="apple-card overflow-hidden border-2 border-emerald-100">
+                    {(driveFiles.srr || []).map((file, idx) => (
+                      <div key={file.id} className="flex items-center justify-between px-5 py-3.5 border-b border-emerald-100 last:border-0 hover:bg-emerald-50/40 transition-colors">
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <FileCheck size={18} className="text-[var(--emerald)] flex-shrink-0" />
+                          <div className="min-w-0">
+                            <p className="text-[14px] font-semibold text-[var(--apple-black)] truncate">{file.label}</p>
+                            <p className="text-[11px] text-[var(--apple-gray-4)]">{file.fileName} • {file.uploadedAt}</p>
+                          </div>
                         </div>
-                        <div className="p-4 flex items-center justify-between">
-                          <div className="min-w-0 flex-1">
-                            <p className="text-[15px] font-semibold text-[var(--apple-black)] truncate">{file.label}</p>
-                            <p className="text-[11px] text-[var(--apple-gray-4)] mt-0.5">{file.fileName} • {file.uploadedAt}</p>
-                          </div>
-                          <div className="flex items-center gap-1 ml-2">
-                            <a href={file.data} download={file.fileName} className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-[var(--emerald)] hover:bg-emerald-50 rounded-lg transition-colors">
-                              <Download size={15} />
-                            </a>
-                            <button 
-                              onClick={() => setDriveFiles(prev => ({ ...prev, srr: prev.srr.filter(f => f.id !== file.id) }))}
-                              className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                            >
-                              <Trash2 size={15} />
-                            </button>
-                          </div>
+                        <div className="flex items-center gap-1 ml-3">
+                          <a href={file.data} download={file.fileName} className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-[var(--emerald)] rounded-lg transition-colors" title="Download">
+                            <Download size={15} />
+                          </a>
+                          <button onClick={() => confirmDelete(() => setDriveFiles(prev => ({ ...prev, srr: prev.srr.filter(f => f.id !== file.id) })))} className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 rounded-lg transition-colors" title="Delete">
+                            <Trash2 size={15} />
+                          </button>
                         </div>
                       </div>
                     ))}
@@ -1315,75 +1323,125 @@ function App() {
                 )}
               </div>
 
-              {/* ── VENDOR DOCUMENTS ── */}
+              {/* ── VENDOR DOCUMENTS (FOLDER BASED) ── */}
               <div>
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+                <div className="flex items-center justify-between gap-4 mb-4">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 bg-[var(--apple-gray-1)] rounded-xl flex items-center justify-center">
-                      <FolderOpen size={22} className="text-[var(--apple-gray-6)]" />
+                      <FolderOpen size={20} className="text-[var(--apple-gray-6)]" />
                     </div>
                     <div>
                       <h2 className="text-[20px] font-bold tracking-tight">Vendor Documents</h2>
-                      <p className="text-[13px] text-[var(--apple-gray-5)]">Attachments and documents from other vendors</p>
+                      <p className="text-[13px] text-[var(--apple-gray-5)]">{(driveFiles.vendor || []).length} vendors</p>
                     </div>
                   </div>
-                  <div>
-                    <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={(e) => {
-                      const file = e.target.files[0];
-                      if (!file) return;
-                      const label = prompt('Enter vendor/document name:');
-                      if (!label) return;
-                      const reader = new FileReader();
-                      reader.onload = (ev) => {
-                        const newFile = { id: Date.now().toString(), label, data: ev.target.result, fileName: file.name, type: file.type, uploadedAt: new Date().toLocaleDateString('en-GB') };
-                        setDriveFiles(prev => ({ ...prev, vendor: [...(prev.vendor || []), newFile] }));
-                      };
-                      reader.readAsDataURL(file);
-                      e.target.value = '';
-                    }} className="hidden" id="vendor-drive-upload" />
-                    <label htmlFor="vendor-drive-upload" className="btn-outline cursor-pointer">
-                      <Plus size={16} /> Add Vendor File
-                    </label>
-                  </div>
+                  {!openVendorFolder && (
+                    <button onClick={() => {
+                      const name = prompt('Enter vendor/folder name:');
+                      if (!name) return;
+                      setDriveFiles(prev => ({ ...prev, vendor: [...(prev.vendor || []), { id: Date.now().toString(), name, createdAt: new Date().toLocaleDateString('en-GB'), files: [] }] }));
+                    }} className="btn-outline !text-[13px] !py-2 !px-4">
+                      <Plus size={16} /> New Folder
+                    </button>
+                  )}
                 </div>
 
-                {(driveFiles.vendor || []).length === 0 ? (
-                  <div className="text-center py-16 border border-dashed border-[var(--apple-gray-3)] rounded-2xl">
-                    <FolderOpen size={40} className="mx-auto mb-3 text-[var(--apple-gray-4)]" />
-                    <p className="text-[15px] font-medium text-[var(--apple-gray-5)]">No vendor documents yet</p>
-                    <p className="text-[13px] text-[var(--apple-gray-4)] mt-1">Upload vendor price lists, catalogs, etc.</p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {(driveFiles.vendor || []).map(file => (
-                      <div key={file.id} className="apple-card p-0 overflow-hidden group">
-                        <div className="h-40 bg-[var(--apple-gray-1)] flex items-center justify-center overflow-hidden">
-                          {file.type && file.type.startsWith('image/') ? (
-                            <img src={file.data} alt={file.label} className="w-full h-full object-cover" />
-                          ) : (
-                            <embed src={file.data + '#toolbar=0&navpanes=0&view=FitH'} type="application/pdf" className="w-full h-full" />
-                          )}
-                        </div>
-                        <div className="p-4 flex items-center justify-between">
-                          <div className="min-w-0 flex-1">
-                            <p className="text-[15px] font-semibold text-[var(--apple-black)] truncate">{file.label}</p>
-                            <p className="text-[11px] text-[var(--apple-gray-4)] mt-0.5">{file.fileName} • {file.uploadedAt}</p>
+                {!openVendorFolder ? (
+                  /* ── FOLDER GRID ── */
+                  (driveFiles.vendor || []).length === 0 ? (
+                    <div className="text-center py-10 border border-dashed border-[var(--apple-gray-3)] rounded-xl">
+                      <p className="text-[14px] text-[var(--apple-gray-4)]">No vendor folders yet. Create one to get started.</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                      {(driveFiles.vendor || []).map(folder => (
+                        <div key={folder.id} className="apple-card p-5 cursor-pointer hover:border-[var(--apple-gray-4)] transition-all group" onClick={() => setOpenVendorFolder(folder.id)}>
+                          <div className="flex flex-col items-center text-center">
+                            <Folder size={44} className="text-amber-400 mb-3 group-hover:scale-110 transition-transform" fill="currentColor" />
+                            <p className="text-[14px] font-semibold text-[var(--apple-black)] truncate w-full">{folder.name}</p>
+                            <p className="text-[11px] text-[var(--apple-gray-4)] mt-1">{(folder.files || []).length} files</p>
                           </div>
-                          <div className="flex items-center gap-1 ml-2">
-                            <a href={file.data} download={file.fileName} className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-[var(--apple-black)] hover:bg-[var(--apple-gray-1)] rounded-lg transition-colors">
-                              <Download size={15} />
-                            </a>
-                            <button 
-                              onClick={() => setDriveFiles(prev => ({ ...prev, vendor: prev.vendor.filter(f => f.id !== file.id) }))}
-                              className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                            >
-                              <Trash2 size={15} />
+                          <div className="flex items-center justify-center gap-1 mt-3 pt-3 border-t border-[var(--apple-gray-2)]">
+                            <button onClick={(e) => { e.stopPropagation(); downloadFolderAsZip(folder); }} className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-[var(--apple-black)] rounded-lg transition-colors" title="Download folder as ZIP">
+                              <Download size={14} />
+                            </button>
+                            <button onClick={(e) => { e.stopPropagation(); confirmDelete(() => setDriveFiles(prev => ({ ...prev, vendor: prev.vendor.filter(f => f.id !== folder.id) }))); }} className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 rounded-lg transition-colors" title="Delete folder">
+                              <Trash2 size={14} />
                             </button>
                           </div>
                         </div>
+                      ))}
+                    </div>
+                  )
+                ) : (
+                  /* ── INSIDE A FOLDER ── */
+                  (() => {
+                    const folder = (driveFiles.vendor || []).find(f => f.id === openVendorFolder);
+                    if (!folder) { setOpenVendorFolder(null); return null; }
+                    return (
+                      <div>
+                        <div className="flex items-center justify-between mb-4">
+                          <button onClick={() => setOpenVendorFolder(null)} className="flex items-center gap-1 text-[13px] font-semibold text-[var(--emerald)] hover:opacity-80">
+                            <ChevronLeft size={16} /> Back to folders
+                          </button>
+                          <div className="flex items-center gap-2">
+                            <button onClick={() => downloadFolderAsZip(folder)} className="btn-outline !text-[12px] !py-1.5 !px-3">
+                              <Download size={14} /> Download All
+                            </button>
+                            <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={(e) => {
+                              const file = e.target.files[0];
+                              if (!file) return;
+                              const reader = new FileReader();
+                              reader.onload = (ev) => {
+                                setDriveFiles(prev => ({ ...prev, vendor: prev.vendor.map(f => f.id === folder.id ? { ...f, files: [...(f.files || []), { id: Date.now().toString(), label: file.name, data: ev.target.result, fileName: file.name, type: file.type, uploadedAt: new Date().toLocaleDateString('en-GB') }] } : f) }));
+                              };
+                              reader.readAsDataURL(file);
+                              e.target.value = '';
+                            }} className="hidden" id="vendor-folder-upload" />
+                            <label htmlFor="vendor-folder-upload" className="btn-primary cursor-pointer !text-[12px] !py-1.5 !px-3">
+                              <Plus size={14} /> Add File
+                            </label>
+                          </div>
+                        </div>
+
+                        <div className="apple-card p-5 mb-4 flex items-center gap-3 bg-amber-50/50 border-amber-200">
+                          <Folder size={28} className="text-amber-400" fill="currentColor" />
+                          <div>
+                            <p className="text-[17px] font-bold">{folder.name}</p>
+                            <p className="text-[12px] text-[var(--apple-gray-5)]">{(folder.files || []).length} files • Created {folder.createdAt}</p>
+                          </div>
+                        </div>
+
+                        {(folder.files || []).length === 0 ? (
+                          <div className="text-center py-10 border border-dashed border-[var(--apple-gray-3)] rounded-xl">
+                            <p className="text-[14px] text-[var(--apple-gray-4)]">This folder is empty. Add files above.</p>
+                          </div>
+                        ) : (
+                          <div className="apple-card overflow-hidden">
+                            {(folder.files || []).map(file => (
+                              <div key={file.id} className="flex items-center justify-between px-5 py-3.5 border-b border-[var(--apple-gray-2)] last:border-0 hover:bg-[var(--apple-gray-1)] transition-colors">
+                                <div className="flex items-center gap-3 min-w-0 flex-1">
+                                  <FileText size={18} className="text-[var(--apple-gray-5)] flex-shrink-0" />
+                                  <div className="min-w-0">
+                                    <p className="text-[14px] font-semibold text-[var(--apple-black)] truncate">{file.fileName}</p>
+                                    <p className="text-[11px] text-[var(--apple-gray-4)]">{file.uploadedAt}</p>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-1 ml-3">
+                                  <a href={file.data} download={file.fileName} className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-[var(--apple-black)] rounded-lg transition-colors" title="Download">
+                                    <Download size={15} />
+                                  </a>
+                                  <button onClick={() => confirmDelete(() => setDriveFiles(prev => ({ ...prev, vendor: prev.vendor.map(f => f.id === folder.id ? { ...f, files: f.files.filter(fi => fi.id !== file.id) } : f) })))} className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 rounded-lg transition-colors" title="Delete">
+                                    <Trash2 size={15} />
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                    ))}
-                  </div>
+                    );
+                  })()
                 )}
               </div>
             </div>
