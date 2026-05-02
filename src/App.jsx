@@ -29,7 +29,11 @@ import {
   FileUp,
   Save,
   Search,
-  Share2
+  Share2,
+  HardDrive,
+  FolderOpen,
+  Award,
+  FileCheck
 } from 'lucide-react';
 
 function App() {
@@ -67,13 +71,15 @@ function App() {
             if (data.templates) setTemplates(typeof data.templates === 'string' ? JSON.parse(data.templates) : data.templates);
             if (data.quotationHistory) setQuotationHistory(typeof data.quotationHistory === 'string' ? JSON.parse(data.quotationHistory) : data.quotationHistory);
             if (data.attachments) setAttachments(typeof data.attachments === 'string' ? JSON.parse(data.attachments) : data.attachments);
+            if (data.driveFiles) setDriveFiles(typeof data.driveFiles === 'string' ? JSON.parse(data.driveFiles) : data.driveFiles);
           } else {
             // First login: migrate local data
             await setDoc(docRef, { 
               companyData: JSON.stringify(companyData), 
               templates: JSON.stringify(templates), 
               quotationHistory: JSON.stringify(quotationHistory), 
-              attachments: JSON.stringify(attachments) 
+              attachments: JSON.stringify(attachments),
+              driveFiles: JSON.stringify(driveFiles) 
             });
           }
         } catch (e) {
@@ -167,6 +173,11 @@ function App() {
   const [quotationHistory, setQuotationHistory] = useState(() => {
     const saved = localStorage.getItem('srr_history');
     return saved ? JSON.parse(saved) : [];
+  });
+
+  const [driveFiles, setDriveFiles] = useState(() => {
+    const saved = localStorage.getItem('srr_drive');
+    return saved ? JSON.parse(saved) : { srr: [], vendor: [] };
   });
 
   // Set initial ref number from history
@@ -291,6 +302,11 @@ function App() {
     localStorage.setItem('srr_history', JSON.stringify(quotationHistory)); 
     if (user) setDoc(doc(db, 'users', user.uid), { quotationHistory: JSON.stringify(quotationHistory) }, { merge: true }).catch(console.error);
   }, [quotationHistory, user]);
+
+  useEffect(() => { 
+    localStorage.setItem('srr_drive', JSON.stringify(driveFiles)); 
+    if (user) setDoc(doc(db, 'users', user.uid), { driveFiles: JSON.stringify(driveFiles) }, { merge: true }).catch(console.error);
+  }, [driveFiles, user]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -461,6 +477,7 @@ function App() {
         <div className="flex gap-4">
           <NavItem id="library" label="Library" />
           <NavItem id="history" label="History" />
+          <NavItem id="drive" label="Drive" />
           <NavItem id="admin" label="Brands" />
           <NavItem id="settings" label="Settings" />
         </div>
@@ -1209,6 +1226,165 @@ function App() {
                     </div>
                   ))}
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* VIEW: DRIVE */}
+        {view === 'drive' && (
+          <div className="h-full overflow-y-auto px-8 py-12 md:px-16 md:py-16">
+            <div className="max-w-5xl mx-auto">
+              <header className="mb-12">
+                <h1 className="apple-title-1 mb-2">Drive</h1>
+                <p className="apple-subtitle">Upload and manage your business documents and vendor files.</p>
+              </header>
+
+              {/* ── SRR DRIVE (HIGHLIGHTED) ── */}
+              <div className="mb-12">
+                <div className="relative overflow-hidden rounded-2xl border-2 border-[var(--emerald)] bg-gradient-to-br from-emerald-50 via-white to-teal-50 p-8 mb-6">
+                  <div className="absolute top-0 right-0 w-64 h-64 bg-[var(--emerald)] opacity-[0.04] rounded-full -translate-y-1/2 translate-x-1/2"></div>
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
+                    <div className="flex items-center gap-4">
+                      <div className="w-14 h-14 bg-[var(--emerald)] rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-200">
+                        <Award size={28} className="text-white" />
+                      </div>
+                      <div>
+                        <h2 className="text-[24px] font-bold tracking-tight text-[var(--apple-black)]">SRR Drive</h2>
+                        <p className="text-[14px] text-[var(--apple-gray-5)] font-medium">Your business certificates & company documents</p>
+                      </div>
+                    </div>
+                    <div>
+                      <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={(e) => {
+                        const file = e.target.files[0];
+                        if (!file) return;
+                        const label = prompt('Enter document name (e.g. GST Certificate, Trade License):');
+                        if (!label) return;
+                        const reader = new FileReader();
+                        reader.onload = (ev) => {
+                          const newFile = { id: Date.now().toString(), label, data: ev.target.result, fileName: file.name, type: file.type, uploadedAt: new Date().toLocaleDateString('en-GB') };
+                          setDriveFiles(prev => ({ ...prev, srr: [...(prev.srr || []), newFile] }));
+                        };
+                        reader.readAsDataURL(file);
+                        e.target.value = '';
+                      }} className="hidden" id="srr-drive-upload" />
+                      <label htmlFor="srr-drive-upload" className="btn-primary cursor-pointer !bg-[var(--emerald)] hover:!bg-emerald-600">
+                        <Plus size={18} /> Upload Document
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                {(driveFiles.srr || []).length === 0 ? (
+                  <div className="text-center py-16 border-2 border-dashed border-emerald-200 rounded-2xl bg-emerald-50/30">
+                    <FileCheck size={40} className="mx-auto mb-3 text-emerald-300" />
+                    <p className="text-[15px] font-medium text-[var(--apple-gray-5)]">No certificates uploaded yet</p>
+                    <p className="text-[13px] text-[var(--apple-gray-4)] mt-1">Upload GST, Trade License, ISO certificates, etc.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {(driveFiles.srr || []).map(file => (
+                      <div key={file.id} className="apple-card p-0 overflow-hidden border-2 border-emerald-100 hover:border-[var(--emerald)] transition-colors group">
+                        <div className="h-40 bg-gradient-to-br from-emerald-50 to-teal-50 flex items-center justify-center overflow-hidden">
+                          {file.type && file.type.startsWith('image/') ? (
+                            <img src={file.data} alt={file.label} className="w-full h-full object-cover" />
+                          ) : (
+                            <embed src={file.data + '#toolbar=0&navpanes=0&view=FitH'} type="application/pdf" className="w-full h-full" />
+                          )}
+                        </div>
+                        <div className="p-4 flex items-center justify-between">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[15px] font-semibold text-[var(--apple-black)] truncate">{file.label}</p>
+                            <p className="text-[11px] text-[var(--apple-gray-4)] mt-0.5">{file.fileName} • {file.uploadedAt}</p>
+                          </div>
+                          <div className="flex items-center gap-1 ml-2">
+                            <a href={file.data} download={file.fileName} className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-[var(--emerald)] hover:bg-emerald-50 rounded-lg transition-colors">
+                              <Download size={15} />
+                            </a>
+                            <button 
+                              onClick={() => setDriveFiles(prev => ({ ...prev, srr: prev.srr.filter(f => f.id !== file.id) }))}
+                              className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* ── VENDOR DOCUMENTS ── */}
+              <div>
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-[var(--apple-gray-1)] rounded-xl flex items-center justify-center">
+                      <FolderOpen size={22} className="text-[var(--apple-gray-6)]" />
+                    </div>
+                    <div>
+                      <h2 className="text-[20px] font-bold tracking-tight">Vendor Documents</h2>
+                      <p className="text-[13px] text-[var(--apple-gray-5)]">Attachments and documents from other vendors</p>
+                    </div>
+                  </div>
+                  <div>
+                    <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={(e) => {
+                      const file = e.target.files[0];
+                      if (!file) return;
+                      const label = prompt('Enter vendor/document name:');
+                      if (!label) return;
+                      const reader = new FileReader();
+                      reader.onload = (ev) => {
+                        const newFile = { id: Date.now().toString(), label, data: ev.target.result, fileName: file.name, type: file.type, uploadedAt: new Date().toLocaleDateString('en-GB') };
+                        setDriveFiles(prev => ({ ...prev, vendor: [...(prev.vendor || []), newFile] }));
+                      };
+                      reader.readAsDataURL(file);
+                      e.target.value = '';
+                    }} className="hidden" id="vendor-drive-upload" />
+                    <label htmlFor="vendor-drive-upload" className="btn-outline cursor-pointer">
+                      <Plus size={16} /> Add Vendor File
+                    </label>
+                  </div>
+                </div>
+
+                {(driveFiles.vendor || []).length === 0 ? (
+                  <div className="text-center py-16 border border-dashed border-[var(--apple-gray-3)] rounded-2xl">
+                    <FolderOpen size={40} className="mx-auto mb-3 text-[var(--apple-gray-4)]" />
+                    <p className="text-[15px] font-medium text-[var(--apple-gray-5)]">No vendor documents yet</p>
+                    <p className="text-[13px] text-[var(--apple-gray-4)] mt-1">Upload vendor price lists, catalogs, etc.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {(driveFiles.vendor || []).map(file => (
+                      <div key={file.id} className="apple-card p-0 overflow-hidden group">
+                        <div className="h-40 bg-[var(--apple-gray-1)] flex items-center justify-center overflow-hidden">
+                          {file.type && file.type.startsWith('image/') ? (
+                            <img src={file.data} alt={file.label} className="w-full h-full object-cover" />
+                          ) : (
+                            <embed src={file.data + '#toolbar=0&navpanes=0&view=FitH'} type="application/pdf" className="w-full h-full" />
+                          )}
+                        </div>
+                        <div className="p-4 flex items-center justify-between">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[15px] font-semibold text-[var(--apple-black)] truncate">{file.label}</p>
+                            <p className="text-[11px] text-[var(--apple-gray-4)] mt-0.5">{file.fileName} • {file.uploadedAt}</p>
+                          </div>
+                          <div className="flex items-center gap-1 ml-2">
+                            <a href={file.data} download={file.fileName} className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-[var(--apple-black)] hover:bg-[var(--apple-gray-1)] rounded-lg transition-colors">
+                              <Download size={15} />
+                            </a>
+                            <button 
+                              onClick={() => setDriveFiles(prev => ({ ...prev, vendor: prev.vendor.filter(f => f.id !== file.id) }))}
+                              className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
