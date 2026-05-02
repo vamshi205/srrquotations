@@ -187,8 +187,25 @@ function App() {
           mergedPdf.addPage(coverPage);
           const base64Data = selectedAttachment.data.includes('base64,') ? selectedAttachment.data.split(',')[1] : selectedAttachment.data;
           const attachmentDoc = await PDFDocument.load(base64Data);
-          const pages = await mergedPdf.copyPages(attachmentDoc, attachmentDoc.getPageIndices());
-          pages.forEach(page => mergedPdf.addPage(page));
+          // A4 dimensions in points (595.28 x 841.89)
+          const A4_WIDTH = 595.28;
+          const A4_HEIGHT = 841.89;
+          for (const pageIndex of attachmentDoc.getPageIndices()) {
+            const [embeddedPage] = await mergedPdf.embedPages(attachmentDoc, [pageIndex]);
+            const { width: origW, height: origH } = embeddedPage.size();
+            const scaleX = A4_WIDTH / origW;
+            const scaleY = A4_HEIGHT / origH;
+            const scale = Math.min(scaleX, scaleY);
+            const scaledW = origW * scale;
+            const scaledH = origH * scale;
+            const newPage = mergedPdf.addPage([A4_WIDTH, A4_HEIGHT]);
+            newPage.drawPage(embeddedPage, {
+              x: (A4_WIDTH - scaledW) / 2,
+              y: (A4_HEIGHT - scaledH) / 2,
+              width: scaledW,
+              height: scaledH,
+            });
+          }
           finalPdfBytes = await mergedPdf.save();
         } else {
           finalPdfBytes = coverArrayBuffer;
@@ -295,8 +312,25 @@ function App() {
         mergedPdf.addPage(coverPage);
         const base64Data = selectedAttachment.data.includes('base64,') ? selectedAttachment.data.split(',')[1] : selectedAttachment.data;
         const attachmentDoc = await PDFDocument.load(base64Data);
-        const pages = await mergedPdf.copyPages(attachmentDoc, attachmentDoc.getPageIndices());
-        pages.forEach(page => mergedPdf.addPage(page));
+        // A4 dimensions in points (595.28 x 841.89)
+        const A4_WIDTH = 595.28;
+        const A4_HEIGHT = 841.89;
+        for (const pageIndex of attachmentDoc.getPageIndices()) {
+          const [embeddedPage] = await mergedPdf.embedPages(attachmentDoc, [pageIndex]);
+          const { width: origW, height: origH } = embeddedPage.size();
+          const scaleX = A4_WIDTH / origW;
+          const scaleY = A4_HEIGHT / origH;
+          const scale = Math.min(scaleX, scaleY);
+          const scaledW = origW * scale;
+          const scaledH = origH * scale;
+          const newPage = mergedPdf.addPage([A4_WIDTH, A4_HEIGHT]);
+          newPage.drawPage(embeddedPage, {
+            x: (A4_WIDTH - scaledW) / 2,
+            y: (A4_HEIGHT - scaledH) / 2,
+            width: scaledW,
+            height: scaledH,
+          });
+        }
         finalPdfBytes = await mergedPdf.save();
       } else {
         finalPdfBytes = coverArrayBuffer;
@@ -952,9 +986,30 @@ function App() {
 
             {/* Right Live Preview Area */}
             {showPreview && (
-              <div className="flex-1 bg-[var(--apple-gray-2)] overflow-y-auto p-12 flex justify-center">
-                <div className="scale-[0.85] origin-top">
-                  <QuotationTemplate id="quotation-template" data={formData} content={draftContent} company={companyData} />
+              <div className="flex-1 bg-[var(--apple-gray-2)] overflow-y-auto p-12">
+                <div className="flex flex-col items-center gap-8">
+                  <div className="scale-[0.85] origin-top">
+                    <QuotationTemplate id="quotation-template" data={formData} content={draftContent} company={companyData} />
+                  </div>
+                  {/* Attached Brand PDF Preview */}
+                  {(() => {
+                    const attachmentRef = formData.attachmentLabel || formData.make;
+                    const selectedAtt = draftRequiresAttachment ? attachments.find(a => a.label === attachmentRef) : null;
+                    if (!selectedAtt || !selectedAtt.data) return null;
+                    return (
+                      <div className="w-full flex flex-col items-center" style={{ marginTop: '-80px' }}>
+                        <div className="flex items-center gap-2 mb-4">
+                          <span className="badge-gray">ATTACHMENT</span>
+                          <span className="text-[13px] font-medium text-[var(--apple-gray-5)]">{selectedAtt.label} — {selectedAtt.fileName}</span>
+                        </div>
+                        <embed 
+                          src={selectedAtt.data + '#toolbar=0&navpanes=0'} 
+                          type="application/pdf" 
+                          style={{ width: '178.5mm', height: '252.45mm', border: 'none', borderRadius: '4px', boxShadow: '0 4px 24px rgba(0,0,0,0.12)' }}
+                        />
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             )}

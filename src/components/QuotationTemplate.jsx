@@ -192,7 +192,7 @@ const QuotationTemplate = ({ id = "quotation-template", data, company, content }
         <p className="font-bold underline mb-2 text-[11pt]">Terms and Conditions:</p>
         <table className="w-full text-[11pt] leading-[1.5] mb-3">
           <tbody>
-            {make && <tr><td className="w-32 font-bold">Make</td><td className="w-4 text-center">:</td><td className="uppercase">{make}</td></tr>}
+            {make && <tr><td className="w-32 font-bold">Make</td><td className="w-4 text-center">:</td><td>{make}</td></tr>}
             {delivery && <tr><td className="w-32 font-bold">Delivery</td><td className="w-4 text-center">:</td><td>{delivery}</td></tr>}
             {payment && <tr><td className="w-32 font-bold">Payment</td><td className="w-4 text-center">:</td><td>{payment}</td></tr>}
             {gst && <tr><td className="w-32 font-bold">GST</td><td className="w-4 text-center">:</td><td>{gst}</td></tr>}
