@@ -35,7 +35,9 @@ import {
   FolderOpen,
   Folder,
   Award,
-  FileCheck
+  FileCheck,
+  Mail,
+  CheckSquare
 } from 'lucide-react';
 
 function App() {
@@ -236,6 +238,13 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [regeneratingItem, setRegeneratingItem] = useState(null);
   const [openVendorFolder, setOpenVendorFolder] = useState(null);
+  const [showEmailComposer, setShowEmailComposer] = useState(false);
+  const [emailForm, setEmailForm] = useState({
+    to: '',
+    subject: '',
+    body: '',
+    selectedDriveFiles: [] // Array of file objects
+  });
 
   const confirmDelete = (callback) => {
     const pw = prompt('Enter admin password to delete:');
@@ -254,6 +263,46 @@ function App() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a'); link.href = url; link.download = `${folder.name}.zip`; link.click();
   };
+
+  const getSignature = () => {
+    return `\n\nRegards\nA.Satyanarayana\nSri Raja Rajeshwari Ortho Plus\nMobile: 9396857455, 9397857455\nWeb: www.srrorthoplus.com`;
+  };
+
+  const updateEmailBody = (templateId, selectedFiles = []) => {
+    const template = templates.find(t => t.id === templateId);
+    const templateName = template?.name || 'Quotation';
+    
+    let baseMessage = `Dear Sir/Madam,\n\nPlease find the attached ${templateName} for your kind perusal.`;
+    
+    if (selectedFiles.length > 0) {
+      const fileNames = selectedFiles.map(f => f.label || f.fileName).join(', ');
+      baseMessage += `\n\nI have also attached the requested certificates/documents: ${fileNames}.`;
+    }
+    
+    baseMessage += `\n\nWe look forward to your positive response.`;
+    
+    setEmailForm(prev => ({
+      ...prev,
+      body: baseMessage + getSignature()
+    }));
+  };
+
+  useEffect(() => {
+    if (showEmailComposer) {
+      setEmailForm(prev => ({
+        ...prev,
+        subject: formData.subject,
+        to: prev.to || ''
+      }));
+      updateEmailBody(formData.selectedTemplateId, emailForm.selectedDriveFiles);
+    }
+  }, [showEmailComposer, formData.selectedTemplateId]);
+
+  useEffect(() => {
+    if (showEmailComposer) {
+      updateEmailBody(formData.selectedTemplateId, emailForm.selectedDriveFiles);
+    }
+  }, [emailForm.selectedDriveFiles]);
 
   useEffect(() => {
     if (!regeneratingItem) return;
@@ -1120,40 +1169,187 @@ function App() {
                 </div>
               </div>
 
-              <div className="p-8 mt-auto pt-4 bg-white border-t border-[var(--apple-gray-2)] sticky bottom-0">
-                <button onClick={generatePDF} disabled={isGenerating} className="btn-primary w-full">
+              <div className="p-8 mt-auto pt-4 bg-white border-t border-[var(--apple-gray-2)] sticky bottom-0 flex gap-3">
+                <button onClick={generatePDF} disabled={isGenerating} className="btn-primary flex-1">
                   {isGenerating ? 'Processing...' : <><Download size={18} /> Generate PDF</>}
+                </button>
+                <button 
+                  onClick={() => setShowEmailComposer(!showEmailComposer)} 
+                  className={`btn-outline !py-3 !px-4 ${showEmailComposer ? 'bg-[var(--apple-gray-1)]' : ''}`}
+                  title="Compose Email"
+                >
+                  <Mail size={18} className={showEmailComposer ? 'text-[var(--emerald)]' : ''} />
                 </button>
               </div>
             </div>
 
-            {/* Right Live Preview Area */}
+            {/* Right Live Preview Area OR Email Composer */}
             {showPreview && (
-              <div className="flex-1 bg-[var(--apple-gray-2)] overflow-y-auto p-12">
-                <div className="flex flex-col items-center gap-8">
-                  <div className="scale-[0.85] origin-top">
-                    <QuotationTemplate id="quotation-template" data={formData} content={draftContent} company={companyData} />
-                  </div>
-                  {/* Attached Brand PDF Preview */}
-                  {(() => {
-                    const attachmentRef = formData.attachmentLabel || formData.make;
-                    const selectedAtt = draftRequiresAttachment ? attachments.find(a => a.label === attachmentRef) : null;
-                    if (!selectedAtt || !selectedAtt.data) return null;
-                    return (
-                      <div className="w-full flex flex-col items-center" style={{ marginTop: '-80px' }}>
-                        <div className="flex items-center gap-2 mb-4">
-                          <span className="badge-gray">ATTACHMENT</span>
-                          <span className="text-[13px] font-medium text-[var(--apple-gray-5)]">{selectedAtt.label} — {selectedAtt.fileName}</span>
+              <div className="flex-1 bg-[var(--apple-gray-2)] overflow-y-auto p-12 relative">
+                {showEmailComposer ? (
+                  /* ── EMAIL COMPOSER OVERLAY ── */
+                  <div className="max-w-2xl mx-auto bg-white rounded-3xl shadow-2xl overflow-hidden border border-[var(--apple-gray-2)] flex flex-col h-[calc(100vh-160px)]">
+                    <div className="bg-[var(--apple-gray-1)] px-8 py-6 border-b border-[var(--apple-gray-2)] flex justify-between items-center">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-[var(--emerald)] rounded-xl flex items-center justify-center">
+                          <Mail className="text-white" size={20} />
                         </div>
-                        <embed 
-                          src={selectedAtt.data + '#toolbar=0&navpanes=0'} 
-                          type="application/pdf" 
-                          style={{ width: '178.5mm', height: '252.45mm', border: 'none', borderRadius: '4px', boxShadow: '0 4px 24px rgba(0,0,0,0.12)' }}
+                        <div>
+                          <h3 className="text-[17px] font-bold">Compose Email</h3>
+                          <p className="text-[11px] text-[var(--apple-gray-5)] uppercase font-bold tracking-wider">New Message</p>
+                        </div>
+                      </div>
+                      <button onClick={() => setShowEmailComposer(false)} className="text-[var(--apple-gray-5)] hover:text-[var(--apple-black)] transition-colors">
+                        <Plus className="rotate-45" size={24} />
+                      </button>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto p-8 space-y-6">
+                      {/* Recipient */}
+                      <div className="flex items-center gap-4 border-b border-[var(--apple-gray-2)] pb-2">
+                        <span className="text-[14px] font-bold text-[var(--apple-gray-5)] w-12">To</span>
+                        <input 
+                          type="email" 
+                          value={emailForm.to} 
+                          onChange={(e) => setEmailForm({...emailForm, to: e.target.value})}
+                          placeholder="hospital-representative@email.com" 
+                          className="flex-1 bg-transparent outline-none text-[15px]" 
                         />
                       </div>
-                    );
-                  })()}
-                </div>
+
+                      {/* Subject */}
+                      <div className="flex items-center gap-4 border-b border-[var(--apple-gray-2)] pb-2">
+                        <span className="text-[14px] font-bold text-[var(--apple-gray-5)] w-12">Sub</span>
+                        <input 
+                          type="text" 
+                          value={emailForm.subject} 
+                          onChange={(e) => setEmailForm({...emailForm, subject: e.target.value})}
+                          className="flex-1 bg-transparent outline-none text-[15px] font-semibold" 
+                        />
+                      </div>
+
+                      {/* Attachment Badge (Generated PDF) */}
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 px-3 py-1.5 bg-[var(--emerald-light)] border border-[var(--emerald)] rounded-full text-[12px] font-bold text-[var(--emerald)]">
+                          <FileText size={14} />
+                          Quotation_{formData.hospitalName || 'Draft'}.pdf
+                        </div>
+                        {emailForm.selectedDriveFiles.map(file => (
+                          <div key={file.id} className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-full text-[12px] font-bold text-amber-700">
+                            <FileCheck size={14} />
+                            {file.label || file.fileName}
+                            <button onClick={() => setEmailForm(prev => ({ ...prev, selectedDriveFiles: prev.selectedDriveFiles.filter(f => f.id !== file.id) }))}>
+                              <Plus className="rotate-45" size={14} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Body */}
+                      <textarea 
+                        value={emailForm.body} 
+                        onChange={(e) => setEmailForm({...emailForm, body: e.target.value})}
+                        className="w-full min-h-[300px] bg-transparent outline-none text-[15px] leading-relaxed resize-none"
+                      />
+
+                      {/* Drive Attachments Picker */}
+                      <div className="pt-6 border-t border-[var(--apple-gray-2)]">
+                        <h4 className="text-[13px] font-bold text-[var(--apple-gray-5)] uppercase tracking-wider mb-4">Attach Documents from Drive</h4>
+                        <div className="space-y-4">
+                          {/* SRR Files */}
+                          <div>
+                            <p className="text-[11px] font-bold text-[var(--emerald)] mb-2 uppercase">SRR Certificates</p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              {(driveFiles.srr || []).map(file => (
+                                <button
+                                  key={file.id}
+                                  onClick={() => {
+                                    const exists = emailForm.selectedDriveFiles.find(f => f.id === file.id);
+                                    if (exists) {
+                                      setEmailForm(prev => ({ ...prev, selectedDriveFiles: prev.selectedDriveFiles.filter(f => f.id !== file.id) }));
+                                    } else {
+                                      setEmailForm(prev => ({ ...prev, selectedDriveFiles: [...prev.selectedDriveFiles, file] }));
+                                    }
+                                  }}
+                                  className={`flex items-center gap-2 p-2 rounded-lg border text-left transition-all ${emailForm.selectedDriveFiles.find(f => f.id === file.id) ? 'bg-emerald-50 border-[var(--emerald)]' : 'bg-white border-[var(--apple-gray-2)] hover:bg-[var(--apple-gray-1)]'}`}
+                                >
+                                  <div className={`w-4 h-4 rounded border flex items-center justify-center ${emailForm.selectedDriveFiles.find(f => f.id === file.id) ? 'bg-[var(--emerald)] border-[var(--emerald)]' : 'border-[var(--apple-gray-3)]'}`}>
+                                    {emailForm.selectedDriveFiles.find(f => f.id === file.id) && <CheckSquare size={10} className="text-white" />}
+                                  </div>
+                                  <span className="text-[12px] font-medium truncate">{file.label}</span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                          
+                          {/* Vendor Folders */}
+                          {(driveFiles.vendor || []).map(folder => (
+                            <div key={folder.id}>
+                              <p className="text-[11px] font-bold text-amber-600 mb-2 uppercase">{folder.name} Documents</p>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                {(folder.files || []).map(file => (
+                                  <button
+                                    key={file.id}
+                                    onClick={() => {
+                                      const exists = emailForm.selectedDriveFiles.find(f => f.id === file.id);
+                                      if (exists) {
+                                        setEmailForm(prev => ({ ...prev, selectedDriveFiles: prev.selectedDriveFiles.filter(f => f.id !== file.id) }));
+                                      } else {
+                                        setEmailForm(prev => ({ ...prev, selectedDriveFiles: [...prev.selectedDriveFiles, file] }));
+                                      }
+                                    }}
+                                    className={`flex items-center gap-2 p-2 rounded-lg border text-left transition-all ${emailForm.selectedDriveFiles.find(f => f.id === file.id) ? 'bg-amber-50 border-amber-400' : 'bg-white border-[var(--apple-gray-2)] hover:bg-[var(--apple-gray-1)]'}`}
+                                  >
+                                    <div className={`w-4 h-4 rounded border flex items-center justify-center ${emailForm.selectedDriveFiles.find(f => f.id === file.id) ? 'bg-amber-500 border-amber-500' : 'border-[var(--apple-gray-3)]'}`}>
+                                      {emailForm.selectedDriveFiles.find(f => f.id === file.id) && <CheckSquare size={10} className="text-white" />}
+                                    </div>
+                                    <span className="text-[12px] font-medium truncate">{file.fileName}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="p-8 bg-[var(--apple-gray-1)] border-t border-[var(--apple-gray-2)] flex items-center justify-between">
+                      <p className="text-[12px] text-[var(--apple-gray-5)] font-medium">Draft saved to cloud</p>
+                      <button 
+                        onClick={() => alert('Email integration coming soon! (Configuration required)')} 
+                        className="btn-primary !py-2.5 !px-8"
+                      >
+                        Send Message
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  /* ── ORIGINAL PDF PREVIEW ── */
+                  <div className="flex flex-col items-center gap-8">
+                    <div className="scale-[0.85] origin-top">
+                      <QuotationTemplate id="quotation-template" data={formData} content={draftContent} company={companyData} />
+                    </div>
+                    {/* Attached Brand PDF Preview */}
+                    {(() => {
+                      const attachmentRef = formData.attachmentLabel || formData.make;
+                      const selectedAtt = draftRequiresAttachment ? attachments.find(a => a.label === attachmentRef) : null;
+                      if (!selectedAtt || !selectedAtt.data) return null;
+                      return (
+                        <div className="w-full flex flex-col items-center" style={{ marginTop: '-80px' }}>
+                          <div className="flex items-center gap-2 mb-4">
+                            <span className="badge-gray">ATTACHMENT</span>
+                            <span className="text-[13px] font-medium text-[var(--apple-gray-5)]">{selectedAtt.label} — {selectedAtt.fileName}</span>
+                          </div>
+                          <embed 
+                            src={selectedAtt.data + '#toolbar=0&navpanes=0'} 
+                            type="application/pdf" 
+                            style={{ width: '178.5mm', height: '252.45mm', border: 'none', borderRadius: '4px', boxShadow: '0 4px 24px rgba(0,0,0,0.12)' }}
+                          />
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1291,10 +1487,10 @@ function App() {
                         </div>
                       </div>
                       <button 
-                        onClick={() => {
+                        onClick={async () => {
                           const att = attachments.find(a => a.id === att.id);
                           setAttachments(attachments.filter(a => a.id !== att.id));
-                          if (att) syncItem('attachments', att, true);
+                          if (att) await syncItem('attachments', att, true);
                         }} 
                         className="w-10 h-10 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 bg-[var(--apple-gray-1)] hover:bg-red-50 rounded-full transition-colors"
                       >
@@ -1413,7 +1609,7 @@ function App() {
                     </div>
                   </div>
                   {!openVendorFolder && (
-                    <button onClick={() => {
+                    <button onClick={async () => {
                       const name = prompt('Enter vendor/folder name:');
                       if (!name) return;
                       const newFolder = { id: Date.now().toString(), name, createdAt: new Date().toLocaleDateString('en-GB'), files: [] };
