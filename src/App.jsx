@@ -4,6 +4,10 @@ import LibraryCard from './components/LibraryCard';
 import jsPDF from 'jspdf';
 import { toJpeg } from 'html-to-image';
 import { PDFDocument } from 'pdf-lib';
+import Login from './components/Login';
+import { auth, db, hasFirebaseConfig } from './firebase';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { doc, getDoc, setDoc, collection, getDocs, writeBatch } from 'firebase/firestore';
 import { 
   Download, 
   Plus, 
@@ -29,6 +33,56 @@ import {
 
 function App() {
   const [view, setView] = useState('library'); 
+  const [user, setUser] = useState(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [authError, setAuthError] = useState('');
+
+  useEffect(() => {
+    if (!hasFirebaseConfig) {
+      setIsAuthLoading(false);
+      return;
+    }
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (currentUser) {
+        const allowedEmailsStr = import.meta.env.VITE_ALLOWED_EMAILS || '';
+        const allowedEmails = allowedEmailsStr.split(',').map(e => e.trim().toLowerCase()).filter(e => e);
+        
+        if (allowedEmails.length > 0 && !allowedEmails.includes(currentUser.email.toLowerCase())) {
+          await signOut(auth);
+          setAuthError('Your email address is not authorized to access this application.');
+          setUser(null);
+          setIsAuthLoading(false);
+          return;
+        }
+
+        setUser(currentUser);
+        setAuthError('');
+        try {
+          const docRef = doc(db, 'users', currentUser.uid);
+          const docSnap = await getDoc(docRef);
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            if (data.companyData) setCompanyData(typeof data.companyData === 'string' ? JSON.parse(data.companyData) : data.companyData);
+            if (data.templates) setTemplates(typeof data.templates === 'string' ? JSON.parse(data.templates) : data.templates);
+            if (data.quotationHistory) setQuotationHistory(typeof data.quotationHistory === 'string' ? JSON.parse(data.quotationHistory) : data.quotationHistory);
+            if (data.attachments) setAttachments(typeof data.attachments === 'string' ? JSON.parse(data.attachments) : data.attachments);
+          } else {
+            // First login: migrate local data
+            await setDoc(docRef, { 
+              companyData: JSON.stringify(companyData), 
+              templates: JSON.stringify(templates), 
+              quotationHistory: JSON.stringify(quotationHistory), 
+              attachments: JSON.stringify(attachments) 
+            });
+          }
+        } catch (e) {
+          console.error("Firestore sync error:", e);
+        }
+      }
+      setIsAuthLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
   
   const getTodayFormatted = () => {
     const d = new Date();
@@ -155,10 +209,26 @@ function App() {
     setTimeout(generateHistoryPDF, 150);
   }, [regeneratingItem, attachments]);
 
-  useEffect(() => { localStorage.setItem('srr_company_data', JSON.stringify(companyData)); }, [companyData]);
-  useEffect(() => { localStorage.setItem('srr_attachments', JSON.stringify(attachments)); }, [attachments]);
-  useEffect(() => { localStorage.setItem('srr_templates', JSON.stringify(templates)); }, [templates]);
-  useEffect(() => { localStorage.setItem('srr_history', JSON.stringify(quotationHistory)); }, [quotationHistory]);
+  // Sync to Firestore instead of just localStorage
+  useEffect(() => { 
+    localStorage.setItem('srr_company_data', JSON.stringify(companyData)); 
+    if (user) setDoc(doc(db, 'users', user.uid), { companyData: JSON.stringify(companyData) }, { merge: true }).catch(console.error);
+  }, [companyData, user]);
+
+  useEffect(() => { 
+    localStorage.setItem('srr_attachments', JSON.stringify(attachments)); 
+    if (user) setDoc(doc(db, 'users', user.uid), { attachments: JSON.stringify(attachments) }, { merge: true }).catch(console.error);
+  }, [attachments, user]);
+
+  useEffect(() => { 
+    localStorage.setItem('srr_templates', JSON.stringify(templates)); 
+    if (user) setDoc(doc(db, 'users', user.uid), { templates: JSON.stringify(templates) }, { merge: true }).catch(console.error);
+  }, [templates, user]);
+
+  useEffect(() => { 
+    localStorage.setItem('srr_history', JSON.stringify(quotationHistory)); 
+    if (user) setDoc(doc(db, 'users', user.uid), { quotationHistory: JSON.stringify(quotationHistory) }, { merge: true }).catch(console.error);
+  }, [quotationHistory, user]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -167,7 +237,10 @@ function App() {
 
   const useTemplate = (template) => {
     setFormData({ 
-      ...formData,
+      hospitalName: '',
+      address: '',
+      date: getTodayFormatted(),
+      referenceNumber: formData.referenceNumber, // Keep reference number so user can increment it manually, or we could reset it
       selectedTemplateId: template.id,
       subject: template.subject || 'Quotation for Orthopedic Implants & instruments',
       make: template.defaultMake || '',
@@ -257,6 +330,32 @@ function App() {
     </span>
   );
 
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  if (isAuthLoading) {
+    return <div className="min-h-screen bg-[var(--apple-gray-1)] flex items-center justify-center font-sans text-[var(--apple-gray-5)]">Loading...</div>;
+  }
+
+  // If Firebase is configured but no user is logged in, OR if Firebase is completely missing its config (in which case Login shows the setup guide)
+  if (!user) {
+    return (
+      <>
+        {authError && (
+          <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-red-100 border border-red-200 text-red-700 px-6 py-3 rounded-2xl shadow-lg font-medium text-[14px]">
+            {authError}
+          </div>
+        )}
+        <Login />
+      </>
+    );
+  }
+
   return (
     <div className="flex flex-col h-screen text-[var(--apple-black)] font-sans overflow-hidden bg-[var(--apple-bg)]">
       
@@ -275,6 +374,12 @@ function App() {
           <NavItem id="history" label="History" />
           <NavItem id="admin" label="Brands" />
           <NavItem id="settings" label="Settings" />
+        </div>
+        <div className="ml-auto flex items-center gap-4">
+          <span className="text-[13px] font-medium text-[var(--apple-gray-5)] hidden sm:block">{user.email}</span>
+          <button onClick={handleLogout} className="text-[13px] font-medium text-red-500 hover:text-red-600 transition-colors">
+            Sign Out
+          </button>
         </div>
       </nav>
 
