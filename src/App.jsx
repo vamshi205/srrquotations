@@ -272,11 +272,21 @@ function App() {
     const template = templates.find(t => t.id === templateId);
     const templateName = template?.name || 'Quotation';
     
-    let baseMessage = `Dear Sir/Madam,\n\nPlease find the attached Quotation for ${templateName} for your kind perusal.`;
+    let baseMessage = `Dear Sir/Madam,\n\nPlease find the attached Quotation for ${templateName} for your kind reference.`;
     
     if (selectedFiles.length > 0) {
-      const fileNames = selectedFiles.map(f => f.label || f.fileName).join(', ');
-      baseMessage += `\n\nI have also attached the requested certificates/documents: ${fileNames}.`;
+      const srrFiles = selectedFiles.filter(f => !f.folderId);
+      const vendorFiles = selectedFiles.filter(f => f.folderId);
+
+      baseMessage += `\n\nI have also attached the requested documents:`;
+
+      if (srrFiles.length > 0) {
+        baseMessage += `\n\nSRR Certificates:\n` + srrFiles.map((f, i) => `${i + 1}. ${f.label || f.fileName}`).join('\n');
+      }
+
+      if (vendorFiles.length > 0) {
+        baseMessage += `\n\nManufacturer Certificates:\n` + vendorFiles.map((f, i) => `${i + 1}. ${f.label || f.fileName}`).join('\n');
+      }
     }
     
     baseMessage += `\n\nWe look forward to your positive response.`;
@@ -1229,7 +1239,7 @@ function App() {
                       </div>
 
                       {/* Attachment Badge (Generated PDF) */}
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center flex-wrap gap-2">
                         <div className="flex items-center gap-2 px-3 py-1.5 bg-[var(--emerald-light)] border border-[var(--emerald)] rounded-full text-[12px] font-bold text-[var(--emerald)]">
                           <FileText size={14} />
                           Quotation_{formData.hospitalName || 'Draft'}.pdf
