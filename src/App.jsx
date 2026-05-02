@@ -30,22 +30,30 @@ import {
 function App() {
   const [view, setView] = useState('library'); 
   
+  const getTodayFormatted = () => {
+    const d = new Date();
+    return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
+  };
+
   const [formData, setFormData] = useState({
     hospitalName: '',
     address: '',
-    date: new Date().toISOString().split('T')[0],
+    date: getTodayFormatted(),
     referenceNumber: `SRR/${new Date().getFullYear()}/001`,
-    subject: 'Sub : Quotation for Orthopedic Implants & instruments',
+    subject: 'Quotation for Orthopedic Implants & instruments',
     discount: '40%',
     payment: '30 days',
     gst: '5%',
-    validity: '31.03.2027',
+    validity: '31/03/2027',
     make: '',
+    delivery: '',
+    attachmentLabel: '',
     selectedTemplateId: ''
   });
 
   const [draftContent, setDraftContent] = useState([]);
   const [draftRequiresAttachment, setDraftRequiresAttachment] = useState(false);
+  const [showPreview, setShowPreview] = useState(true);
 
   // Persistent Storage
   const [companyData, setCompanyData] = useState(() => {
@@ -72,11 +80,13 @@ function App() {
         name: 'Standard Implants',
         description: 'Standard quotation for surgical implants.',
         requiresAttachment: true,
-        subject: 'Sub : Quotation for Orthopedic Implants & instruments',
+        subject: 'Quotation for Orthopedic Implants & instruments',
+        defaultMake: '',
+        defaultDelivery: 'Immediate',
         defaultDiscount: '40%',
         defaultGst: '5%',
         defaultPayment: '30 days',
-        defaultValidity: '31.03.2027',
+        defaultValidity: '31/03/2027',
         content: [
           { type: 'text', value: 'With reference to the subject cited above we are herewith submitting our lowest quotation for the enclosed Orthopedic Implants & instruments under the following terms& conditions. Please find the same.' }
         ]
@@ -106,13 +116,21 @@ function App() {
         const coverArrayBuffer = pdf.output('arraybuffer');
         
         let finalPdfBytes;
-        const selectedAttachment = regeneratingItem.requiresAttachment ? attachments.find(a => a.label === regeneratingItem.formData.make) : null;
+        const attachmentRef = regeneratingItem.formData.attachmentLabel || regeneratingItem.formData.make;
+        const selectedAttachment = regeneratingItem.requiresAttachment ? attachments.find(a => a.label === attachmentRef) : null;
         if (selectedAttachment) {
+          if (!selectedAttachment.data || typeof selectedAttachment.data !== 'string') {
+            alert('The brand PDF attachment in history is corrupted (likely from a previous session). Please re-upload it in the Library.');
+            setIsGenerating(false);
+            setRegeneratingItem(null);
+            return;
+          }
           const mergedPdf = await PDFDocument.create();
           const coverDoc = await PDFDocument.load(coverArrayBuffer);
           const [coverPage] = await mergedPdf.copyPages(coverDoc, [0]);
           mergedPdf.addPage(coverPage);
-          const attachmentDoc = await PDFDocument.load(selectedAttachment.data);
+          const base64Data = selectedAttachment.data.includes('base64,') ? selectedAttachment.data.split(',')[1] : selectedAttachment.data;
+          const attachmentDoc = await PDFDocument.load(base64Data);
           const pages = await mergedPdf.copyPages(attachmentDoc, attachmentDoc.getPageIndices());
           pages.forEach(page => mergedPdf.addPage(page));
           finalPdfBytes = await mergedPdf.save();
@@ -151,11 +169,14 @@ function App() {
     setFormData({ 
       ...formData,
       selectedTemplateId: template.id,
-      subject: template.subject || 'Sub : Quotation for Orthopedic Implants & instruments',
+      subject: template.subject || 'Quotation for Orthopedic Implants & instruments',
+      make: template.defaultMake || '',
+      delivery: template.defaultDelivery || '',
       discount: template.defaultDiscount || '40%',
       gst: template.defaultGst || '5%',
       payment: template.defaultPayment || '30 days',
-      validity: template.defaultValidity || '31.03.2027'
+      validity: template.defaultValidity || '31/03/2027',
+      attachmentLabel: ''
     });
     setDraftContent(JSON.parse(JSON.stringify(template.content))); 
     setDraftRequiresAttachment(template.requiresAttachment || false);
@@ -171,7 +192,7 @@ function App() {
         const newAttachment = { id: Date.now().toString(), label, data: e.target.result, fileName: file.name };
         setAttachments([...attachments, newAttachment]);
       };
-      reader.readAsArrayBuffer(file);
+      reader.readAsDataURL(file);
     }
   };
 
@@ -185,13 +206,20 @@ function App() {
       pdf.addImage(dataUrl, 'JPEG', 0, 0, 210, 297);
       const coverArrayBuffer = pdf.output('arraybuffer');
       let finalPdfBytes;
-      const selectedAttachment = draftRequiresAttachment ? attachments.find(a => a.label === formData.make) : null;
+      const attachmentRef = formData.attachmentLabel || formData.make;
+      const selectedAttachment = draftRequiresAttachment ? attachments.find(a => a.label === attachmentRef) : null;
       if (selectedAttachment) {
+        if (!selectedAttachment.data || typeof selectedAttachment.data !== 'string') {
+          alert('The brand PDF attachment is corrupted (likely from a previous session). Please delete and re-upload it in the Library.');
+          setIsGenerating(false);
+          return;
+        }
         const mergedPdf = await PDFDocument.create();
         const coverDoc = await PDFDocument.load(coverArrayBuffer);
         const [coverPage] = await mergedPdf.copyPages(coverDoc, [0]);
         mergedPdf.addPage(coverPage);
-        const attachmentDoc = await PDFDocument.load(selectedAttachment.data);
+        const base64Data = selectedAttachment.data.includes('base64,') ? selectedAttachment.data.split(',')[1] : selectedAttachment.data;
+        const attachmentDoc = await PDFDocument.load(base64Data);
         const pages = await mergedPdf.copyPages(attachmentDoc, attachmentDoc.getPageIndices());
         pages.forEach(page => mergedPdf.addPage(page));
         finalPdfBytes = await mergedPdf.save();
@@ -272,6 +300,8 @@ function App() {
                       description: '',
                       requiresAttachment: false,
                       subject: '',
+                      defaultMake: '',
+                      defaultDelivery: '',
                       defaultDiscount: '',
                       defaultGst: '',
                       defaultPayment: '',
@@ -311,14 +341,22 @@ function App() {
         {view === 'builder' && (
           <div className="flex h-full overflow-hidden">
             {/* Left Properties Panel */}
-            <div className="w-[380px] bg-white border-r border-[var(--apple-gray-2)] flex flex-col overflow-y-auto">
+            <div className={`${showPreview ? 'w-[450px]' : 'flex-1'} bg-white border-r border-[var(--apple-gray-2)] flex flex-col overflow-y-auto transition-all duration-300`}>
               <div className="p-8 pb-4">
-                <button
-                  onClick={() => { setEditingTemplate(null); setView('library'); }}
-                  className="flex items-center gap-1 text-[13px] font-semibold text-[var(--emerald)] mb-8 hover:opacity-80"
-                >
-                  <ChevronLeft size={16} /> Library
-                </button>
+                <div className="flex justify-between items-center mb-8">
+                  <button
+                    onClick={() => { setEditingTemplate(null); setView('library'); }}
+                    className="flex items-center gap-1 text-[13px] font-semibold text-[var(--emerald)] hover:opacity-80"
+                  >
+                    <ChevronLeft size={16} /> Library
+                  </button>
+                  <button 
+                    onClick={() => setShowPreview(!showPreview)} 
+                    className="px-3 py-1.5 border border-[var(--apple-gray-3)] rounded-lg text-[11px] font-semibold text-[var(--apple-gray-6)] hover:bg-[var(--apple-gray-1)] transition-colors"
+                  >
+                    {showPreview ? 'Hide Canvas' : 'Show Canvas'}
+                  </button>
+                </div>
                 <h2 className="text-[28px] font-bold tracking-tight leading-tight mb-8">Designer</h2>
                 
                 <div className="space-y-6">
@@ -355,14 +393,16 @@ function App() {
                   <div className="pt-6 border-t border-[var(--apple-gray-2)]">
                     <label className="apple-label mb-4">Default Terms</label>
                     <div className="grid grid-cols-2 gap-4">
-                      {['Discount', 'GST', 'Payment', 'Validity'].map(term => {
+                      {['Make', 'Delivery', 'Discount', 'GST', 'Payment', 'Validity'].map(term => {
                         const key = `default${term}`;
                         return (
                           <div key={term}>
                             <span className="text-[11px] font-semibold text-[var(--apple-gray-5)] uppercase block mb-1">{term}</span>
                             <input
+                              type="text"
                               value={editingTemplate?.[key] || ''}
                               onChange={e => setEditingTemplate({ ...editingTemplate, [key]: e.target.value })}
+                              placeholder={term === 'Validity' ? 'DD/MM/YYYY' : ''}
                               className="apple-input !py-2 !px-3"
                             />
                           </div>
@@ -390,7 +430,7 @@ function App() {
                         <span className="text-[11px]">TEXT</span>
                       </button>
                       <button
-                        onClick={() => setEditingTemplate({ ...editingTemplate, content: [...(editingTemplate?.content || []), { type: 'table', headers: ['S.No', 'Item', 'Qty', 'MRP'], rows: [['1', '', '1', '']] }] })}
+                        onClick={() => setEditingTemplate({ ...editingTemplate, content: [...(editingTemplate?.content || []), { type: 'table', headers: ['S.No', 'Item', 'Qty', 'Rate', 'Amount'], rows: [['1', '', '1', '', '']] }] })}
                         className="btn-outline flex-col !gap-2 !py-4"
                       >
                         <TableIcon size={18} />
@@ -420,8 +460,9 @@ function App() {
             </div>
 
             {/* Right Canvas */}
-            <div className="flex-1 bg-[var(--apple-bg)] overflow-y-auto p-12">
-              <div className="max-w-3xl mx-auto space-y-8">
+            {showPreview && (
+              <div className="flex-1 bg-[var(--apple-bg)] overflow-y-auto p-12">
+                <div className="max-w-3xl mx-auto space-y-8">
                 {(editingTemplate?.content || []).length === 0 && (
                   <div className="text-center py-32 opacity-40">
                     <Database size={48} className="mx-auto mb-4" />
@@ -459,12 +500,12 @@ function App() {
                         placeholder="Type paragraph content..."
                       />
                     ) : (
-                      <div className="border border-[var(--apple-gray-2)] rounded-xl overflow-hidden">
+                      <div className="border border-[var(--apple-gray-2)] rounded-xl overflow-hidden shadow-sm bg-white">
                         <table className="w-full border-collapse">
                           <thead className="bg-[var(--apple-gray-1)] border-b border-[var(--apple-gray-2)]">
                             <tr>
                               {block.headers.map((h, hi) => (
-                                <th key={hi} className="p-3 border-r border-[var(--apple-gray-2)] last:border-none">
+                                <th key={hi} className="p-3 border-r border-[var(--apple-gray-2)] last:border-none relative group">
                                   <input
                                     value={h}
                                     onChange={e => {
@@ -473,6 +514,19 @@ function App() {
                                     }}
                                     className="w-full bg-transparent outline-none font-semibold text-center text-[11px] uppercase tracking-wider text-[var(--apple-gray-6)]"
                                   />
+                                  <button
+                                    onClick={() => {
+                                      if (block.headers.length <= 1) return;
+                                      const nc = [...editingTemplate.content];
+                                      nc[idx].headers.splice(hi, 1);
+                                      nc[idx].rows.forEach(r => r.splice(hi, 1));
+                                      setEditingTemplate({ ...editingTemplate, content: nc });
+                                    }}
+                                    className="absolute -top-2 -right-2 w-5 h-5 bg-white border border-[var(--apple-gray-2)] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 hover:text-red-500 shadow-sm transition-all z-10"
+                                    title="Delete Column"
+                                  >
+                                    <Trash2 size={10} />
+                                  </button>
                                 </th>
                               ))}
                               <th className="w-8 bg-[var(--apple-gray-1)]"></th>
@@ -480,26 +534,40 @@ function App() {
                           </thead>
                           <tbody>
                             {block.rows.map((row, ri) => (
-                              <tr key={ri} className="border-b border-[var(--apple-gray-2)] last:border-none hover:bg-[var(--apple-gray-1)]">
+                              <tr key={ri} className="border-b border-[var(--apple-gray-2)] last:border-none hover:bg-[var(--apple-gray-1)] transition-colors">
                                 {row.map((cell, ci) => (
-                                  <td key={ci} className="p-2 border-r border-[var(--apple-gray-2)] last:border-none">
+                                  <td key={ci} className="p-0 border-r border-[var(--apple-gray-2)] last:border-none">
                                     <input
                                       value={cell}
                                       onChange={e => {
-                                        const nc = [...editingTemplate.content]; nc[idx].rows[ri][ci] = e.target.value;
+                                        const nc = [...editingTemplate.content]; 
+                                        nc[idx].rows[ri][ci] = e.target.value;
+                                        
+                                        const headers = nc[idx].headers.map(h => h.toLowerCase());
+                                        const qtyIdx = headers.findIndex(h => h === 'qty' || h === 'quantity');
+                                        const rateIdx = headers.findIndex(h => h === 'rate' || h === 'mrp' || h === 'price');
+                                        const amountIdx = headers.findIndex(h => h === 'amount' || h === 'total');
+                                        
+                                        if (qtyIdx !== -1 && rateIdx !== -1 && amountIdx !== -1 && (ci === qtyIdx || ci === rateIdx)) {
+                                            const qty = parseFloat(nc[idx].rows[ri][qtyIdx]) || 0;
+                                            const rate = parseFloat(nc[idx].rows[ri][rateIdx]) || 0;
+                                            nc[idx].rows[ri][amountIdx] = (qty * rate).toFixed(2).replace(/\.00$/, '');
+                                        }
+
                                         setEditingTemplate({ ...editingTemplate, content: nc });
                                       }}
-                                      className="w-full bg-transparent outline-none text-center text-[14px]"
+                                      className="w-full py-2.5 px-3 bg-transparent outline-none text-center text-[13px] hover:bg-black/5 focus:bg-white focus:ring-1 focus:ring-[var(--emerald)] transition-all"
                                     />
                                   </td>
                                 ))}
-                                <td className="p-2 text-center">
+                                <td className="p-0 text-center w-8">
                                   <button
                                     onClick={() => {
                                       const nc = [...editingTemplate.content]; nc[idx].rows.splice(ri, 1);
                                       setEditingTemplate({ ...editingTemplate, content: nc });
                                     }}
-                                    className="text-[var(--apple-gray-4)] hover:text-red-500"
+                                    className="w-full h-full flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 hover:bg-red-50 py-2.5 transition-colors"
+                                    title="Delete Row"
                                   >
                                     <Trash2 size={14} />
                                   </button>
@@ -536,6 +604,7 @@ function App() {
                 ))}
               </div>
             </div>
+            )}
           </div>
         )}
 
@@ -543,14 +612,22 @@ function App() {
         {view === 'drafting' && (
           <div className="flex h-full overflow-hidden">
             {/* Left Input Form */}
-            <div className="w-[420px] bg-white border-r border-[var(--apple-gray-2)] flex flex-col overflow-y-auto">
+            <div className={`${showPreview ? 'w-[450px]' : 'flex-1'} bg-white border-r border-[var(--apple-gray-2)] flex flex-col overflow-y-auto transition-all duration-300`}>
               <div className="p-8 pb-4">
-                <button
-                  onClick={() => setView('library')}
-                  className="flex items-center gap-1 text-[13px] font-semibold text-[var(--emerald)] mb-8 hover:opacity-80"
-                >
-                  <ChevronLeft size={16} /> Library
-                </button>
+                <div className="flex justify-between items-center mb-8">
+                  <button
+                    onClick={() => setView('library')}
+                    className="flex items-center gap-1 text-[13px] font-semibold text-[var(--emerald)] hover:opacity-80"
+                  >
+                    <ChevronLeft size={16} /> Library
+                  </button>
+                  <button 
+                    onClick={() => setShowPreview(!showPreview)} 
+                    className="px-3 py-1.5 border border-[var(--apple-gray-3)] rounded-lg text-[11px] font-semibold text-[var(--apple-gray-6)] hover:bg-[var(--apple-gray-1)] transition-colors"
+                  >
+                    {showPreview ? 'Hide Preview' : 'Show Preview'}
+                  </button>
+                </div>
                 <h2 className="text-[28px] font-bold tracking-tight leading-tight mb-8">Draft Quotation</h2>
 
                 <div className="space-y-6">
@@ -571,7 +648,7 @@ function App() {
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <span className="text-[11px] font-semibold text-[var(--apple-gray-5)] uppercase block mb-1">Date</span>
-                        <input type="date" name="date" value={formData.date} onChange={handleInputChange} className="apple-input !px-3" />
+                        <input type="text" name="date" value={formData.date} onChange={handleInputChange} placeholder="DD/MM/YYYY" className="apple-input !px-3" />
                       </div>
                       <div>
                         <span className="text-[11px] font-semibold text-[var(--apple-gray-5)] uppercase block mb-1">Ref No.</span>
@@ -606,51 +683,90 @@ function App() {
                             rows={3}
                           />
                         ) : (
-                          <div className="overflow-x-auto">
-                            <table className="w-full text-left text-[12px]">
-                              <thead>
+                          <div className="overflow-x-auto rounded-xl border border-[var(--apple-gray-2)] bg-white shadow-sm mt-2">
+                            <table className="w-full border-collapse">
+                              <thead className="bg-[var(--apple-gray-1)] border-b border-[var(--apple-gray-2)]">
                                 <tr>
                                   {block.headers.map((h, hi) => (
-                                    <th key={hi} className="p-2 border-b border-[var(--apple-gray-2)] font-semibold">
+                                    <th key={hi} className="p-3 border-r border-[var(--apple-gray-2)] last:border-none relative group">
                                       <input 
                                         value={h}
                                         onChange={e => {
                                           const nc = [...draftContent]; nc[idx].headers[hi] = e.target.value;
                                           setDraftContent(nc);
                                         }}
-                                        className="w-full bg-transparent outline-none uppercase font-bold text-[var(--apple-black)]"
-                                        placeholder={`Column ${hi + 1}`}
+                                        className="w-full bg-transparent outline-none uppercase font-bold text-[var(--apple-gray-6)] text-center text-[11px] tracking-wider"
+                                        placeholder={`Col ${hi + 1}`}
                                       />
+                                      <button
+                                        onClick={() => {
+                                          if(block.headers.length <= 1) return;
+                                          const nc = [...draftContent];
+                                          nc[idx].headers.splice(hi, 1);
+                                          nc[idx].rows.forEach(r => r.splice(hi, 1));
+                                          setDraftContent(nc);
+                                        }}
+                                        className="absolute -top-2 -right-2 w-5 h-5 bg-white border border-[var(--apple-gray-2)] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 hover:text-red-500 shadow-sm transition-all z-10"
+                                        title="Delete Column"
+                                      >
+                                        <Trash2 size={10} />
+                                      </button>
                                     </th>
                                   ))}
+                                  <th className="w-8 bg-[var(--apple-gray-1)]"></th>
                                 </tr>
                               </thead>
                               <tbody>
                                 {block.rows.map((row, ri) => (
-                                  <tr key={ri}>
+                                  <tr key={ri} className="border-b border-[var(--apple-gray-2)] last:border-none hover:bg-[var(--apple-gray-1)] transition-colors">
                                     {row.map((cell, ci) => (
-                                      <td key={ci} className="p-1">
+                                      <td key={ci} className="p-0 border-r border-[var(--apple-gray-2)] last:border-none">
                                         <input
                                           value={cell}
                                           onChange={e => {
-                                            const nc = [...draftContent]; nc[idx].rows[ri][ci] = e.target.value;
+                                            const nc = [...draftContent]; 
+                                            nc[idx].rows[ri][ci] = e.target.value;
+                                            
+                                            const headers = nc[idx].headers.map(h => h.toLowerCase());
+                                            const qtyIdx = headers.findIndex(h => h === 'qty' || h === 'quantity');
+                                            const rateIdx = headers.findIndex(h => h === 'rate' || h === 'mrp' || h === 'price');
+                                            const amountIdx = headers.findIndex(h => h === 'amount' || h === 'total');
+                                            
+                                            if (qtyIdx !== -1 && rateIdx !== -1 && amountIdx !== -1 && (ci === qtyIdx || ci === rateIdx)) {
+                                                const qty = parseFloat(nc[idx].rows[ri][qtyIdx]) || 0;
+                                                const rate = parseFloat(nc[idx].rows[ri][rateIdx]) || 0;
+                                                nc[idx].rows[ri][amountIdx] = (qty * rate).toFixed(2).replace(/\.00$/, '');
+                                            }
+
                                             setDraftContent(nc);
                                           }}
-                                          className="w-full p-2 border border-[var(--apple-gray-2)] rounded bg-white outline-none focus:border-[var(--emerald)] transition-colors"
+                                          className="w-full py-2.5 px-3 bg-transparent outline-none text-center text-[13px] hover:bg-black/5 focus:bg-white focus:ring-1 focus:ring-[var(--emerald)] transition-all"
                                         />
                                       </td>
                                     ))}
+                                    <td className="p-0 text-center w-8">
+                                      <button
+                                        onClick={() => {
+                                          const nc = [...draftContent]; nc[idx].rows.splice(ri, 1);
+                                          setDraftContent(nc);
+                                        }}
+                                        className="w-full h-full flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 hover:bg-red-50 py-2.5 transition-colors"
+                                        title="Delete Row"
+                                      >
+                                        <Trash2 size={14} />
+                                      </button>
+                                    </td>
                                   </tr>
                                 ))}
                               </tbody>
                             </table>
-                            <div className="flex gap-4 mt-2">
+                            <div className="flex border-t border-[var(--apple-gray-2)]">
                               <button
                                 onClick={() => {
                                   const nc = [...draftContent]; nc[idx].rows.push(Array(block.headers.length).fill(''));
                                   setDraftContent(nc);
                                 }}
-                                className="text-[10px] font-bold text-[var(--emerald)] uppercase tracking-widest hover:underline"
+                                className="flex-1 py-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--emerald)] hover:bg-[var(--emerald-light)] transition-colors border-r border-[var(--apple-gray-2)]"
                               >
                                 + Add Row
                               </button>
@@ -661,7 +777,7 @@ function App() {
                                   nc[idx].rows.forEach(row => row.push(''));
                                   setDraftContent(nc);
                                 }}
-                                className="text-[10px] font-bold text-[var(--coral)] uppercase tracking-widest hover:underline"
+                                className="flex-1 py-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--coral)] hover:bg-red-50 transition-colors"
                               >
                                 + Add Column
                               </button>
@@ -676,10 +792,17 @@ function App() {
                   <div className="space-y-4 pt-4">
                     <h3 className="apple-label border-b border-[var(--apple-gray-2)] pb-2">Terms & Conditions</h3>
                     <div className="grid grid-cols-2 gap-4">
-                      {['discount', 'gst', 'payment', 'validity'].map(term => (
+                      {['make', 'delivery', 'discount', 'gst', 'payment', 'validity'].map(term => (
                         <div key={term}>
                           <span className="text-[11px] font-semibold text-[var(--apple-gray-5)] uppercase block mb-1">{term}</span>
-                          <input name={term} value={formData[term]} onChange={handleInputChange} className="apple-input !px-3" />
+                          <input 
+                            type="text"
+                            name={term} 
+                            value={formData[term]} 
+                            onChange={handleInputChange} 
+                            placeholder={term === 'validity' ? 'DD/MM/YYYY' : ''}
+                            className="apple-input !px-3" 
+                          />
                         </div>
                       ))}
                     </div>
@@ -689,7 +812,19 @@ function App() {
                   {draftRequiresAttachment && (
                     <div className="space-y-4 pt-4">
                       <h3 className="apple-label border-b border-[var(--apple-gray-2)] pb-2">Brand PDF Attachment</h3>
-                      <select name="make" value={formData.make} onChange={handleInputChange} className="apple-input cursor-pointer">
+                      <select 
+                        name="attachmentLabel" 
+                        value={formData.attachmentLabel || ''} 
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setFormData(prev => ({
+                            ...prev,
+                            attachmentLabel: val,
+                            make: prev.make === '' || prev.make === prev.attachmentLabel ? val : prev.make
+                          }));
+                        }} 
+                        className="apple-input cursor-pointer"
+                      >
                         <option value="">-- Select Brand --</option>
                         {attachments.map(att => (
                           <option key={att.id} value={att.label}>{att.label}</option>
@@ -709,13 +844,13 @@ function App() {
             </div>
 
             {/* Right Live Preview Area */}
-            <div className="flex-1 bg-[var(--apple-gray-2)] overflow-y-auto p-12 flex justify-center">
-              <div className="scale-[0.85] origin-top">
-                <div id="quotation-template">
-                  <QuotationTemplate data={formData} content={draftContent} company={companyData} />
+            {showPreview && (
+              <div className="flex-1 bg-[var(--apple-gray-2)] overflow-y-auto p-12 flex justify-center">
+                <div className="scale-[0.85] origin-top">
+                  <QuotationTemplate id="quotation-template" data={formData} content={draftContent} company={companyData} />
                 </div>
               </div>
-            </div>
+            )}
           </div>
         )}
 
@@ -872,9 +1007,7 @@ function App() {
       {/* HIDDEN REGENERATION TEMPLATE */}
       {regeneratingItem && (
         <div style={{ position: 'absolute', left: '-9999px', top: 0 }}>
-          <div id="history-quotation-template">
-            <QuotationTemplate data={regeneratingItem.formData} content={regeneratingItem.draftContent} company={companyData} />
-          </div>
+          <QuotationTemplate id="history-quotation-template" data={regeneratingItem.formData} content={regeneratingItem.draftContent} company={companyData} />
         </div>
       )}
     </div>
