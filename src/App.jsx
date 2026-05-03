@@ -6,9 +6,14 @@ import { toJpeg } from 'html-to-image';
 import { PDFDocument } from 'pdf-lib';
 import JSZip from 'jszip';
 import Login from './components/Login';
-import { auth, db, hasFirebaseConfig } from './firebase';
+import { auth, db, hasFirebaseConfig, storage } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { doc, getDoc, setDoc, collection, getDocs, deleteDoc, query, orderBy } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, getDocs, deleteDoc, query, orderBy, writeBatch } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import HistoryView from './components/HistoryView';
+import LibraryView from './components/LibraryView';
+import { validateFile, MAX_FILE_SIZE_BYTES } from './utils/fileValidation';
+import { uploadFile, deleteFile } from './utils/storageService';
 import { 
   Download, 
   Plus, 
@@ -45,6 +50,7 @@ function App() {
   const [user, setUser] = useState(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [authError, setAuthError] = useState('');
+  const [syncStatus, setSyncStatus] = useState('saved'); // 'saved', 'syncing', 'error'
 
   useEffect(() => {
     if (!hasFirebaseConfig) {
@@ -67,33 +73,43 @@ function App() {
         setUser(currentUser);
         setAuthError('');
         try {
-          // 1. Fetch Basic Settings & Templates
+          // 1. Fetch Basic Settings
           const docRef = doc(db, 'users', currentUser.uid);
           const docSnap = await getDoc(docRef);
+          let legacyTemplates = [];
           if (docSnap.exists()) {
             const data = docSnap.data();
             if (data.companyData) setCompanyData(typeof data.companyData === 'string' ? JSON.parse(data.companyData) : data.companyData);
-            if (data.templates) setTemplates(typeof data.templates === 'string' ? JSON.parse(data.templates) : data.templates);
+            if (data.templates) {
+              legacyTemplates = typeof data.templates === 'string' ? JSON.parse(data.templates) : data.templates;
+            }
           }
 
-          // 2. Fetch Attachments (Sub-collection)
-          const attsSnap = await getDocs(collection(db, 'users', currentUser.uid, 'attachments'));
+          // Fetch all data in parallel for better performance
+          const [
+            attsSnap,
+            historySnap,
+            srrSnap,
+            foldersSnap,
+            vFilesSnap,
+            templatesSnap
+          ] = await Promise.all([
+            getDocs(collection(db, 'users', currentUser.uid, 'attachments')),
+            getDocs(query(collection(db, 'users', currentUser.uid, 'history'), orderBy('id', 'desc'))),
+            getDocs(collection(db, 'users', currentUser.uid, 'drive_srr')),
+            getDocs(collection(db, 'users', currentUser.uid, 'drive_folders')),
+            getDocs(collection(db, 'users', currentUser.uid, 'drive_vendor_files')),
+            getDocs(collection(db, 'users', currentUser.uid, 'templates'))
+          ]);
+
           const attsList = attsSnap.docs.map(d => d.data());
-          if (attsList.length > 0) setAttachments(attsList);
+          setAttachments(attsList); 
 
-          // 3. Fetch Quotation History (Sub-collection)
-          const historySnap = await getDocs(query(collection(db, 'users', currentUser.uid, 'history'), orderBy('id', 'desc')));
           const historyList = historySnap.docs.map(d => d.data());
-          if (historyList.length > 0) setQuotationHistory(historyList);
+          setQuotationHistory(historyList);
 
-          // 4. Fetch Drive Files (SRR)
-          const srrSnap = await getDocs(collection(db, 'users', currentUser.uid, 'drive_srr'));
           const srrList = srrSnap.docs.map(d => d.data());
-
-          // 5. Fetch Drive Folders & Files (Vendor)
-          const foldersSnap = await getDocs(collection(db, 'users', currentUser.uid, 'drive_folders'));
           const foldersList = foldersSnap.docs.map(d => d.data());
-          const vFilesSnap = await getDocs(collection(db, 'users', currentUser.uid, 'drive_vendor_files'));
           const vFilesList = vFilesSnap.docs.map(d => d.data());
 
           const fullFolders = foldersList.map(folder => ({
@@ -102,6 +118,25 @@ function App() {
           }));
 
           setDriveFiles({ srr: srrList, vendor: fullFolders });
+
+          let templatesList = templatesSnap.docs.map(d => d.data());
+          
+          // Auto-migration for legacy templates stored in main user document
+          if (legacyTemplates && legacyTemplates.length > 0) {
+            console.log("Migrating legacy templates to sub-collection...");
+            const batch = writeBatch(db);
+            legacyTemplates.forEach(t => {
+              if (!templatesList.find(existing => existing.id === t.id)) {
+                const tRef = doc(db, 'users', currentUser.uid, 'templates', t.id);
+                batch.set(tRef, t);
+                templatesList.push(t);
+              }
+            });
+            batch.update(doc(db, 'users', currentUser.uid), { templates: [] });
+            await batch.commit();
+            console.log("Migration complete.");
+          }
+          setTemplates(templatesList.length > 0 ? templatesList : templates);
 
         } catch (e) {
           console.error("Firestore loading error:", e);
@@ -224,13 +259,38 @@ function App() {
     }
   }, [quotationHistory]);
 
-  const syncItem = async (colName, item, isDelete = false) => {
-    if (!user) return;
+  const syncItem = async (colName, item, isDelete = false, fileObject = null) => {
+    if (!user) return false;
+    setSyncStatus('syncing');
     try {
+      // Handle Firebase Storage for files if provided
+      if (fileObject && !isDelete) {
+        const validation = validateFile(fileObject);
+        if (!validation.isValid) throw new Error(validation.error);
+        
+        const path = `users/${user.uid}/${colName}/${item.id}_${item.fileName}`;
+        const downloadUrl = await uploadFile(fileObject, path);
+        item.data = downloadUrl;
+        item.storagePath = path;
+      }
+
       const itemRef = doc(db, 'users', user.uid, colName, item.id);
-      if (isDelete) { await deleteDoc(itemRef); }
-      else { await setDoc(itemRef, item); }
-    } catch (err) { console.error(`Sync error (${colName}):`, err); }
+      if (isDelete) { 
+        await deleteDoc(itemRef); 
+        if (item.storagePath) {
+          try { await deleteFile(item.storagePath); } catch (e) { console.warn("Storage deletion failed:", e); }
+        }
+      } else { 
+        await setDoc(itemRef, item); 
+      }
+      setSyncStatus('saved');
+      return true;
+    } catch (err) { 
+      console.error(`Sync error (${colName}):`, err); 
+      setSyncStatus('error');
+      alert(`Sync failed: ${err.message || 'Check your internet connection.'}`);
+      return false;
+    }
   };
 
   const [isGenerating, setIsGenerating] = useState(false);
@@ -416,7 +476,7 @@ function App() {
 
   useEffect(() => { 
     localStorage.setItem('srr_templates', JSON.stringify(templates)); 
-    if (user) setDoc(doc(db, 'users', user.uid), { templates }, { merge: true }).catch(console.error);
+    // No longer syncing whole array to user doc, handled individually by syncItem
   }, [templates, user]);
 
   useEffect(() => { 
@@ -463,14 +523,84 @@ function App() {
     const file = e.target.files[0];
     const label = prompt("Enter Brand Name (e.g. Zimmer, Stryker):");
     if (file && label) {
-      const reader = new FileReader();
-      reader.onload = async (ev) => {
-        const newAttachment = { id: Date.now().toString(), label, data: ev.target.result, fileName: file.name };
-        setAttachments([...attachments, newAttachment]);
-        await syncItem('attachments', newAttachment);
-      };
-      reader.readAsDataURL(file);
+      const newAttachment = { id: Date.now().toString(), label, fileName: file.name };
+      syncItem('attachments', newAttachment, false, file).then(success => {
+        if (success) setAttachments(prev => [...prev, newAttachment]);
+      });
     }
+    e.target.value = '';
+  };
+
+  const deleteAttachment = async (att) => {
+    if (window.confirm(`Delete ${att.label}?`)) {
+      setAttachments(attachments.filter(a => a.id !== att.id));
+      await syncItem('attachments', att, true);
+    }
+  };
+
+  const handleDriveUpload = (e, colName, folderId = null) => {
+    const files = Array.from(e.target.files);
+    files.forEach(async (file) => {
+      const label = colName === 'drive_srr' ? prompt(`Enter document name for ${file.name}:`) : null;
+      if (colName === 'drive_srr' && !label) return;
+
+      const newFile = { 
+        id: Date.now().toString() + Math.random().toString(36).substr(2, 5), 
+        label: label || file.name, 
+        fileName: file.name, 
+        type: file.type, 
+        folderId: folderId,
+        uploadedAt: new Date().toLocaleDateString('en-GB') 
+      };
+
+      const success = await syncItem(colName, newFile, false, file);
+      if (success) {
+        if (colName === 'drive_srr') {
+          setDriveFiles(prev => ({ ...prev, srr: [...(prev.srr || []), newFile] }));
+        } else {
+          setDriveFiles(prev => ({ 
+            ...prev, 
+            vendor: prev.vendor.map(f => f.id === folderId ? { ...f, files: [...(f.files || []), newFile] } : f) 
+          }));
+        }
+      }
+    });
+    e.target.value = '';
+  };
+
+  const handleDeleteDriveFile = async (colName, file) => {
+    if (window.confirm(`Delete ${file.label || file.fileName}?`)) {
+      const success = await syncItem(colName, file, true);
+      if (success) {
+        if (colName === 'drive_srr') {
+          setDriveFiles(prev => ({ ...prev, srr: prev.srr.filter(f => f.id !== file.id) }));
+        } else {
+          setDriveFiles(prev => ({ 
+            ...prev, 
+            vendor: prev.vendor.map(folder => ({ ...folder, files: (folder.files || []).filter(f => f.id !== file.id) })) 
+          }));
+        }
+      }
+    }
+  };
+
+  const handleCreateFolder = async () => {
+    const name = prompt('Enter vendor/folder name:');
+    if (!name) return;
+    const newFolder = { id: Date.now().toString(), name, files: [] };
+    const success = await syncItem('drive_folders', newFolder);
+    if (success) setDriveFiles(prev => ({ ...prev, vendor: [...prev.vendor, newFolder] }));
+  };
+
+  const handleDeleteFolder = (folder) => {
+    confirmDelete(async () => {
+      // Delete all files in folder first from storage and firestore
+      for (const file of (folder.files || [])) {
+        await syncItem('drive_vendor_files', file, true);
+      }
+      const success = await syncItem('drive_folders', folder, true);
+      if (success) setDriveFiles(prev => ({ ...prev, vendor: prev.vendor.filter(f => f.id !== folder.id) }));
+    });
   };
 
   const generatePDF = async () => {
@@ -610,7 +740,13 @@ function App() {
           <NavItem id="admin" label="Brands" />
           <NavItem id="settings" label="Settings" />
         </div>
-        <div className="ml-auto flex items-center gap-4">
+        <div className="ml-auto flex items-center gap-6">
+          <div className="flex items-center gap-2 px-3 py-1 bg-[var(--apple-gray-1)] rounded-full border border-[var(--apple-gray-2)]">
+            <div className={`w-2 h-2 rounded-full ${syncStatus === 'syncing' ? 'bg-amber-400 animate-pulse' : syncStatus === 'error' ? 'bg-red-500' : 'bg-emerald-500'}`}></div>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--apple-gray-6)]">
+              {syncStatus === 'syncing' ? 'Saving...' : syncStatus === 'error' ? 'Sync Error' : 'Cloud Saved'}
+            </span>
+          </div>
           <span className="text-[13px] font-medium text-[var(--apple-gray-5)] hidden sm:block">{user.email}</span>
           <button onClick={handleLogout} className="text-[13px] font-medium text-red-500 hover:text-red-600 transition-colors">
             Sign Out
@@ -618,59 +754,17 @@ function App() {
         </div>
       </nav>
 
-      {/* ─────────────────────────────────────────
-          MAIN CONTENT AREA
-          ───────────────────────────────────────── */}
-      <main className="flex-1 overflow-hidden mt-[var(--nav-height)]">
-        
-        {/* VIEW: LIBRARY */}
+      {/* ───────────────�        {/* VIEW: LIBRARY */}
         {view === 'library' && (
-          <div className="h-full overflow-y-auto px-8 py-12 md:px-16 md:py-16">
-            <div className="max-w-6xl mx-auto">
-              <header className="flex flex-col md:flex-row md:items-end justify-between mb-12 gap-6">
-                <div>
-                  <h1 className="apple-title-1">Templates</h1>
-                  <p className="apple-subtitle">Select a template to generate a quotation, or create a new one.</p>
-                </div>
-                <button 
-                  onClick={() => {
-                    setEditingTemplate({
-                      id: Date.now().toString(),
-                      name: 'New Template',
-                      description: '',
-                      requiresAttachment: false,
-                      subject: '',
-                      defaultMake: '',
-                      defaultDelivery: '',
-                      defaultDiscount: '',
-                      defaultGst: '',
-                      defaultPayment: '',
-                      defaultValidity: '',
-                      content: []
-                    });
-                    setView('builder');
-                  }} 
-                  className="btn-primary"
-                >
-                  <Plus size={18} /> New Template
-                </button>
-              </header>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {templates.map(t => (
-                  <LibraryCard 
-                    key={t.id} 
-                    template={t} 
-                    onUse={useTemplate} 
-                    onEdit={(t) => { setEditingTemplate(JSON.parse(JSON.stringify(t))); setView('builder'); }} 
-                    onDelete={async (id) => {
-                      const item = templates.find(temp => temp.id === id);
-                      setTemplates(templates.filter(temp => temp.id !== id));
-                    }} 
-                  />
-                ))}
-                {templates.length === 0 && (
-                  <div className="col-span-full py-20 flex flex-col items-center justify-center border border-dashed border-[var(--apple-gray-3)] rounded-3xl">
+          <LibraryView 
+            templates={templates} 
+            useTemplate={useTemplate} 
+            setEditingTemplate={setEditingTemplate} 
+            setView={setView} 
+            setTemplates={setTemplates} 
+          />
+        )}
+ded-3xl">
                     <Database size={48} className="text-[var(--apple-gray-4)] mb-4" />
                     <p className="text-[17px] font-medium text-[var(--apple-gray-5)]">No templates found.</p>
                   </div>
@@ -786,14 +880,18 @@ function App() {
 
               <div className="p-8 mt-auto pt-4 bg-white border-t border-[var(--apple-gray-2)] sticky bottom-0">
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     if (!editingTemplate) return;
                     const updated = templates.some(t => t.id === editingTemplate.id)
                       ? templates.map(t => t.id === editingTemplate.id ? editingTemplate : t)
                       : [...templates, editingTemplate];
-                    setTemplates(updated);
-                    setEditingTemplate(null);
-                    setView('library');
+                    
+                    const success = await syncItem('templates', editingTemplate);
+                    if (success) {
+                      setTemplates(updated);
+                      setEditingTemplate(null);
+                      setView('library');
+                    }
                   }}
                   className="btn-primary w-full"
                 >
@@ -1367,197 +1465,42 @@ function App() {
 
         {/* VIEW: HISTORY */}
         {view === 'history' && (
-          <div className="h-full overflow-y-auto px-8 py-12 md:px-16 md:py-16">
-            <div className="max-w-5xl mx-auto">
-              <div className="flex flex-col md:flex-row md:items-end justify-between mb-12 gap-6">
-                <div>
-                  <h1 className="apple-title-1 mb-2">History</h1>
-                  <p className="apple-subtitle">Recent quotations generated. <span className="font-semibold text-[var(--apple-black)]">{quotationHistory.length}</span> total</p>
-                </div>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--apple-gray-4)] w-4 h-4" />
-                  <input 
-                    type="text" 
-                    placeholder="Search hospital or ref..." 
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="apple-input !pl-10 !py-2.5 w-full md:w-[280px]"
-                  />
-                </div>
-              </div>
-
-              {(() => {
-                const filtered = quotationHistory.filter(item => 
-                  item.hospital.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                  item.ref.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                  item.templateName.toLowerCase().includes(searchQuery.toLowerCase())
-                );
-                if (filtered.length === 0) return (
-                  <div className="text-center py-20 opacity-40">
-                    <LayoutDashboard size={48} className="mx-auto mb-4" />
-                    <p className="font-semibold text-lg">No history matches found</p>
-                  </div>
-                );
-                return (
-                  <div className="apple-card overflow-hidden">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="bg-[var(--apple-gray-1)] border-b border-[var(--apple-gray-2)]">
-                          <th className="text-left py-3 px-5 text-[11px] font-bold uppercase tracking-wider text-[var(--apple-gray-5)]">Ref No.</th>
-                          <th className="text-left py-3 px-5 text-[11px] font-bold uppercase tracking-wider text-[var(--apple-gray-5)]">Hospital</th>
-                          <th className="text-left py-3 px-5 text-[11px] font-bold uppercase tracking-wider text-[var(--apple-gray-5)] hidden md:table-cell">Template</th>
-                          <th className="text-left py-3 px-5 text-[11px] font-bold uppercase tracking-wider text-[var(--apple-gray-5)]">Date</th>
-                          <th className="text-right py-3 px-5 text-[11px] font-bold uppercase tracking-wider text-[var(--apple-gray-5)]">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filtered.map((item) => (
-                          <tr key={item.id} className="border-b border-[var(--apple-gray-2)] last:border-0 hover:bg-[var(--apple-gray-1)] transition-colors">
-                            <td className="py-4 px-5">
-                              <span className="text-[13px] font-bold text-[var(--emerald)] bg-[var(--emerald-light)] px-2.5 py-1 rounded-md whitespace-nowrap">{item.ref}</span>
-                            </td>
-                            <td className="py-4 px-5">
-                              <span className="text-[15px] font-semibold text-[var(--apple-black)]">{item.hospital}</span>
-                            </td>
-                            <td className="py-4 px-5 hidden md:table-cell">
-                              <span className="text-[13px] text-[var(--apple-gray-5)] font-medium">{item.templateName}</span>
-                            </td>
-                            <td className="py-4 px-5">
-                              <span className="text-[13px] text-[var(--apple-gray-5)] font-medium">{item.date}</span>
-                            </td>
-                            <td className="py-4 px-5">
-                              <div className="flex items-center justify-end gap-2">
-                                {item.formData && (
-                                  <>
-                                    <button 
-                                      onClick={() => setRegeneratingItem(item)}
-                                      disabled={isGenerating || regeneratingItem}
-                                      className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-[var(--apple-gray-2)] rounded-lg text-[12px] font-semibold text-[var(--emerald)] hover:border-[var(--emerald)] hover:bg-[var(--emerald-light)] transition-colors disabled:opacity-50"
-                                      title="Download PDF"
-                                    >
-                                      <Download size={13} /> Download
-                                    </button>
-                                    <button 
-                                      onClick={async () => {
-                                        setRegeneratingItem({ ...item, _shareMode: true });
-                                      }}
-                                      disabled={isGenerating || regeneratingItem}
-                                      className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-[var(--apple-gray-2)] rounded-lg text-[12px] font-semibold text-[var(--coral)] hover:border-[var(--coral)] hover:bg-red-50 transition-colors disabled:opacity-50"
-                                      title="Share PDF"
-                                    >
-                                      <Share2 size={13} /> Share
-                                    </button>
-                                  </>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                );
-              })()}
-            </div>
-          </div>
+          <HistoryView 
+            quotationHistory={quotationHistory} 
+            searchQuery={searchQuery} 
+            setSearchQuery={setSearchQuery} 
+            isGenerating={isGenerating} 
+            regeneratingItem={regeneratingItem} 
+            setRegeneratingItem={setRegeneratingItem} 
+          />
         )}
 
         {/* VIEW: ADMIN (Attachments) */}
         {view === 'admin' && (
-          <div className="h-full overflow-y-auto px-8 py-12 md:px-16 md:py-16">
-            <div className="max-w-3xl mx-auto">
-              <h1 className="apple-title-1 mb-2">Brands</h1>
-              <p className="apple-subtitle mb-12">Manage manufacturer PDF price lists to append to quotations.</p>
-
-              <div className="apple-card p-12 text-center mb-12">
-                <div className="w-16 h-16 bg-[var(--apple-gray-1)] text-[var(--apple-black)] rounded-2xl flex items-center justify-center mx-auto mb-6">
-                  <UploadCloud size={32} />
-                </div>
-                <h2 className="text-[24px] font-semibold tracking-tight mb-2">Upload Price List</h2>
-                <p className="text-[15px] text-[var(--apple-gray-5)] mb-8">Select a PDF to map to a brand name.</p>
-                
-                <input type="file" accept=".pdf" onChange={handleFileUpload} className="hidden" id="admin-upload" />
-                <label htmlFor="admin-upload" className="btn-primary">
-                  <Plus size={18} /> Select PDF
-                </label>
-              </div>
-
-              <div>
-                <h3 className="apple-label mb-4">Linked Price Lists ({attachments.length})</h3>
-                <div className="space-y-4">
-                  {attachments.map(att => (
-                    <div key={att.id} className="apple-card p-6 flex items-center justify-between">
-                      <div className="flex items-center gap-5">
-                        <div className="w-12 h-12 bg-[var(--apple-gray-1)] rounded-full flex items-center justify-center">
-                          <Building2 size={24} className="text-[var(--apple-black)]" />
-                        </div>
-                        <div>
-                          <p className="text-[17px] font-semibold text-[var(--apple-black)]">{att.label}</p>
-                          <p className="text-[13px] text-[var(--apple-gray-5)] mt-1">{att.fileName}</p>
-                        </div>
-                      </div>
-                      <button 
-                        onClick={async () => {
-                          const att = attachments.find(a => a.id === att.id);
-                          setAttachments(attachments.filter(a => a.id !== att.id));
-                          if (att) await syncItem('attachments', att, true);
-                        }} 
-                        className="w-10 h-10 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 bg-[var(--apple-gray-1)] hover:bg-red-50 rounded-full transition-colors"
-                      >
-                        <Trash2 size={18} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
+          <AdminView 
+            attachments={attachments} 
+            handleFileUpload={handleFileUpload} 
+            deleteAttachment={deleteAttachment} 
+          />
         )}
 
         {/* VIEW: DRIVE */}
         {view === 'drive' && (
-          <div className="h-full overflow-y-auto px-8 py-12 md:px-16 md:py-16">
-            <div className="max-w-4xl mx-auto">
-              <header className="mb-12">
-                <h1 className="apple-title-1 mb-2">Drive</h1>
-                <p className="apple-subtitle">Manage your business documents and vendor files.</p>
-              </header>
-
-              {/* ── SRR DRIVE (HIGHLIGHTED) ── */}
-              <div className="mb-12">
-                <div className="relative overflow-hidden rounded-2xl border-2 border-[var(--emerald)] bg-gradient-to-br from-emerald-50 via-white to-teal-50 p-6 mb-4">
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-11 h-11 bg-[var(--emerald)] rounded-xl flex items-center justify-center shadow-md shadow-emerald-200">
-                        <Award size={22} className="text-white" />
-                      </div>
-                      <div>
-                        <h2 className="text-[20px] font-bold tracking-tight">SRR Drive</h2>
-                        <p className="text-[13px] text-[var(--apple-gray-5)]">Business certificates & documents • {(driveFiles.srr || []).length} files</p>
-                      </div>
-                    </div>
-                    <div>
-                      <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={(e) => {
-                        const file = e.target.files[0];
-                        if (!file) return;
-                        const label = prompt('Enter document name (e.g. GST Certificate):');
-                        if (!label) return;
-                        
-                        const reader = new FileReader();
-                        reader.onload = async (ev) => {
-                          const newFile = { 
-                            id: Date.now().toString(), 
-                            label, 
-                            data: ev.target.result, 
-                            fileName: file.name, 
-                            type: file.type, 
-                            uploadedAt: new Date().toLocaleDateString('en-GB') 
-                          };
-                          setDriveFiles(prev => ({ 
-                            ...prev, 
-                            srr: [...(prev.srr || []), newFile] 
-                          }));
-                          await syncItem('drive_srr', newFile);
+          <DriveView 
+            driveFiles={driveFiles} 
+            handleDriveUpload={handleDriveUpload} 
+            handleDeleteDriveFile={handleDeleteDriveFile} 
+            handleCreateFolder={handleCreateFolder} 
+            handleDeleteFolder={handleDeleteFolder} 
+            downloadFolderAsZip={downloadFolderAsZip} 
+            openVendorFolder={openVendorFolder} 
+            setOpenVendorFolder={setOpenVendorFolder} 
+            confirmDelete={confirmDelete} 
+          />
+        )}
+                              srr: [...(prev.srr || []), newFile] 
+                            }));
+                          }
                         };
                         reader.readAsDataURL(file);
                         e.target.value = '';
@@ -1674,6 +1617,10 @@ function App() {
                             <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={(e) => {
                               const file = e.target.files[0];
                               if (!file) return;
+                              if (file.size > 800000) {
+                                alert("File is too large for cloud storage. Limit is 800KB.");
+                                return;
+                              }
                               const reader = new FileReader();
                               reader.onload = async (ev) => {
                                 const newFile = { 
@@ -1685,11 +1632,13 @@ function App() {
                                   type: file.type, 
                                   uploadedAt: new Date().toLocaleDateString('en-GB') 
                                 };
-                                setDriveFiles(prev => ({ 
-                                  ...prev, 
-                                  vendor: prev.vendor.map(f => f.id === folder.id ? { ...f, files: [...(f.files || []), newFile] } : f) 
-                                }));
-                                await syncItem('drive_vendor_files', newFile);
+                                const success = await syncItem('drive_vendor_files', newFile);
+                                if (success) {
+                                  setDriveFiles(prev => ({ 
+                                    ...prev, 
+                                    vendor: prev.vendor.map(f => f.id === folder.id ? { ...f, files: [...(f.files || []), newFile] } : f) 
+                                  }));
+                                }
                               };
                               reader.readAsDataURL(file);
                               e.target.value = '';

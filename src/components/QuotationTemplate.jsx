@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { memo } from 'react';
 
-const QuotationTemplate = ({ id = "quotation-template", data, company, content }) => {
+const QuotationTemplate = memo(({ id = "quotation-template", data, company, content }) => {
   const { hospitalName, address, date, referenceNumber, discount, payment, gst, validity, make, delivery, subject } = data;
   const { name: companyName, address: companyAddress, phone: companyPhone, email: companyEmail, website: companyWebsite } = company;
 
@@ -227,6 +227,6 @@ const QuotationTemplate = ({ id = "quotation-template", data, company, content }
       </div>
     </div>
   );
-};
+});
 
 export default QuotationTemplate;
