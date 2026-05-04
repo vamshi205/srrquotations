@@ -6,10 +6,9 @@ import { toJpeg } from 'html-to-image';
 import { PDFDocument } from 'pdf-lib';
 import JSZip from 'jszip';
 import Login from './components/Login';
-import { auth, db, hasFirebaseConfig, storage } from './firebase';
+import { auth, db, hasFirebaseConfig } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc, setDoc, collection, getDocs, deleteDoc, query, orderBy, writeBatch } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { validateFile } from './utils/fileValidation';
 import { uploadFile, deleteFile } from './utils/storageService';
 import EmailerView from './components/EmailerView';
@@ -83,25 +82,31 @@ function App() {
             if (data.templates) setTemplates(typeof data.templates === 'string' ? JSON.parse(data.templates) : data.templates);
           }
 
-          // 2. Fetch Attachments (Sub-collection)
+          // 2. Fetch Attachments (Sub-collection) - Filter out old Firebase Storage files
           const attsSnap = await getDocs(collection(db, 'users', currentUser.uid, 'attachments'));
-          const attsList = attsSnap.docs.map(d => d.data());
-          if (attsList.length > 0) setAttachments(attsList);
+          const attsList = attsSnap.docs
+            .map(d => d.data())
+            .filter(d => !d.data || !d.data.includes('firebasestorage'));
+          setAttachments(attsList);
 
           // 3. Fetch Quotation History (Sub-collection)
           const historySnap = await getDocs(query(collection(db, 'users', currentUser.uid, 'history'), orderBy('id', 'desc')));
           const historyList = historySnap.docs.map(d => d.data());
-          if (historyList.length > 0) setQuotationHistory(historyList);
+          setQuotationHistory(historyList);
 
-          // 4. Fetch Drive Files (SRR)
+          // 4. Fetch Drive Files (SRR) - Filter out old Firebase Storage files
           const srrSnap = await getDocs(collection(db, 'users', currentUser.uid, 'drive_srr'));
-          const srrList = srrSnap.docs.map(d => d.data());
+          const srrList = srrSnap.docs
+            .map(d => d.data())
+            .filter(d => !d.data || !d.data.includes('firebasestorage'));
 
           // 5. Fetch Drive Folders & Files (Vendor)
           const foldersSnap = await getDocs(collection(db, 'users', currentUser.uid, 'drive_folders'));
           const foldersList = foldersSnap.docs.map(d => d.data());
           const vFilesSnap = await getDocs(collection(db, 'users', currentUser.uid, 'drive_vendor_files'));
-          const vFilesList = vFilesSnap.docs.map(d => d.data());
+          const vFilesList = vFilesSnap.docs
+            .map(d => d.data())
+            .filter(d => !d.data || !d.data.includes('firebasestorage'));
 
           const fullFolders = foldersList.map(folder => ({
             ...folder,
@@ -140,17 +145,29 @@ function App() {
   };
 
   const getFileData = async (dataOrUrl) => {
-    if (!dataOrUrl) return null;
-    if (dataOrUrl.startsWith('http')) {
-      const response = await fetch(dataOrUrl);
-      const blob = await response.blob();
-      return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result);
-        reader.readAsDataURL(blob);
-      });
+    if (!dataOrUrl || dataOrUrl.includes('firebasestorage')) return null;
+    try {
+      if (dataOrUrl.startsWith('http')) {
+        const response = await fetch(dataOrUrl);
+        if (!response.ok) throw new Error('Network response was not ok');
+        const arrayBuffer = await response.arrayBuffer();
+        return new Uint8Array(arrayBuffer);
+      }
+      // Handle legacy base64 data
+      if (dataOrUrl.includes('base64,')) {
+        const base64 = dataOrUrl.split(',')[1];
+        const binaryString = window.atob(base64);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        return bytes;
+      }
+      return dataOrUrl;
+    } catch (err) {
+      console.error('Error fetching file data:', err);
+      return null;
     }
-    return dataOrUrl;
   };
 
   const [formData, setFormData] = useState({
@@ -187,7 +204,8 @@ function App() {
 
   const [attachments, setAttachments] = useState(() => {
     const saved = localStorage.getItem('srr_attachments');
-    return saved ? JSON.parse(saved) : [];
+    const parsed = saved ? JSON.parse(saved) : [];
+    return parsed.filter(a => !a.data || !a.data.includes('firebasestorage'));
   });
 
   const [templates, setTemplates] = useState(() => {
@@ -219,7 +237,15 @@ function App() {
 
   const [driveFiles, setDriveFiles] = useState(() => {
     const saved = localStorage.getItem('srr_drive');
-    return saved ? JSON.parse(saved) : { srr: [], vendor: [] };
+    const parsed = saved ? JSON.parse(saved) : { srr: [], vendor: [] };
+    // Filter SRR files
+    const srr = (parsed.srr || []).filter(f => !f.data || !f.data.includes('firebasestorage'));
+    // Filter Vendor files
+    const vendor = (parsed.vendor || []).map(folder => ({
+      ...folder,
+      files: (folder.files || []).filter(f => !f.data || !f.data.includes('firebasestorage'))
+    }));
+    return { srr, vendor };
   });
 
   // Set initial ref number from history
@@ -239,23 +265,36 @@ function App() {
       setUploadProgress(0);
     }
     try {
-      // Upload file to Firebase Storage if a file object is provided
+      // Upload file to Google Drive if a file object is provided
       if (fileObject && !isDelete) {
         const validation = validateFile(fileObject);
         if (!validation.isValid) throw new Error(validation.error);
-        const path = `users/${user.uid}/${colName}/${item.id}_${item.fileName}`;
-        const downloadUrl = await uploadFile(fileObject, path, (p) => {
+        
+        // uploadFile now returns { url, fileId, success }
+        const result = await uploadFile(fileObject, '', (p) => {
           setUploadProgress(p);
           if (onProgress) onProgress(p);
         });
-        item.data = downloadUrl;
-        item.storagePath = path;
+
+        if (!result || (!result.success && !result.url)) {
+          throw new Error("Failed to upload to Google Drive");
+        }
+
+        item.data = result.url || '';
+        item.fileId = result.fileId || '';
+        item.storagePath = result.fileId || ''; 
       }
+
       const itemRef = doc(db, 'users', user.uid, colName, item.id);
       if (isDelete) {
         await deleteDoc(itemRef);
-        if (item.storagePath) {
-          try { await deleteFile(item.storagePath); } catch (e) { console.warn('Storage deletion failed:', e); }
+        // Delete from Google Drive if it's a Drive file
+        if (item.fileId) {
+          try { 
+            await deleteFile(item.fileId); 
+          } catch (e) { 
+            console.warn('Google Drive deletion failed:', e); 
+          }
         }
       } else {
         await setDoc(itemRef, item);
@@ -303,7 +342,7 @@ function App() {
     }
 
     const filesToAttach = (emailForm.selectedDriveFiles || []).map(f => ({
-      fileName: f.fileName,
+      fileName: f.fileName || f.label || 'Document.pdf',
       url: f.data
     }));
 
@@ -637,45 +676,53 @@ function App() {
       pdf.addImage(dataUrl, 'JPEG', 0, 0, 210, 297);
       const coverArrayBuffer = pdf.output('arraybuffer');
       let finalPdfBytes;
-      const attachmentRef = formData.attachmentLabel || formData.make;
-      const selectedAttachment = draftRequiresAttachment ? attachments.find(a => a.label === attachmentRef) : null;
+      const attachmentRef = (formData.attachmentLabel || formData.make || '').toLowerCase().trim();
+      const selectedAttachment = draftRequiresAttachment ? attachments.find(a => (a.label || '').toLowerCase().trim() === attachmentRef) : null;
+      
       if (selectedAttachment) {
-        if (!selectedAttachment.data || typeof selectedAttachment.data !== 'string') {
-          alert('The brand PDF attachment is corrupted (likely from a previous session). Please delete and re-upload it in the Library.');
+        const attachmentData = await getFileData(selectedAttachment.data);
+        if (!attachmentData) {
+          alert(`Failed to load the attachment for "${selectedAttachment.label}". Please check your internet or re-upload the document.`);
           setIsGenerating(false);
           return;
         }
-        const mergedPdf = await PDFDocument.create();
-        const coverDoc = await PDFDocument.load(coverArrayBuffer);
-        const [coverPage] = await mergedPdf.copyPages(coverDoc, [0]);
-        mergedPdf.addPage(coverPage);
-        
-        const fileData = await getFileData(selectedAttachment.data);
-        const base64Data = fileData.includes('base64,') ? fileData.split(',')[1] : fileData;
-        const attachmentDoc = await PDFDocument.load(base64Data);
-        // A4 dimensions in points (595.28 x 841.89)
-        const A4_WIDTH = 595.28;
-        const A4_HEIGHT = 841.89;
-        const attachmentPages = attachmentDoc.getPages();
-        for (const page of attachmentPages) {
-          const embeddedPage = await mergedPdf.embedPage(page);
-          const origW = embeddedPage.width;
-          const origH = embeddedPage.height;
-          const scaleX = A4_WIDTH / origW;
-          const scaleY = A4_HEIGHT / origH;
-          const scale = Math.min(scaleX, scaleY);
-          const scaledW = origW * scale;
-          const scaledH = origH * scale;
-          const newPage = mergedPdf.addPage([A4_WIDTH, A4_HEIGHT]);
-          newPage.drawPage(embeddedPage, {
-            x: (A4_WIDTH - scaledW) / 2,
-            y: (A4_HEIGHT - scaledH) / 2,
-            width: scaledW,
-            height: scaledH,
-          });
+
+        try {
+          const mergedPdf = await PDFDocument.create();
+          const coverDoc = await PDFDocument.load(coverArrayBuffer);
+          const [coverPage] = await mergedPdf.copyPages(coverDoc, [0]);
+          mergedPdf.addPage(coverPage);
+          
+          const attachmentDoc = await PDFDocument.load(attachmentData);
+          const A4_WIDTH = 595.28;
+          const A4_HEIGHT = 841.89;
+          const attachmentPages = attachmentDoc.getPages();
+          
+          for (const page of attachmentPages) {
+            const embeddedPage = await mergedPdf.embedPage(page);
+            const { width, height } = embeddedPage;
+            const scale = Math.min(A4_WIDTH / width, A4_HEIGHT / height);
+            const scaledW = width * scale;
+            const scaledH = height * scale;
+            
+            const newPage = mergedPdf.addPage([A4_WIDTH, A4_HEIGHT]);
+            newPage.drawPage(embeddedPage, {
+              x: (A4_WIDTH - scaledW) / 2,
+              y: (A4_HEIGHT - scaledH) / 2,
+              width: scaledW,
+              height: scaledH,
+            });
+          }
+          finalPdfBytes = await mergedPdf.save();
+        } catch (mergeErr) {
+          console.error('Merge error:', mergeErr);
+          alert('Could not merge the brand attachment. Sending quotation only.');
+          finalPdfBytes = coverArrayBuffer;
         }
-        finalPdfBytes = await mergedPdf.save();
       } else {
+        if (draftRequiresAttachment && attachmentRef) {
+          console.warn(`No attachment found matching: ${attachmentRef}`);
+        }
         finalPdfBytes = coverArrayBuffer;
       }
       

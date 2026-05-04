@@ -20,24 +20,37 @@ const EmailerView = ({ driveFiles }) => {
       return;
     }
 
-    const labels = emailForm.selectedDriveFiles.map(f => f.label || f.fileName);
-    const hasSRR = emailForm.selectedDriveFiles.some(f => f.isSRR);
-    const hasVendor = emailForm.selectedDriveFiles.some(f => !f.isSRR);
+    const srrFiles = emailForm.selectedDriveFiles.filter(f => f.isSRR);
+    const vendorFiles = emailForm.selectedDriveFiles.filter(f => !f.isSRR);
     
     let subject = 'Documents: ';
-    if (hasSRR && hasVendor) {
+    if (srrFiles.length > 0 && vendorFiles.length > 0) {
       subject += `SRR & Manufacturer Documents`;
-    } else if (hasSRR) {
+    } else if (srrFiles.length > 0) {
       subject += `SRR Documents`;
     } else {
       subject += `Manufacturer Documents`;
     }
 
-    let body = `Dear Sir/Madam,\n\nPlease find the attached documents listed below for your reference:\n\n`;
-    emailForm.selectedDriveFiles.forEach((f, i) => {
-      body += `${i + 1}. ${f.label || f.fileName}\n`;
-    });
-    body += `\nThank you for your business.\n\nRegards,\nSri Raja Rajeshwari Ortho Plus`;
+    let body = `Dear Sir/Madam,\n\nPlease find the attached documents for your reference:\n\n`;
+    
+    if (srrFiles.length > 0) {
+      body += `SRR Documents:\n`;
+      srrFiles.forEach((f, i) => {
+        body += `${i + 1}. ${f.label || f.fileName}\n`;
+      });
+      body += `\n`;
+    }
+
+    if (vendorFiles.length > 0) {
+      body += `Manufacturer Documents:\n`;
+      vendorFiles.forEach((f, i) => {
+        body += `${i + 1}. ${f.label || f.fileName}\n`;
+      });
+      body += `\n`;
+    }
+
+    body += `Thank you for your business.\n\nRegards,\nSri Raja Rajeshwari Ortho Plus`;
 
     setEmailForm(prev => ({ ...prev, subject, body }));
   }, [emailForm.selectedDriveFiles]);
@@ -77,7 +90,7 @@ const EmailerView = ({ driveFiles }) => {
 
     // Prepare files for attachment
     const filesToAttach = emailForm.selectedDriveFiles.map(f => ({
-      fileName: f.fileName,
+      fileName: f.fileName || f.label || 'Document.pdf',
       url: f.data // This is the Firebase Storage download URL
     }));
 
