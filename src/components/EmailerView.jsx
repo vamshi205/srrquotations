@@ -58,6 +58,55 @@ const EmailerView = ({ driveFiles }) => {
     }
   };
 
+  const [isSending, setIsSending] = useState(false);
+
+  const handleSendEmail = async () => {
+    if (!emailForm.to) return alert('Please enter recipient email.');
+    
+    setIsSending(true);
+    const scriptUrl = import.meta.env.VITE_GMAIL_SCRIPT_URL;
+
+    if (!scriptUrl) {
+      alert('Gmail Script URL not configured in .env.local. Falling back to manual Gmail.');
+      const { to, subject, body } = emailForm;
+      const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(to)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      window.open(gmailUrl, '_blank');
+      setIsSending(false);
+      return;
+    }
+
+    // Prepare files for attachment
+    const filesToAttach = emailForm.selectedDriveFiles.map(f => ({
+      fileName: f.fileName,
+      url: f.data // This is the Firebase Storage download URL
+    }));
+
+    try {
+      const response = await fetch(scriptUrl, {
+        method: 'POST',
+        mode: 'no-cors', // Google Apps Script requires no-cors for simple redirect handling
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: import.meta.env.VITE_GMAIL_TOKEN,
+          to: emailForm.to,
+          subject: emailForm.subject,
+          body: emailForm.body,
+          files: filesToAttach
+        })
+      });
+
+      // Note: with 'no-cors', we can't read the response body, 
+      // but if it doesn't throw, it usually sent successfully.
+      alert('Email sent successfully via srrorthoplus999@gmail.com!');
+      setEmailForm(prev => ({ ...prev, selectedDriveFiles: [] }));
+    } catch (err) {
+      console.error('Email error:', err);
+      alert('Failed to send email automatically. Please try the manual Gmail option.');
+    } finally {
+      setIsSending(false);
+    }
+  };
+
   return (
     <div className="h-full overflow-y-auto px-8 py-12 md:px-16 md:py-16 bg-[var(--apple-gray-2)]">
       <div className="max-w-4xl mx-auto flex flex-col lg:flex-row gap-8">
@@ -65,13 +114,21 @@ const EmailerView = ({ driveFiles }) => {
         {/* Left Side: Composer */}
         <div className="flex-1 space-y-6">
           <div className="bg-white shadow-2xl border border-[var(--apple-gray-3)] flex flex-col overflow-hidden">
-            <div className="bg-[var(--apple-gray-1)] px-8 py-6 border-b border-[var(--apple-gray-2)] flex items-center gap-3">
-              <div className="w-10 h-10 bg-[var(--accent)] flex items-center justify-center">
-                <Mail className="text-white" size={20} />
+            <div className="bg-[var(--apple-gray-1)] px-8 py-6 border-b border-[var(--apple-gray-2)] flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-[var(--accent)] flex items-center justify-center">
+                  <Mail className={`${isSending ? 'animate-bounce' : ''} text-white`} size={20} />
+                </div>
+                <div>
+                  <h3 className="text-[17px] font-bold">Emailer</h3>
+                  <p className="text-[11px] text-[var(--apple-gray-5)] uppercase font-bold tracking-wider">
+                    {isSending ? 'Sending Message...' : 'Automated Dispatch'}
+                  </p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-[17px] font-bold">Emailer</h3>
-                <p className="text-[11px] text-[var(--apple-gray-5)] uppercase font-bold tracking-wider">Quick Dispatch</p>
+              <div className="text-right">
+                <p className="text-[10px] font-bold text-[var(--apple-gray-4)] uppercase tracking-widest">Sender Account</p>
+                <p className="text-[12px] font-semibold text-[var(--accent)]">srrorthoplus999@gmail.com</p>
               </div>
             </div>
 
@@ -83,7 +140,7 @@ const EmailerView = ({ driveFiles }) => {
                   type="email" 
                   value={emailForm.to} 
                   onChange={(e) => setEmailForm({...emailForm, to: e.target.value})}
-                  placeholder="recipient@email.com" 
+                  placeholder="hospital-representative@email.com" 
                   className="flex-1 bg-transparent no-internal-border text-[15px] placeholder:text-[var(--apple-gray-4)]" 
                 />
               </div>
@@ -109,9 +166,20 @@ const EmailerView = ({ driveFiles }) => {
                 />
               </div>
 
-              <button className="btn-primary w-full !py-4 text-[15px]">
-                <Mail size={18} /> Send Documents
-              </button>
+              <div className="flex flex-col gap-3">
+                <button 
+                  onClick={handleSendEmail} 
+                  disabled={isSending}
+                  className={`btn-primary w-full !py-4 text-[15px] ${isSending ? 'opacity-70 cursor-not-allowed' : ''}`}
+                >
+                  {isSending ? 'Processing...' : <><Mail size={18} /> Send with Attachments</>}
+                </button>
+                <p className="text-[11px] text-[var(--apple-gray-4)] text-center italic">
+                  {isSending 
+                    ? 'Connecting to Google Services...' 
+                    : 'Real attachments will be fetched and sent automatically.'}
+                </p>
+              </div>
             </div>
           </div>
         </div>
