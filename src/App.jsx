@@ -694,7 +694,7 @@ function App() {
           <div className="w-8 h-8 bg-[var(--coral)] rounded-lg flex items-center justify-center">
             <FileUp className="text-white w-4 h-4" />
           </div>
-          <span className="font-bold text-lg tracking-tight">OrthoGen</span>
+          <span className="font-bold text-lg tracking-tight">SRR Quotation Maker</span>
         </div>
         <div className="flex gap-4">
           <NavItem id="library" label="Library" />
@@ -1277,9 +1277,15 @@ function App() {
                   {isGenerating ? 'Processing...' : <><Download size={18} /> Generate PDF</>}
                 </button>
                 <button 
-                  onClick={() => setShowEmailComposer(!showEmailComposer)} 
-                  className={`btn-outline !py-3 !px-4 ${showEmailComposer ? 'bg-[var(--apple-gray-1)]' : ''}`}
-                  title="Compose Email"
+                  onClick={() => {
+                    if (!formData.hospitalName.trim() || !formData.address.trim()) {
+                      alert('Please enter Hospital Name and Hospital Address to enable email composition.');
+                      return;
+                    }
+                    setShowEmailComposer(!showEmailComposer);
+                  }} 
+                  className={`btn-outline !py-3 !px-4 ${showEmailComposer ? 'bg-[var(--apple-gray-1)]' : ''} ${(!formData.hospitalName.trim() || !formData.address.trim()) ? 'opacity-40 grayscale pointer-events-auto cursor-not-allowed' : ''}`}
+                  title={(!formData.hospitalName.trim() || !formData.address.trim()) ? "Enter Hospital Name & Address to enable email" : "Compose Email"}
                 >
                   <Mail size={18} className={showEmailComposer ? 'text-[var(--emerald)]' : ''} />
                 </button>
@@ -1291,10 +1297,10 @@ function App() {
               <div className="flex-1 bg-[var(--apple-gray-2)] overflow-y-auto p-12 relative">
                 {showEmailComposer ? (
                   /* ── EMAIL COMPOSER OVERLAY ── */
-                  <div className="max-w-2xl mx-auto bg-white rounded-3xl shadow-2xl overflow-hidden border border-[var(--apple-gray-2)] flex flex-col h-[calc(100vh-160px)]">
+                  <div className="max-w-2xl mx-auto bg-white shadow-2xl overflow-hidden border border-[var(--apple-gray-3)] flex flex-col h-[calc(100vh-160px)]">
                     <div className="bg-[var(--apple-gray-1)] px-8 py-6 border-b border-[var(--apple-gray-2)] flex justify-between items-center">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-[var(--emerald)] rounded-xl flex items-center justify-center">
+                        <div className="w-10 h-10 bg-[var(--accent)] flex items-center justify-center">
                           <Mail className="text-white" size={20} />
                         </div>
                         <div>
@@ -1309,36 +1315,36 @@ function App() {
 
                     <div className="flex-1 overflow-y-auto p-8 space-y-6">
                       {/* Recipient */}
-                      <div className="flex items-center gap-4 border-b border-[var(--apple-gray-2)] pb-2">
-                        <span className="text-[14px] font-bold text-[var(--apple-gray-5)] w-12">To</span>
+                      <div className="flex items-center gap-4 border border-[var(--apple-gray-3)] px-4 py-3 bg-white focus-within:border-[var(--accent)] focus-within:ring-1 focus-within:ring-[var(--accent)] transition-all">
+                        <span className="text-[13px] font-bold text-[var(--apple-gray-5)] w-10 uppercase tracking-wider">To</span>
                         <input 
                           type="email" 
                           value={emailForm.to} 
                           onChange={(e) => setEmailForm({...emailForm, to: e.target.value})}
                           placeholder="hospital-representative@email.com" 
-                          className="flex-1 bg-transparent outline-none text-[15px]" 
+                          className="flex-1 bg-transparent no-internal-border text-[15px] placeholder:text-[var(--apple-gray-4)]" 
                         />
                       </div>
 
                       {/* Subject */}
-                      <div className="flex items-center gap-4 border-b border-[var(--apple-gray-2)] pb-2">
-                        <span className="text-[14px] font-bold text-[var(--apple-gray-5)] w-12">Sub</span>
+                      <div className="flex items-center gap-4 border border-[var(--apple-gray-3)] px-4 py-3 bg-white focus-within:border-[var(--accent)] focus-within:ring-1 focus-within:ring-[var(--accent)] transition-all">
+                        <span className="text-[13px] font-bold text-[var(--apple-gray-5)] w-10 uppercase tracking-wider">Sub</span>
                         <input 
                           type="text" 
                           value={emailForm.subject} 
                           onChange={(e) => setEmailForm({...emailForm, subject: e.target.value})}
-                          className="flex-1 bg-transparent outline-none text-[15px] font-semibold" 
+                          className="flex-1 bg-transparent no-internal-border text-[15px] font-semibold" 
                         />
                       </div>
 
                       {/* Attachment Badge (Generated PDF) */}
                       <div className="flex items-center flex-wrap gap-2">
-                        <div className="flex items-center gap-2 px-3 py-1.5 bg-[var(--emerald-light)] border border-[var(--emerald)] rounded-full text-[12px] font-bold text-[var(--emerald)]">
+                        <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 border border-[var(--accent)] rounded-none text-[12px] font-bold text-[var(--accent)]">
                           <FileText size={14} />
                           Quotation_{formData.hospitalName || 'Draft'}.pdf
                         </div>
                         {emailForm.selectedDriveFiles.map(file => (
-                          <div key={file.id} className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-full text-[12px] font-bold text-amber-700">
+                          <div key={file.id} className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-none text-[12px] font-bold text-amber-700">
                             <FileCheck size={14} />
                             {file.label || file.fileName}
                             <button onClick={() => setEmailForm(prev => ({ ...prev, selectedDriveFiles: prev.selectedDriveFiles.filter(f => f.id !== file.id) }))}>
@@ -1349,11 +1355,14 @@ function App() {
                       </div>
 
                       {/* Body */}
-                      <textarea 
-                        value={emailForm.body} 
-                        onChange={(e) => setEmailForm({...emailForm, body: e.target.value})}
-                        className="w-full min-h-[300px] bg-transparent outline-none text-[15px] leading-relaxed resize-none"
-                      />
+                      <div className="border border-[var(--apple-gray-3)] p-4 bg-white focus-within:border-[var(--accent)] focus-within:ring-1 focus-within:ring-[var(--accent)] transition-all">
+                        <textarea 
+                          value={emailForm.body} 
+                          onChange={(e) => setEmailForm({...emailForm, body: e.target.value})}
+                          placeholder="Type your message here..."
+                          className="w-full min-h-[300px] bg-transparent no-internal-border text-[15px] leading-relaxed resize-none" 
+                        />
+                      </div>
 
                       {/* Drive Attachments Picker */}
                       <div className="pt-6 border-t border-[var(--apple-gray-2)]">
@@ -1374,9 +1383,9 @@ function App() {
                                       setEmailForm(prev => ({ ...prev, selectedDriveFiles: [...prev.selectedDriveFiles, file] }));
                                     }
                                   }}
-                                  className={`flex items-center gap-2 p-2 rounded-lg border text-left transition-all ${emailForm.selectedDriveFiles.find(f => f.id === file.id) ? 'bg-emerald-50 border-[var(--emerald)]' : 'bg-white border-[var(--apple-gray-2)] hover:bg-[var(--apple-gray-1)]'}`}
+                                  className={`flex items-center gap-2 p-2 border text-left transition-all rounded-none ${emailForm.selectedDriveFiles.find(f => f.id === file.id) ? 'bg-emerald-50 border-[var(--accent)]' : 'bg-white border-[var(--apple-gray-2)] hover:bg-[var(--apple-gray-1)]'}`}
                                 >
-                                  <div className={`w-4 h-4 rounded border flex items-center justify-center ${emailForm.selectedDriveFiles.find(f => f.id === file.id) ? 'bg-[var(--emerald)] border-[var(--emerald)]' : 'border-[var(--apple-gray-3)]'}`}>
+                                  <div className={`w-4 h-4 border flex items-center justify-center rounded-none ${emailForm.selectedDriveFiles.find(f => f.id === file.id) ? 'bg-[var(--accent)] border-[var(--accent)]' : 'border-[var(--apple-gray-3)]'}`}>
                                     {emailForm.selectedDriveFiles.find(f => f.id === file.id) && <CheckSquare size={10} className="text-white" />}
                                   </div>
                                   <span className="text-[12px] font-medium truncate">{file.label}</span>
@@ -1401,9 +1410,9 @@ function App() {
                                         setEmailForm(prev => ({ ...prev, selectedDriveFiles: [...prev.selectedDriveFiles, file] }));
                                       }
                                     }}
-                                    className={`flex items-center gap-2 p-2 rounded-lg border text-left transition-all ${emailForm.selectedDriveFiles.find(f => f.id === file.id) ? 'bg-amber-50 border-amber-400' : 'bg-white border-[var(--apple-gray-2)] hover:bg-[var(--apple-gray-1)]'}`}
+                                    className={`flex items-center gap-2 p-2 border text-left transition-all rounded-none ${emailForm.selectedDriveFiles.find(f => f.id === file.id) ? 'bg-amber-50 border-amber-400' : 'bg-white border-[var(--apple-gray-2)] hover:bg-[var(--apple-gray-1)]'}`}
                                   >
-                                    <div className={`w-4 h-4 rounded border flex items-center justify-center ${emailForm.selectedDriveFiles.find(f => f.id === file.id) ? 'bg-amber-500 border-amber-500' : 'border-[var(--apple-gray-3)]'}`}>
+                                    <div className={`w-4 h-4 border flex items-center justify-center rounded-none ${emailForm.selectedDriveFiles.find(f => f.id === file.id) ? 'bg-amber-500 border-amber-500' : 'border-[var(--apple-gray-3)]'}`}>
                                       {emailForm.selectedDriveFiles.find(f => f.id === file.id) && <CheckSquare size={10} className="text-white" />}
                                     </div>
                                     <span className="text-[12px] font-medium truncate">{file.fileName}</span>
