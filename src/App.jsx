@@ -513,10 +513,10 @@ function App() {
   };
 
   const deleteAttachment = async (att) => {
-    if (window.confirm(`Delete ${att.label}?`)) {
+    confirmDelete(async () => {
       setAttachments(attachments.filter(a => a.id !== att.id));
       await syncItem('attachments', att, true);
-    }
+    });
   };
 
   const handleDriveUpload = (e, colName, folderId = null) => {
@@ -548,7 +548,7 @@ function App() {
   };
 
   const handleDeleteDriveFile = async (colName, file) => {
-    if (window.confirm(`Delete ${file.label || file.fileName}?`)) {
+    confirmDelete(async () => {
       const success = await syncItem(colName, file, true);
       if (success) {
         if (colName === 'drive_srr') {
@@ -560,7 +560,7 @@ function App() {
           }));
         }
       }
-    }
+    });
   };
 
   const handleCreateFolder = async () => {
@@ -773,8 +773,11 @@ function App() {
                     onUse={useTemplate} 
                     onEdit={(t) => { setEditingTemplate(JSON.parse(JSON.stringify(t))); setView('builder'); }} 
                     onDelete={async (id) => {
-                      const item = templates.find(temp => temp.id === id);
-                      setTemplates(templates.filter(temp => temp.id !== id));
+                      confirmDelete(async () => {
+                        const item = templates.find(temp => temp.id === id);
+                        setTemplates(templates.filter(temp => temp.id !== id));
+                        // Add sync logic if needed, currently only local/company doc sync happens on state change
+                      });
                     }} 
                   />
                 ))}
@@ -1615,10 +1618,11 @@ function App() {
                         </div>
                       </div>
                       <button 
-                        onClick={async () => {
-                          const att = attachments.find(a => a.id === att.id);
-                          setAttachments(attachments.filter(a => a.id !== att.id));
-                          if (att) await syncItem('attachments', att, true);
+                        onClick={() => {
+                          confirmDelete(async () => {
+                            setAttachments(attachments.filter(a => a.id !== att.id));
+                            await syncItem('attachments', att, true);
+                          });
                         }} 
                         className="w-10 h-10 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 bg-[var(--apple-gray-1)] hover:bg-red-50 rounded-full transition-colors"
                       >
