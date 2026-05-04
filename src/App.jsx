@@ -12,10 +12,10 @@ import { doc, getDoc, setDoc, collection, getDocs, deleteDoc, query, orderBy, wr
 import { validateFile } from './utils/fileValidation';
 import { uploadFile, deleteFile } from './utils/storageService';
 import EmailerView from './components/EmailerView';
-import { 
-  Download, 
-  Plus, 
-  FileText, 
+import {
+  Download,
+  Plus,
+  FileText,
   Settings,
   ChevronLeft,
   Database,
@@ -44,7 +44,7 @@ import {
 } from 'lucide-react';
 
 function App() {
-  const [view, setView] = useState('library'); 
+  const [view, setView] = useState('library');
   const [user, setUser] = useState(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [authError, setAuthError] = useState('');
@@ -59,73 +59,58 @@ function App() {
     }
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
-        const allowedEmailsStr = import.meta.env.VITE_ALLOWED_EMAILS || '';
-        const allowedEmails = allowedEmailsStr.split(',').map(e => e.trim().toLowerCase()).filter(e => e);
-        
-        if (allowedEmails.length > 0 && !allowedEmails.includes(currentUser.email.toLowerCase())) {
-          await signOut(auth);
-          setAuthError('Your email address is not authorized to access this application.');
-          setUser(null);
-          setIsAuthLoading(false);
-          return;
-        }
-
         setUser(currentUser);
-        setAuthError('');
-        try {
-          // 1. Fetch Basic Settings & Templates
-          const docRef = doc(db, 'users', currentUser.uid);
-          const docSnap = await getDoc(docRef);
-          if (docSnap.exists()) {
-            const data = docSnap.data();
-            if (data.companyData) setCompanyData(typeof data.companyData === 'string' ? JSON.parse(data.companyData) : data.companyData);
-            if (data.templates) setTemplates(typeof data.templates === 'string' ? JSON.parse(data.templates) : data.templates);
-          }
-
-          // 2. Fetch Attachments (Sub-collection) - Filter out old Firebase Storage files
-          const attsSnap = await getDocs(collection(db, 'users', currentUser.uid, 'attachments'));
-          const attsList = attsSnap.docs
-            .map(d => d.data())
-            .filter(d => !d.data || !d.data.includes('firebasestorage'));
-          setAttachments(attsList);
-
-          // 3. Fetch Quotation History (Sub-collection)
-          const historySnap = await getDocs(query(collection(db, 'users', currentUser.uid, 'history'), orderBy('id', 'desc')));
-          const historyList = historySnap.docs.map(d => d.data());
-          setQuotationHistory(historyList);
-
-          // 4. Fetch Drive Files (SRR) - Filter out old Firebase Storage files
-          const srrSnap = await getDocs(collection(db, 'users', currentUser.uid, 'drive_srr'));
-          const srrList = srrSnap.docs
-            .map(d => d.data())
-            .filter(d => !d.data || !d.data.includes('firebasestorage'));
-
-          // 5. Fetch Drive Folders & Files (Vendor)
-          const foldersSnap = await getDocs(collection(db, 'users', currentUser.uid, 'drive_folders'));
-          const foldersList = foldersSnap.docs.map(d => d.data());
-          const vFilesSnap = await getDocs(collection(db, 'users', currentUser.uid, 'drive_vendor_files'));
-          const vFilesList = vFilesSnap.docs
-            .map(d => d.data())
-            .filter(d => !d.data || !d.data.includes('firebasestorage'));
-
-          const fullFolders = foldersList.map(folder => ({
-            ...folder,
-            files: vFilesList.filter(f => f.folderId === folder.id)
-          }));
-
-          setDriveFiles({ srr: srrList, vendor: fullFolders });
-
-        } catch (e) {
-          console.error("Firestore loading error:", e);
-        }
+        await refreshData(currentUser);
       } else {
-        setUser(null);
+        setUser(currentUser);
       }
       setIsAuthLoading(false);
     });
     return () => unsubscribe();
   }, []);
-  
+
+  const refreshData = async (currentUser = user) => {
+    if (!currentUser) return;
+    setSyncStatus('syncing');
+    try {
+      // 1. Fetch Basic Settings & Templates
+      const docRef = doc(db, 'users', currentUser.uid);
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (data.companyData) setCompanyData(typeof data.companyData === 'string' ? JSON.parse(data.companyData) : data.companyData);
+        if (data.templates) setTemplates(typeof data.templates === 'string' ? JSON.parse(data.templates) : data.templates);
+      }
+
+      // 2. Fetch Attachments
+      const attsSnap = await getDocs(collection(db, 'users', currentUser.uid, 'attachments'));
+      const attsList = attsSnap.docs.map(d => d.data()).filter(d => d.data && !d.data.includes('firebasestorage') && !d.data.includes('TRUNCATED'));
+      setAttachments(attsList);
+
+      // 3. Fetch History
+      const historySnap = await getDocs(query(collection(db, 'users', currentUser.uid, 'history'), orderBy('id', 'desc')));
+      setQuotationHistory(historySnap.docs.map(d => d.data()));
+
+      // 4. Fetch Drive Files
+      const srrSnap = await getDocs(collection(db, 'users', currentUser.uid, 'drive_srr'));
+      const srrList = srrSnap.docs.map(d => d.data()).filter(d => d.data && !d.data.includes('firebasestorage') && !d.data.includes('TRUNCATED'));
+
+      const foldersSnap = await getDocs(collection(db, 'users', currentUser.uid, 'drive_folders'));
+      const foldersList = foldersSnap.docs.map(d => d.data());
+      const vFilesSnap = await getDocs(collection(db, 'users', currentUser.uid, 'drive_vendor_files'));
+      const vFilesList = vFilesSnap.docs.map(d => d.data()).filter(d => d.data && !d.data.includes('firebasestorage') && !d.data.includes('TRUNCATED'));
+
+      setDriveFiles({
+        srr: srrList,
+        vendor: foldersList.map(folder => ({ ...folder, files: vFilesList.filter(f => f.folderId === folder.id) }))
+      });
+      setSyncStatus('saved');
+    } catch (e) {
+      console.error("Refresh error:", e);
+      setSyncStatus('error');
+    }
+  };
+
   const getTodayFormatted = () => {
     const d = new Date();
     return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
@@ -205,7 +190,7 @@ function App() {
   const [attachments, setAttachments] = useState(() => {
     const saved = localStorage.getItem('srr_attachments');
     const parsed = saved ? JSON.parse(saved) : [];
-    return parsed.filter(a => !a.data || !a.data.includes('firebasestorage'));
+    return parsed.filter(a => a.data && !a.data.includes('firebasestorage') && !a.data.includes('TRUNCATED'));
   });
 
   const [templates, setTemplates] = useState(() => {
@@ -239,11 +224,11 @@ function App() {
     const saved = localStorage.getItem('srr_drive');
     const parsed = saved ? JSON.parse(saved) : { srr: [], vendor: [] };
     // Filter SRR files
-    const srr = (parsed.srr || []).filter(f => !f.data || !f.data.includes('firebasestorage'));
+    const srr = (parsed.srr || []).filter(f => f.data && !f.data.includes('firebasestorage') && !f.data.includes('TRUNCATED'));
     // Filter Vendor files
     const vendor = (parsed.vendor || []).map(folder => ({
       ...folder,
-      files: (folder.files || []).filter(f => !f.data || !f.data.includes('firebasestorage'))
+      files: (folder.files || []).filter(f => f.data && !f.data.includes('firebasestorage') && !f.data.includes('TRUNCATED'))
     }));
     return { srr, vendor };
   });
@@ -269,7 +254,7 @@ function App() {
       if (fileObject && !isDelete) {
         const validation = validateFile(fileObject);
         if (!validation.isValid) throw new Error(validation.error);
-        
+
         // uploadFile now returns { url, fileId, success }
         const result = await uploadFile(fileObject, '', (p) => {
           setUploadProgress(p);
@@ -282,7 +267,7 @@ function App() {
 
         item.data = result.url || '';
         item.fileId = result.fileId || '';
-        item.storagePath = result.fileId || ''; 
+        item.storagePath = result.fileId || '';
       }
 
       const itemRef = doc(db, 'users', user.uid, colName, item.id);
@@ -290,10 +275,10 @@ function App() {
         await deleteDoc(itemRef);
         // Delete from Google Drive if it's a Drive file
         if (item.fileId) {
-          try { 
-            await deleteFile(item.fileId); 
-          } catch (e) { 
-            console.warn('Google Drive deletion failed:', e); 
+          try {
+            await deleteFile(item.fileId);
+          } catch (e) {
+            console.warn('Google Drive deletion failed:', e);
           }
         }
       } else {
@@ -346,24 +331,29 @@ function App() {
       url: f.data
     }));
 
+    const payload = {
+      token: token,
+      to: emailForm.to,
+      subject: emailForm.subject,
+      body: emailForm.body,
+      files: filesToAttach
+    };
+
     try {
+      // Using 'no-cors' is often more reliable for Google Apps Script triggers 
+      // as it avoids complex pre-flight checks that some browsers block.
       await fetch(scriptUrl, {
         method: 'POST',
         mode: 'no-cors',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          token: token,
-          to: emailForm.to,
-          subject: emailForm.subject,
-          body: emailForm.body,
-          files: filesToAttach
-        })
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload)
       });
-      alert('Email sent successfully via srrorthoplus999@gmail.com!');
+
+      alert('Email request sent successfully! Check your Gmail "Sent" folder in a moment.');
       setShowEmailComposer(false);
     } catch (err) {
       console.error('Email error:', err);
-      alert('Connection issue. Falling back to manual Gmail.');
+      alert('Automated sending failed. Opening manual Gmail window...');
       const { to, subject, body } = emailForm;
       const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(to)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
       window.open(gmailUrl, '_blank');
@@ -397,9 +387,9 @@ function App() {
   const updateEmailBody = (templateId, selectedFiles = []) => {
     const template = templates.find(t => t.id === templateId);
     const templateName = template?.name || 'Quotation';
-    
+
     let baseMessage = `Dear Sir/Madam,\n\nPlease find the attached Quotation for ${templateName} for your kind reference.`;
-    
+
     if (selectedFiles.length > 0) {
       const srrFiles = selectedFiles.filter(f => !f.folderId);
       const vendorFiles = selectedFiles.filter(f => f.folderId);
@@ -414,9 +404,9 @@ function App() {
         baseMessage += `\n\nManufacturer Certificates:\n` + vendorFiles.map((f, i) => `${i + 1}. ${f.label || f.fileName}`).join('\n');
       }
     }
-    
+
     baseMessage += `\n\nWe look forward to your positive response.`;
-    
+
     setEmailForm(prev => ({
       ...prev,
       body: baseMessage + getSignature()
@@ -450,7 +440,7 @@ function App() {
         const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
         pdf.addImage(dataUrl, 'JPEG', 0, 0, 210, 297);
         const coverArrayBuffer = pdf.output('arraybuffer');
-        
+
         let finalPdfBytes;
         const attachmentRef = regeneratingItem.formData.attachmentLabel || regeneratingItem.formData.make;
         const selectedAttachment = regeneratingItem.requiresAttachment ? attachments.find(a => a.label === attachmentRef) : null;
@@ -465,7 +455,7 @@ function App() {
           const coverDoc = await PDFDocument.load(coverArrayBuffer);
           const [coverPage] = await mergedPdf.copyPages(coverDoc, [0]);
           mergedPdf.addPage(coverPage);
-          
+
           const fileData = await getFileData(selectedAttachment.data);
           const base64Data = fileData.includes('base64,') ? fileData.split(',')[1] : fileData;
           const attachmentDoc = await PDFDocument.load(base64Data);
@@ -526,37 +516,37 @@ function App() {
         setRegeneratingItem(null);
       }
     };
-    
+
     setTimeout(generateHistoryPDF, 150);
   }, [regeneratingItem, attachments]);
 
   // Sync metadata to Firestore & LocalStorage (Truncated data for Quota)
-  useEffect(() => { 
-    localStorage.setItem('srr_company_data', JSON.stringify(companyData)); 
+  useEffect(() => {
+    localStorage.setItem('srr_company_data', JSON.stringify(companyData));
     if (user) setDoc(doc(db, 'users', user.uid), { companyData }, { merge: true }).catch(console.error);
   }, [companyData, user]);
 
-  useEffect(() => { 
-    localStorage.setItem('srr_attachments', JSON.stringify(attachments.map(a => ({ ...a, data: 'TRUNCATED_FOR_QUOTA' })))); 
+  useEffect(() => {
+    localStorage.setItem('srr_attachments', JSON.stringify(attachments.map(a => ({ ...a, data: 'TRUNCATED_FOR_QUOTA' }))));
   }, [attachments]);
 
-  useEffect(() => { 
-    localStorage.setItem('srr_templates', JSON.stringify(templates)); 
+  useEffect(() => {
+    localStorage.setItem('srr_templates', JSON.stringify(templates));
     if (user) setDoc(doc(db, 'users', user.uid), { templates }, { merge: true }).catch(console.error);
   }, [templates, user]);
 
-  useEffect(() => { 
+  useEffect(() => {
     localStorage.setItem('srr_history', JSON.stringify(quotationHistory.slice(0, 10))); // Only last 10 in localStorage
   }, [quotationHistory]);
 
-  useEffect(() => { 
+  useEffect(() => {
     localStorage.setItem('srr_drive', JSON.stringify({
       srr: (driveFiles.srr || []).map(f => ({ ...f, data: 'TRUNCATED_FOR_QUOTA' })),
       vendor: (driveFiles.vendor || []).map(folder => ({
         ...folder,
         files: (folder.files || []).map(f => ({ ...f, data: 'TRUNCATED_FOR_QUOTA' }))
       }))
-    })); 
+    }));
   }, [driveFiles]);
 
   const handleInputChange = (e) => {
@@ -565,7 +555,7 @@ function App() {
   };
 
   const useTemplate = (template) => {
-    setFormData({ 
+    setFormData({
       hospitalName: '',
       address: '',
       date: getTodayFormatted(),
@@ -580,7 +570,7 @@ function App() {
       validity: template.defaultValidity || '31/03/2027',
       attachmentLabel: ''
     });
-    setDraftContent(JSON.parse(JSON.stringify(template.content))); 
+    setDraftContent(JSON.parse(JSON.stringify(template.content)));
     setDraftRequiresAttachment(template.requiresAttachment || false);
     setView('drafting');
   };
@@ -678,7 +668,7 @@ function App() {
       let finalPdfBytes;
       const attachmentRef = (formData.attachmentLabel || formData.make || '').toLowerCase().trim();
       const selectedAttachment = draftRequiresAttachment ? attachments.find(a => (a.label || '').toLowerCase().trim() === attachmentRef) : null;
-      
+
       if (selectedAttachment) {
         const attachmentData = await getFileData(selectedAttachment.data);
         if (!attachmentData) {
@@ -692,19 +682,19 @@ function App() {
           const coverDoc = await PDFDocument.load(coverArrayBuffer);
           const [coverPage] = await mergedPdf.copyPages(coverDoc, [0]);
           mergedPdf.addPage(coverPage);
-          
+
           const attachmentDoc = await PDFDocument.load(attachmentData);
           const A4_WIDTH = 595.28;
           const A4_HEIGHT = 841.89;
           const attachmentPages = attachmentDoc.getPages();
-          
+
           for (const page of attachmentPages) {
             const embeddedPage = await mergedPdf.embedPage(page);
             const { width, height } = embeddedPage;
             const scale = Math.min(A4_WIDTH / width, A4_HEIGHT / height);
             const scaledW = width * scale;
             const scaledH = height * scale;
-            
+
             const newPage = mergedPdf.addPage([A4_WIDTH, A4_HEIGHT]);
             newPage.drawPage(embeddedPage, {
               x: (A4_WIDTH - scaledW) / 2,
@@ -725,7 +715,7 @@ function App() {
         }
         finalPdfBytes = coverArrayBuffer;
       }
-      
+
       // Check ref number uniqueness
       const isDuplicateRef = quotationHistory.some(h => h.ref === formData.referenceNumber);
       if (isDuplicateRef) {
@@ -749,15 +739,15 @@ function App() {
 
       const blob = new Blob([finalPdfBytes], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
-      const link = document.createElement('a'); 
-      link.href = url; 
-      link.download = `Quotation_${formData.hospitalName}.pdf`; 
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Quotation_${formData.hospitalName}.pdf`;
       link.click();
     } catch (e) { console.error(e); } finally { setIsGenerating(false); }
   };
 
   const NavItem = ({ id, label }) => (
-    <span 
+    <span
       onClick={() => setView(id)}
       className={`apple-nav-link ${view === id ? 'active' : ''}`}
     >
@@ -793,7 +783,7 @@ function App() {
 
   return (
     <div className="flex flex-col h-screen text-[var(--apple-black)] font-sans overflow-hidden bg-[var(--apple-bg)]">
-      
+
       {/* ─────────────────────────────────────────
           APPLE NAV BAR (TOP)
           ───────────────────────────────────────── */}
@@ -824,7 +814,7 @@ function App() {
           MAIN CONTENT AREA
           ───────────────────────────────────────── */}
       <main className="flex-1 overflow-hidden mt-[var(--nav-height)]">
-        
+
         {/* VIEW: LIBRARY */}
         {view === 'library' && (
           <div className="h-full overflow-y-auto px-8 py-12 md:px-16 md:py-16">
@@ -834,7 +824,7 @@ function App() {
                   <h1 className="apple-title-1">Templates</h1>
                   <p className="apple-subtitle">Select a template to generate a quotation, or create a new one.</p>
                 </div>
-                <button 
+                <button
                   onClick={() => {
                     setEditingTemplate({
                       id: Date.now().toString(),
@@ -851,7 +841,7 @@ function App() {
                       content: []
                     });
                     setView('builder');
-                  }} 
+                  }}
                   className="btn-primary"
                 >
                   <Plus size={18} /> New Template
@@ -860,18 +850,18 @@ function App() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {templates.map(t => (
-                  <LibraryCard 
-                    key={t.id} 
-                    template={t} 
-                    onUse={useTemplate} 
-                    onEdit={(t) => { setEditingTemplate(JSON.parse(JSON.stringify(t))); setView('builder'); }} 
+                  <LibraryCard
+                    key={t.id}
+                    template={t}
+                    onUse={useTemplate}
+                    onEdit={(t) => { setEditingTemplate(JSON.parse(JSON.stringify(t))); setView('builder'); }}
                     onDelete={async (id) => {
                       confirmDelete(async () => {
                         const item = templates.find(temp => temp.id === id);
                         setTemplates(templates.filter(temp => temp.id !== id));
                         // Add sync logic if needed, currently only local/company doc sync happens on state change
                       });
-                    }} 
+                    }}
                   />
                 ))}
                 {templates.length === 0 && (
@@ -898,15 +888,15 @@ function App() {
                   >
                     <ChevronLeft size={16} /> Library
                   </button>
-                  <button 
-                    onClick={() => setShowPreview(!showPreview)} 
+                  <button
+                    onClick={() => setShowPreview(!showPreview)}
                     className="px-3 py-1.5 border border-[var(--apple-gray-3)] rounded-lg text-[11px] font-semibold text-[var(--apple-gray-6)] hover:bg-[var(--apple-gray-1)] transition-colors"
                   >
                     {showPreview ? 'Hide Canvas' : 'Show Canvas'}
                   </button>
                 </div>
                 <h2 className="text-[28px] font-bold tracking-tight leading-tight mb-8">Designer</h2>
-                
+
                 <div className="space-y-6">
                   <div>
                     <label className="apple-label">Template Name</label>
@@ -937,7 +927,7 @@ function App() {
                       className="apple-input"
                     />
                   </div>
-                  
+
                   <div className="pt-6 border-t border-[var(--apple-gray-2)]">
                     <label className="apple-label mb-4">Default Terms</label>
                     <div className="grid grid-cols-2 gap-4">
@@ -1011,147 +1001,147 @@ function App() {
             {showPreview && (
               <div className="flex-1 bg-[var(--apple-bg)] overflow-y-auto p-12">
                 <div className="max-w-3xl mx-auto space-y-8">
-                {(editingTemplate?.content || []).length === 0 && (
-                  <div className="text-center py-32 opacity-40">
-                    <Database size={48} className="mx-auto mb-4" />
-                    <p className="font-semibold tracking-tight text-lg">No sections yet</p>
-                  </div>
-                )}
-
-                {(editingTemplate?.content || []).map((block, idx) => (
-                  <div key={idx} className="apple-card p-8 relative group">
-                    <button
-                      onClick={() => {
-                        const nc = [...editingTemplate.content]; nc.splice(idx, 1);
-                        setEditingTemplate({ ...editingTemplate, content: nc });
-                      }}
-                      className="absolute -top-3 -right-3 w-8 h-8 bg-white border border-[var(--apple-gray-2)] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 hover:text-red-500 shadow-sm transition-all"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-
-                    <div className="flex items-center gap-3 mb-6">
-                      <span className="badge-gray">SECTION {idx + 1}</span>
-                      <span className="text-[13px] font-medium text-[var(--apple-gray-5)]">
-                        {block.type === 'text' ? 'Text Block' : 'Table Block'}
-                      </span>
+                  {(editingTemplate?.content || []).length === 0 && (
+                    <div className="text-center py-32 opacity-40">
+                      <Database size={48} className="mx-auto mb-4" />
+                      <p className="font-semibold tracking-tight text-lg">No sections yet</p>
                     </div>
+                  )}
 
-                    {block.type === 'text' ? (
-                      <textarea
-                        value={block.value}
-                        onChange={e => {
-                          const nc = [...editingTemplate.content]; nc[idx].value = e.target.value;
+                  {(editingTemplate?.content || []).map((block, idx) => (
+                    <div key={idx} className="apple-card p-8 relative group">
+                      <button
+                        onClick={() => {
+                          const nc = [...editingTemplate.content]; nc.splice(idx, 1);
                           setEditingTemplate({ ...editingTemplate, content: nc });
                         }}
-                        className="apple-input min-h-[140px]"
-                        placeholder="Type paragraph content..."
-                      />
-                    ) : (
-                      <div className="border border-[var(--apple-gray-2)] rounded-xl overflow-hidden shadow-sm bg-white">
-                        <table className="w-full border-collapse">
-                          <thead className="bg-[var(--apple-gray-1)] border-b border-[var(--apple-gray-2)]">
-                            <tr>
-                              {block.headers.map((h, hi) => (
-                                <th key={hi} className="p-3 border-r border-[var(--apple-gray-2)] last:border-none relative group">
-                                  <input
-                                    value={h}
-                                    onChange={e => {
-                                      const nc = [...editingTemplate.content]; nc[idx].headers[hi] = e.target.value;
-                                      setEditingTemplate({ ...editingTemplate, content: nc });
-                                    }}
-                                    className="w-full bg-transparent outline-none font-semibold text-center text-[11px] uppercase tracking-wider text-[var(--apple-gray-6)]"
-                                  />
-                                  <button
-                                    onClick={() => {
-                                      if (block.headers.length <= 1) return;
-                                      const nc = [...editingTemplate.content];
-                                      nc[idx].headers.splice(hi, 1);
-                                      nc[idx].rows.forEach(r => r.splice(hi, 1));
-                                      setEditingTemplate({ ...editingTemplate, content: nc });
-                                    }}
-                                    className="absolute -top-2 -right-2 w-5 h-5 bg-white border border-[var(--apple-gray-2)] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 hover:text-red-500 shadow-sm transition-all z-10"
-                                    title="Delete Column"
-                                  >
-                                    <Trash2 size={10} />
-                                  </button>
-                                </th>
-                              ))}
-                              <th className="w-8 bg-[var(--apple-gray-1)]"></th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {block.rows.map((row, ri) => (
-                              <tr key={ri} className="border-b border-[var(--apple-gray-2)] last:border-none hover:bg-[var(--apple-gray-1)] transition-colors">
-                                {row.map((cell, ci) => (
-                                  <td key={ci} className="p-0 border-r border-[var(--apple-gray-2)] last:border-none">
+                        className="absolute -top-3 -right-3 w-8 h-8 bg-white border border-[var(--apple-gray-2)] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 hover:text-red-500 shadow-sm transition-all"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+
+                      <div className="flex items-center gap-3 mb-6">
+                        <span className="badge-gray">SECTION {idx + 1}</span>
+                        <span className="text-[13px] font-medium text-[var(--apple-gray-5)]">
+                          {block.type === 'text' ? 'Text Block' : 'Table Block'}
+                        </span>
+                      </div>
+
+                      {block.type === 'text' ? (
+                        <textarea
+                          value={block.value}
+                          onChange={e => {
+                            const nc = [...editingTemplate.content]; nc[idx].value = e.target.value;
+                            setEditingTemplate({ ...editingTemplate, content: nc });
+                          }}
+                          className="apple-input min-h-[140px]"
+                          placeholder="Type paragraph content..."
+                        />
+                      ) : (
+                        <div className="border border-[var(--apple-gray-2)] rounded-xl overflow-hidden shadow-sm bg-white">
+                          <table className="w-full border-collapse">
+                            <thead className="bg-[var(--apple-gray-1)] border-b border-[var(--apple-gray-2)]">
+                              <tr>
+                                {block.headers.map((h, hi) => (
+                                  <th key={hi} className="p-3 border-r border-[var(--apple-gray-2)] last:border-none relative group">
                                     <input
-                                      value={cell}
+                                      value={h}
                                       onChange={e => {
-                                        const nc = [...editingTemplate.content]; 
-                                        nc[idx].rows[ri][ci] = e.target.value;
-                                        
-                                        const headers = nc[idx].headers.map(h => h.toLowerCase());
-                                        const qtyIdx = headers.findIndex(h => h === 'qty' || h === 'quantity');
-                                        const rateIdx = headers.findIndex(h => h === 'rate' || h === 'mrp' || h === 'price');
-                                        const amountIdx = headers.findIndex(h => h === 'amount' || h === 'total');
-                                        
-                                        if (qtyIdx !== -1 && rateIdx !== -1 && amountIdx !== -1 && (ci === qtyIdx || ci === rateIdx)) {
+                                        const nc = [...editingTemplate.content]; nc[idx].headers[hi] = e.target.value;
+                                        setEditingTemplate({ ...editingTemplate, content: nc });
+                                      }}
+                                      className="w-full bg-transparent outline-none font-semibold text-center text-[11px] uppercase tracking-wider text-[var(--apple-gray-6)]"
+                                    />
+                                    <button
+                                      onClick={() => {
+                                        if (block.headers.length <= 1) return;
+                                        const nc = [...editingTemplate.content];
+                                        nc[idx].headers.splice(hi, 1);
+                                        nc[idx].rows.forEach(r => r.splice(hi, 1));
+                                        setEditingTemplate({ ...editingTemplate, content: nc });
+                                      }}
+                                      className="absolute -top-2 -right-2 w-5 h-5 bg-white border border-[var(--apple-gray-2)] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 hover:text-red-500 shadow-sm transition-all z-10"
+                                      title="Delete Column"
+                                    >
+                                      <Trash2 size={10} />
+                                    </button>
+                                  </th>
+                                ))}
+                                <th className="w-8 bg-[var(--apple-gray-1)]"></th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {block.rows.map((row, ri) => (
+                                <tr key={ri} className="border-b border-[var(--apple-gray-2)] last:border-none hover:bg-[var(--apple-gray-1)] transition-colors">
+                                  {row.map((cell, ci) => (
+                                    <td key={ci} className="p-0 border-r border-[var(--apple-gray-2)] last:border-none">
+                                      <input
+                                        value={cell}
+                                        onChange={e => {
+                                          const nc = [...editingTemplate.content];
+                                          nc[idx].rows[ri][ci] = e.target.value;
+
+                                          const headers = nc[idx].headers.map(h => h.toLowerCase());
+                                          const qtyIdx = headers.findIndex(h => h === 'qty' || h === 'quantity');
+                                          const rateIdx = headers.findIndex(h => h === 'rate' || h === 'mrp' || h === 'price');
+                                          const amountIdx = headers.findIndex(h => h === 'amount' || h === 'total');
+
+                                          if (qtyIdx !== -1 && rateIdx !== -1 && amountIdx !== -1 && (ci === qtyIdx || ci === rateIdx)) {
                                             const qty = parseFloat(nc[idx].rows[ri][qtyIdx]) || 0;
                                             const rate = parseFloat(nc[idx].rows[ri][rateIdx]) || 0;
                                             nc[idx].rows[ri][amountIdx] = (qty * rate).toFixed(2).replace(/\.00$/, '');
-                                        }
+                                          }
 
+                                          setEditingTemplate({ ...editingTemplate, content: nc });
+                                        }}
+                                        className="w-full py-2.5 px-3 bg-transparent outline-none text-center text-[13px] hover:bg-black/5 focus:bg-white focus:ring-1 focus:ring-[var(--emerald)] transition-all"
+                                      />
+                                    </td>
+                                  ))}
+                                  <td className="p-0 text-center w-8">
+                                    <button
+                                      onClick={() => {
+                                        const nc = [...editingTemplate.content]; nc[idx].rows.splice(ri, 1);
                                         setEditingTemplate({ ...editingTemplate, content: nc });
                                       }}
-                                      className="w-full py-2.5 px-3 bg-transparent outline-none text-center text-[13px] hover:bg-black/5 focus:bg-white focus:ring-1 focus:ring-[var(--emerald)] transition-all"
-                                    />
+                                      className="w-full h-full flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 hover:bg-red-50 py-2.5 transition-colors"
+                                      title="Delete Row"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
                                   </td>
-                                ))}
-                                <td className="p-0 text-center w-8">
-                                  <button
-                                    onClick={() => {
-                                      const nc = [...editingTemplate.content]; nc[idx].rows.splice(ri, 1);
-                                      setEditingTemplate({ ...editingTemplate, content: nc });
-                                    }}
-                                    className="w-full h-full flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 hover:bg-red-50 py-2.5 transition-colors"
-                                    title="Delete Row"
-                                  >
-                                    <Trash2 size={14} />
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                        <div className="flex border-t border-[var(--apple-gray-2)]">
-                          <button
-                            onClick={() => {
-                              const nc = [...editingTemplate.content]; nc[idx].rows.push(Array(block.headers.length).fill(''));
-                              setEditingTemplate({ ...editingTemplate, content: nc });
-                            }}
-                            className="flex-1 py-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--emerald)] hover:bg-[var(--emerald-light)] transition-colors border-r border-[var(--apple-gray-2)]"
-                          >
-                            + Add Row
-                          </button>
-                          <button
-                            onClick={() => {
-                              const nc = [...editingTemplate.content]; 
-                              nc[idx].headers.push('NEW COL');
-                              nc[idx].rows.forEach(row => row.push(''));
-                              setEditingTemplate({ ...editingTemplate, content: nc });
-                            }}
-                            className="flex-1 py-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--coral)] hover:bg-red-50 transition-colors"
-                          >
-                            + Add Col
-                          </button>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                          <div className="flex border-t border-[var(--apple-gray-2)]">
+                            <button
+                              onClick={() => {
+                                const nc = [...editingTemplate.content]; nc[idx].rows.push(Array(block.headers.length).fill(''));
+                                setEditingTemplate({ ...editingTemplate, content: nc });
+                              }}
+                              className="flex-1 py-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--emerald)] hover:bg-[var(--emerald-light)] transition-colors border-r border-[var(--apple-gray-2)]"
+                            >
+                              + Add Row
+                            </button>
+                            <button
+                              onClick={() => {
+                                const nc = [...editingTemplate.content];
+                                nc[idx].headers.push('NEW COL');
+                                nc[idx].rows.forEach(row => row.push(''));
+                                setEditingTemplate({ ...editingTemplate, content: nc });
+                              }}
+                              className="flex-1 py-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--coral)] hover:bg-red-50 transition-colors"
+                            >
+                              + Add Col
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
             )}
           </div>
         )}
@@ -1169,8 +1159,8 @@ function App() {
                   >
                     <ChevronLeft size={16} /> Library
                   </button>
-                  <button 
-                    onClick={() => setShowPreview(!showPreview)} 
+                  <button
+                    onClick={() => setShowPreview(!showPreview)}
                     className="px-3 py-1.5 border border-[var(--apple-gray-3)] rounded-lg text-[11px] font-semibold text-[var(--apple-gray-6)] hover:bg-[var(--apple-gray-1)] transition-colors"
                   >
                     {showPreview ? 'Hide Preview' : 'Show Preview'}
@@ -1237,7 +1227,7 @@ function App() {
                                 <tr>
                                   {block.headers.map((h, hi) => (
                                     <th key={hi} className="p-3 border-r border-[var(--apple-gray-2)] last:border-none relative group">
-                                      <input 
+                                      <input
                                         value={h}
                                         onChange={e => {
                                           const nc = [...draftContent]; nc[idx].headers[hi] = e.target.value;
@@ -1248,7 +1238,7 @@ function App() {
                                       />
                                       <button
                                         onClick={() => {
-                                          if(block.headers.length <= 1) return;
+                                          if (block.headers.length <= 1) return;
                                           const nc = [...draftContent];
                                           nc[idx].headers.splice(hi, 1);
                                           nc[idx].rows.forEach(r => r.splice(hi, 1));
@@ -1272,18 +1262,18 @@ function App() {
                                         <input
                                           value={cell}
                                           onChange={e => {
-                                            const nc = [...draftContent]; 
+                                            const nc = [...draftContent];
                                             nc[idx].rows[ri][ci] = e.target.value;
-                                            
+
                                             const headers = nc[idx].headers.map(h => h.toLowerCase());
                                             const qtyIdx = headers.findIndex(h => h === 'qty' || h === 'quantity');
                                             const rateIdx = headers.findIndex(h => h === 'rate' || h === 'mrp' || h === 'price');
                                             const amountIdx = headers.findIndex(h => h === 'amount' || h === 'total');
-                                            
+
                                             if (qtyIdx !== -1 && rateIdx !== -1 && amountIdx !== -1 && (ci === qtyIdx || ci === rateIdx)) {
-                                                const qty = parseFloat(nc[idx].rows[ri][qtyIdx]) || 0;
-                                                const rate = parseFloat(nc[idx].rows[ri][rateIdx]) || 0;
-                                                nc[idx].rows[ri][amountIdx] = (qty * rate).toFixed(2).replace(/\.00$/, '');
+                                              const qty = parseFloat(nc[idx].rows[ri][qtyIdx]) || 0;
+                                              const rate = parseFloat(nc[idx].rows[ri][rateIdx]) || 0;
+                                              nc[idx].rows[ri][amountIdx] = (qty * rate).toFixed(2).replace(/\.00$/, '');
                                             }
 
                                             setDraftContent(nc);
@@ -1320,7 +1310,7 @@ function App() {
                               </button>
                               <button
                                 onClick={() => {
-                                  const nc = [...draftContent]; 
+                                  const nc = [...draftContent];
                                   nc[idx].headers.push('New Col');
                                   nc[idx].rows.forEach(row => row.push(''));
                                   setDraftContent(nc);
@@ -1343,13 +1333,13 @@ function App() {
                       {['make', 'delivery', 'discount', 'gst', 'payment', 'validity'].map(term => (
                         <div key={term}>
                           <span className="text-[11px] font-semibold text-[var(--apple-gray-5)] uppercase block mb-1">{term}</span>
-                          <input 
+                          <input
                             type="text"
-                            name={term} 
-                            value={formData[term]} 
-                            onChange={handleInputChange} 
+                            name={term}
+                            value={formData[term]}
+                            onChange={handleInputChange}
                             placeholder={term === 'validity' ? 'DD/MM/YYYY' : ''}
-                            className="apple-input !px-3" 
+                            className="apple-input !px-3"
                           />
                         </div>
                       ))}
@@ -1360,9 +1350,9 @@ function App() {
                   {draftRequiresAttachment && (
                     <div className="space-y-4 pt-4">
                       <h3 className="apple-label border-b border-[var(--apple-gray-2)] pb-2">Brand PDF Attachment</h3>
-                      <select 
-                        name="attachmentLabel" 
-                        value={formData.attachmentLabel || ''} 
+                      <select
+                        name="attachmentLabel"
+                        value={formData.attachmentLabel || ''}
                         onChange={(e) => {
                           const val = e.target.value;
                           setFormData(prev => ({
@@ -1370,7 +1360,7 @@ function App() {
                             attachmentLabel: val,
                             make: prev.make === '' || prev.make === prev.attachmentLabel ? val : prev.make
                           }));
-                        }} 
+                        }}
                         className="apple-input cursor-pointer"
                       >
                         <option value="">-- Select Brand --</option>
@@ -1388,14 +1378,14 @@ function App() {
                 <button onClick={generatePDF} disabled={isGenerating} className="btn-primary flex-1">
                   {isGenerating ? 'Processing...' : <><Download size={18} /> Generate PDF</>}
                 </button>
-                <button 
+                <button
                   onClick={() => {
                     if (!formData.hospitalName.trim() || !formData.address.trim()) {
                       alert('Please enter Hospital Name and Hospital Address to enable email composition.');
                       return;
                     }
                     setShowEmailComposer(!showEmailComposer);
-                  }} 
+                  }}
                   className={`btn-outline !py-3 !px-4 ${showEmailComposer ? 'bg-[var(--apple-gray-1)]' : ''} ${(!formData.hospitalName.trim() || !formData.address.trim()) ? 'opacity-40 grayscale pointer-events-auto cursor-not-allowed' : ''}`}
                   title={(!formData.hospitalName.trim() || !formData.address.trim()) ? "Enter Hospital Name & Address to enable email" : "Compose Email"}
                 >
@@ -1429,23 +1419,23 @@ function App() {
                       {/* Recipient */}
                       <div className="flex items-center gap-4 border border-[var(--apple-gray-3)] px-4 py-3 bg-white focus-within:border-[var(--accent)] focus-within:ring-1 focus-within:ring-[var(--accent)] transition-all">
                         <span className="text-[13px] font-bold text-[var(--apple-gray-5)] w-10 uppercase tracking-wider">To</span>
-                        <input 
-                          type="email" 
-                          value={emailForm.to} 
-                          onChange={(e) => setEmailForm({...emailForm, to: e.target.value})}
-                          placeholder="hospital-representative@email.com" 
-                          className="flex-1 bg-transparent no-internal-border text-[15px] placeholder:text-[var(--apple-gray-4)]" 
+                        <input
+                          type="email"
+                          value={emailForm.to}
+                          onChange={(e) => setEmailForm({ ...emailForm, to: e.target.value })}
+                          placeholder="hospital-representative@email.com"
+                          className="flex-1 bg-transparent no-internal-border text-[15px] placeholder:text-[var(--apple-gray-4)]"
                         />
                       </div>
 
                       {/* Subject */}
                       <div className="flex items-center gap-4 border border-[var(--apple-gray-3)] px-4 py-3 bg-white focus-within:border-[var(--accent)] focus-within:ring-1 focus-within:ring-[var(--accent)] transition-all">
                         <span className="text-[13px] font-bold text-[var(--apple-gray-5)] w-10 uppercase tracking-wider">Sub</span>
-                        <input 
-                          type="text" 
-                          value={emailForm.subject} 
-                          onChange={(e) => setEmailForm({...emailForm, subject: e.target.value})}
-                          className="flex-1 bg-transparent no-internal-border text-[15px] font-semibold" 
+                        <input
+                          type="text"
+                          value={emailForm.subject}
+                          onChange={(e) => setEmailForm({ ...emailForm, subject: e.target.value })}
+                          className="flex-1 bg-transparent no-internal-border text-[15px] font-semibold"
                         />
                       </div>
 
@@ -1468,11 +1458,11 @@ function App() {
 
                       {/* Body */}
                       <div className="border border-[var(--apple-gray-3)] p-4 bg-white focus-within:border-[var(--accent)] focus-within:ring-1 focus-within:ring-[var(--accent)] transition-all">
-                        <textarea 
-                          value={emailForm.body} 
-                          onChange={(e) => setEmailForm({...emailForm, body: e.target.value})}
+                        <textarea
+                          value={emailForm.body}
+                          onChange={(e) => setEmailForm({ ...emailForm, body: e.target.value })}
                           placeholder="Type your message here..."
-                          className="w-full min-h-[300px] bg-transparent no-internal-border text-[15px] leading-relaxed resize-none" 
+                          className="w-full min-h-[300px] bg-transparent no-internal-border text-[15px] leading-relaxed resize-none"
                         />
                       </div>
 
@@ -1505,7 +1495,7 @@ function App() {
                               ))}
                             </div>
                           </div>
-                          
+
                           {/* Vendor Folders */}
                           {(driveFiles.vendor || []).map(folder => (
                             <div key={folder.id}>
@@ -1539,8 +1529,8 @@ function App() {
 
                     <div className="p-8 bg-[var(--apple-gray-1)] border-t border-[var(--apple-gray-2)] flex items-center justify-between">
                       <p className="text-[12px] text-[var(--apple-gray-5)] font-medium">Draft saved to cloud</p>
-                      <button 
-                        onClick={handleGlobalSendEmail} 
+                      <button
+                        onClick={handleGlobalSendEmail}
                         disabled={isSendingEmail}
                         className={`btn-primary !py-2.5 !px-8 ${isSendingEmail ? 'opacity-70 cursor-not-allowed' : ''}`}
                       >
@@ -1565,9 +1555,9 @@ function App() {
                             <span className="badge-gray">ATTACHMENT</span>
                             <span className="text-[13px] font-medium text-[var(--apple-gray-5)]">{selectedAtt.label} — {selectedAtt.fileName}</span>
                           </div>
-                          <embed 
-                            src={selectedAtt.data + '#toolbar=0&navpanes=0'} 
-                            type="application/pdf" 
+                          <embed
+                            src={selectedAtt.data + '#toolbar=0&navpanes=0'}
+                            type="application/pdf"
                             style={{ width: '178.5mm', height: '252.45mm', border: 'none', borderRadius: '4px', boxShadow: '0 4px 24px rgba(0,0,0,0.12)' }}
                           />
                         </div>
@@ -1591,9 +1581,9 @@ function App() {
                 </div>
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--apple-gray-4)] w-4 h-4" />
-                  <input 
-                    type="text" 
-                    placeholder="Search hospital or ref..." 
+                  <input
+                    type="text"
+                    placeholder="Search hospital or ref..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="apple-input !pl-10 !py-2.5 w-full md:w-[280px]"
@@ -1602,8 +1592,8 @@ function App() {
               </div>
 
               {(() => {
-                const filtered = quotationHistory.filter(item => 
-                  item.hospital.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                const filtered = quotationHistory.filter(item =>
+                  item.hospital.toLowerCase().includes(searchQuery.toLowerCase()) ||
                   item.ref.toLowerCase().includes(searchQuery.toLowerCase()) ||
                   item.templateName.toLowerCase().includes(searchQuery.toLowerCase())
                 );
@@ -1644,7 +1634,7 @@ function App() {
                               <div className="flex items-center justify-end gap-2">
                                 {item.formData && (
                                   <>
-                                    <button 
+                                    <button
                                       onClick={() => setRegeneratingItem(item)}
                                       disabled={isGenerating || regeneratingItem}
                                       className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-[var(--apple-gray-2)] rounded-lg text-[12px] font-semibold text-[var(--emerald)] hover:border-[var(--emerald)] hover:bg-[var(--emerald-light)] transition-colors disabled:opacity-50"
@@ -1652,7 +1642,7 @@ function App() {
                                     >
                                       <Download size={13} /> Download
                                     </button>
-                                    <button 
+                                    <button
                                       onClick={async () => {
                                         setRegeneratingItem({ ...item, _shareMode: true });
                                       }}
@@ -1690,7 +1680,7 @@ function App() {
                 </div>
                 <h2 className="text-[24px] font-semibold tracking-tight mb-2">Upload Price List</h2>
                 <p className="text-[15px] text-[var(--apple-gray-5)] mb-8">Select a PDF to map to a brand name.</p>
-                
+
                 <input type="file" accept=".pdf" onChange={handleFileUpload} className="hidden" id="admin-upload" />
                 <label htmlFor="admin-upload" className="btn-primary">
                   <Plus size={18} /> Select PDF
@@ -1711,13 +1701,13 @@ function App() {
                           <p className="text-[13px] text-[var(--apple-gray-5)] mt-1">{att.fileName}</p>
                         </div>
                       </div>
-                      <button 
+                      <button
                         onClick={() => {
                           confirmDelete(async () => {
                             setAttachments(attachments.filter(a => a.id !== att.id));
                             await syncItem('attachments', att, true);
                           });
-                        }} 
+                        }}
                         className="w-10 h-10 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 bg-[var(--apple-gray-1)] hover:bg-red-50 rounded-full transition-colors"
                       >
                         <Trash2 size={18} />
@@ -1837,10 +1827,12 @@ function App() {
                             <button onClick={(e) => { e.stopPropagation(); downloadFolderAsZip(folder); }} className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-[var(--apple-black)] rounded-lg transition-colors" title="Download folder as ZIP">
                               <Download size={14} />
                             </button>
-                            <button onClick={(e) => { e.stopPropagation(); confirmDelete(async () => {
-                              setDriveFiles(prev => ({ ...prev, vendor: prev.vendor.filter(f => f.id !== folder.id) }));
-                              await syncItem('drive_folders', folder, true);
-                            }); }} className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 rounded-lg transition-colors" title="Delete folder">
+                            <button onClick={(e) => {
+                              e.stopPropagation(); confirmDelete(async () => {
+                                setDriveFiles(prev => ({ ...prev, vendor: prev.vendor.filter(f => f.id !== folder.id) }));
+                                await syncItem('drive_folders', folder, true);
+                              });
+                            }} className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 rounded-lg transition-colors" title="Delete folder">
                               <Trash2 size={14} />
                             </button>
                           </div>
@@ -1991,13 +1983,58 @@ function App() {
                   </div>
                 </div>
               </div>
+
+              <div className="apple-card p-8 mt-8 border-2 border-red-100 bg-red-50/20">
+                <h3 className="text-[17px] font-bold text-red-600 mb-2 flex items-center gap-2">
+                  <Trash2 size={18} /> Data Management
+                </h3>
+                <p className="text-[13px] text-[var(--apple-gray-5)] mb-6">
+                  Use this to completely wipe all file records (Brands, Certificates, Vendor Docs) from the database and clear your cache.
+                </p>
+                <button
+                  onClick={async () => {
+                    const pwd = prompt('Type "PURGE" to confirm complete database wipe:');
+                    if (pwd !== 'PURGE') return;
+
+                    try {
+                      setSyncStatus('syncing');
+                      const collectionsToWipe = ['attachments', 'drive_srr', 'drive_folders', 'drive_vendor_files'];
+                      for (const col of collectionsToWipe) {
+                        const snap = await getDocs(collection(db, 'users', user.uid, col));
+                        const batch = writeBatch(db);
+                        snap.docs.forEach(d => batch.delete(d.ref));
+                        await batch.commit();
+                      }
+                      localStorage.removeItem('srr_attachments');
+                      localStorage.removeItem('srr_drive');
+                      alert('Database purged successfully! The app will now reload.');
+                      window.location.reload();
+                    } catch (err) {
+                      console.error('Purge failed:', err);
+                      alert('Purge failed. Check console for details.');
+                    }
+                  }}
+                  className="bg-red-500 hover:bg-red-600 text-white px-6 py-2.5 rounded-xl font-bold text-[14px] transition-colors flex items-center gap-2 shadow-sm"
+                >
+                  <Trash2 size={16} /> Hard Purge All Files
+                </button>
+              </div>
             </div>
           </div>
         )}
 
         {/* VIEW: EMAILER */}
         {view === 'emailer' && (
-          <EmailerView driveFiles={driveFiles} />
+          <div className="h-full relative">
+            <button
+              onClick={() => refreshData()}
+              className="absolute top-6 right-8 z-10 flex items-center gap-2 px-4 py-2 bg-white border border-[var(--apple-gray-3)] rounded-full text-[13px] font-bold text-[var(--apple-gray-6)] hover:bg-[var(--apple-gray-1)] transition-all shadow-sm"
+            >
+              <ArrowRight className={syncStatus === 'syncing' ? 'animate-spin' : ''} size={16} />
+              {syncStatus === 'syncing' ? 'Refreshing...' : 'Refresh Files'}
+            </button>
+            <EmailerView driveFiles={driveFiles} />
+          </div>
         )}
       </main>
 
@@ -2017,9 +2054,9 @@ function App() {
               </div>
               <span className="text-[17px] font-bold text-[var(--emerald)]">{Math.round(uploadProgress)}%</span>
             </div>
-            
+
             <div className="w-full h-2 bg-[var(--apple-gray-2)] rounded-full overflow-hidden">
-              <div 
+              <div
                 className="h-full bg-[var(--emerald)] transition-all duration-300 ease-out"
                 style={{ width: `${uploadProgress}%` }}
               />
