@@ -49,6 +49,9 @@ function App() {
   const [user, setUser] = useState(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [authError, setAuthError] = useState('');
+  const [syncStatus, setSyncStatus] = useState('saved');
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [isUploading, setIsUploading] = useState(false);
 
   useEffect(() => {
     if (!hasFirebaseConfig) {
@@ -228,16 +231,23 @@ function App() {
     }
   }, [quotationHistory]);
 
-  const syncItem = async (colName, item, isDelete = false, fileObject = null) => {
+  const syncItem = async (colName, item, isDelete = false, fileObject = null, onProgress = null) => {
     if (!user) return false;
     setSyncStatus('syncing');
+    if (fileObject && !isDelete) {
+      setIsUploading(true);
+      setUploadProgress(0);
+    }
     try {
       // Upload file to Firebase Storage if a file object is provided
       if (fileObject && !isDelete) {
         const validation = validateFile(fileObject);
         if (!validation.isValid) throw new Error(validation.error);
         const path = `users/${user.uid}/${colName}/${item.id}_${item.fileName}`;
-        const downloadUrl = await uploadFile(fileObject, path);
+        const downloadUrl = await uploadFile(fileObject, path, (p) => {
+          setUploadProgress(p);
+          if (onProgress) onProgress(p);
+        });
         item.data = downloadUrl;
         item.storagePath = path;
       }
@@ -251,10 +261,14 @@ function App() {
         await setDoc(itemRef, item);
       }
       setSyncStatus('saved');
+      if (fileObject && !isDelete) {
+        setTimeout(() => setIsUploading(false), 800);
+      }
       return true;
     } catch (err) {
       console.error(`Sync error (${colName}):`, err);
       setSyncStatus('error');
+      setIsUploading(false);
       alert(`Sync failed: ${err.message || 'Check your internet connection.'}`);
       return false;
     }
@@ -1641,31 +1655,7 @@ function App() {
                       </div>
                     </div>
                     <div>
-                      <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={(e) => {
-                        const file = e.target.files[0];
-                        if (!file) return;
-                        const label = prompt('Enter document name (e.g. GST Certificate):');
-                        if (!label) return;
-                        
-                        const reader = new FileReader();
-                        reader.onload = async (ev) => {
-                          const newFile = { 
-                            id: Date.now().toString(), 
-                            label, 
-                            data: ev.target.result, 
-                            fileName: file.name, 
-                            type: file.type, 
-                            uploadedAt: new Date().toLocaleDateString('en-GB') 
-                          };
-                          setDriveFiles(prev => ({ 
-                            ...prev, 
-                            srr: [...(prev.srr || []), newFile] 
-                          }));
-                          await syncItem('drive_srr', newFile);
-                        };
-                        reader.readAsDataURL(file);
-                        e.target.value = '';
-                      }} className="hidden" id="srr-drive-upload" />
+                      <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={(e) => handleDriveUpload(e, 'drive_srr')} className="hidden" id="srr-drive-upload" />
                       <label htmlFor="srr-drive-upload" className="btn-primary cursor-pointer !bg-[var(--emerald)] !text-[13px] !py-2 !px-4">
                         <Plus size={16} /> Upload
                       </label>
@@ -1775,29 +1765,7 @@ function App() {
                             <button onClick={() => downloadFolderAsZip(folder)} className="btn-outline !text-[12px] !py-1.5 !px-3">
                               <Download size={14} /> Download All
                             </button>
-                            <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={(e) => {
-                              const file = e.target.files[0];
-                              if (!file) return;
-                              const reader = new FileReader();
-                              reader.onload = async (ev) => {
-                                const newFile = { 
-                                  id: Date.now().toString(), 
-                                  folderId: folder.id,
-                                  label: file.name, 
-                                  data: ev.target.result, 
-                                  fileName: file.name, 
-                                  type: file.type, 
-                                  uploadedAt: new Date().toLocaleDateString('en-GB') 
-                                };
-                                setDriveFiles(prev => ({ 
-                                  ...prev, 
-                                  vendor: prev.vendor.map(f => f.id === folder.id ? { ...f, files: [...(f.files || []), newFile] } : f) 
-                                }));
-                                await syncItem('drive_vendor_files', newFile);
-                              };
-                              reader.readAsDataURL(file);
-                              e.target.value = '';
-                            }} className="hidden" id="vendor-folder-upload" />
+                            <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={(e) => handleDriveUpload(e, 'drive_vendor_files', folder.id)} className="hidden" id="vendor-folder-upload" />
                             <label htmlFor="vendor-folder-upload" className="btn-primary cursor-pointer !text-[12px] !py-1.5 !px-3">
                               <Plus size={14} /> Add File
                             </label>
@@ -1934,6 +1902,39 @@ function App() {
           <EmailerView driveFiles={driveFiles} />
         )}
       </main>
+
+      {/* UPLOAD PROGRESS OVERLAY */}
+      {isUploading && (
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 w-full max-w-sm px-4">
+          <div className="bg-white shadow-2xl border border-[var(--apple-gray-3)] rounded-2xl p-6 flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-4 duration-300">
+            <div className="flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center animate-pulse">
+                  <UploadCloud size={20} className="text-[var(--emerald)]" />
+                </div>
+                <div>
+                  <h4 className="text-[15px] font-bold">Uploading Document</h4>
+                  <p className="text-[12px] text-[var(--apple-gray-5)]">Please wait while we sync to Cloud</p>
+                </div>
+              </div>
+              <span className="text-[17px] font-bold text-[var(--emerald)]">{Math.round(uploadProgress)}%</span>
+            </div>
+            
+            <div className="w-full h-2 bg-[var(--apple-gray-2)] rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-[var(--emerald)] transition-all duration-300 ease-out"
+                style={{ width: `${uploadProgress}%` }}
+              />
+            </div>
+
+            {uploadProgress === 100 && (
+              <div className="flex items-center gap-2 text-[13px] font-bold text-[var(--emerald)] animate-in zoom-in duration-300">
+                <FileCheck size={16} /> Upload Complete!
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* HIDDEN REGENERATION TEMPLATE */}
       {regeneratingItem && (

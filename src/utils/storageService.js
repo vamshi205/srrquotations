@@ -1,16 +1,32 @@
-import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import { storage } from '../firebase';
 
 /**
- * Uploads a file to Firebase Storage
+ * Uploads a file to Firebase Storage with progress tracking
  * @param {File} file - File object to upload
- * @param {string} path - Storage path (e.g., 'users/UID/attachments/filename')
+ * @param {string} path - Storage path
+ * @param {Function} onProgress - Optional callback for progress percentage (0-100)
  * @returns {Promise<string>} - Download URL
  */
-export const uploadFile = async (file, path) => {
-  const storageRef = ref(storage, path);
-  const snapshot = await uploadBytes(storageRef, file);
-  return await getDownloadURL(snapshot.ref);
+export const uploadFile = (file, path, onProgress) => {
+  return new Promise((resolve, reject) => {
+    const storageRef = ref(storage, path);
+    const uploadTask = uploadBytesResumable(storageRef, file);
+
+    uploadTask.on('state_changed', 
+      (snapshot) => {
+        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+        if (onProgress) onProgress(progress);
+      }, 
+      (error) => {
+        reject(error);
+      }, 
+      async () => {
+        const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+        resolve(downloadURL);
+      }
+    );
+  });
 };
 
 /**
