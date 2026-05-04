@@ -12,6 +12,7 @@ import { doc, getDoc, setDoc, collection, getDocs, deleteDoc, query, orderBy, wr
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { validateFile } from './utils/fileValidation';
 import { uploadFile, deleteFile } from './utils/storageService';
+import EmailerView from './components/EmailerView';
 import { 
   Download, 
   Plus, 
@@ -700,6 +701,7 @@ function App() {
           <NavItem id="library" label="Library" />
           <NavItem id="history" label="History" />
           <NavItem id="drive" label="Drive" />
+          <NavItem id="emailer" label="Emailer" />
           <NavItem id="admin" label="Brands" />
           <NavItem id="settings" label="Settings" />
         </div>
@@ -1852,40 +1854,84 @@ function App() {
         {/* VIEW: SETTINGS */}
         {view === 'settings' && (
           <div className="h-full overflow-y-auto px-8 py-12 md:px-16 md:py-16">
-            <div className="max-w-2xl mx-auto">
-              <h1 className="apple-title-1 mb-2">Settings</h1>
-              <p className="apple-subtitle mb-12">Manage company details for the quotation header.</p>
+            <div className="max-w-4xl mx-auto">
+              <header className="mb-12">
+                <h1 className="apple-title-1">Settings</h1>
+                <p className="apple-subtitle">Manage your company profile and application preferences.</p>
+              </header>
 
-              <div className="apple-card p-8 space-y-6">
-                <div>
-                  <label className="apple-label">Business Name</label>
-                  <input type="text" value={companyData.name} onChange={(e) => setCompanyData({...companyData, name: e.target.value})} className="apple-input" />
-                </div>
-                <div>
-                  <label className="apple-label">Full Address</label>
-                  <textarea value={companyData.address} onChange={(e) => setCompanyData({...companyData, address: e.target.value})} rows="3" className="apple-input" />
-                </div>
-                <div className="grid grid-cols-2 gap-6">
-                  <div>
-                    <label className="apple-label">Phone Numbers</label>
-                    <input type="text" value={companyData.phone} onChange={(e) => setCompanyData({...companyData, phone: e.target.value})} className="apple-input" />
+              <div className="apple-card p-8">
+                <div className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label className="apple-label">Company Name</label>
+                      <input
+                        type="text"
+                        value={companyData.name}
+                        onChange={e => setCompanyData({ ...companyData, name: e.target.value })}
+                        className="apple-input"
+                      />
+                    </div>
+                    <div>
+                      <label className="apple-label">Email Address</label>
+                      <input
+                        type="email"
+                        value={companyData.email}
+                        onChange={e => setCompanyData({ ...companyData, email: e.target.value })}
+                        className="apple-input"
+                      />
+                    </div>
                   </div>
                   <div>
-                    <label className="apple-label">Email Address</label>
-                    <input type="text" value={companyData.email} onChange={(e) => setCompanyData({...companyData, email: e.target.value})} className="apple-input" />
+                    <label className="apple-label">Company Address</label>
+                    <textarea
+                      rows="3"
+                      value={companyData.address}
+                      onChange={e => setCompanyData({ ...companyData, address: e.target.value })}
+                      className="apple-input"
+                    />
                   </div>
-                </div>
-                <div>
-                  <label className="apple-label">Website</label>
-                  <input type="text" value={companyData.website} onChange={(e) => setCompanyData({...companyData, website: e.target.value})} className="apple-input" />
-                </div>
-                
-                <div className="pt-6 border-t border-[var(--apple-gray-2)]">
-                  <button onClick={() => setView('library')} className="btn-primary w-full">Save Changes</button>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label className="apple-label">Phone Numbers</label>
+                      <input
+                        type="text"
+                        value={companyData.phone}
+                        onChange={e => setCompanyData({ ...companyData, phone: e.target.value })}
+                        className="apple-input"
+                      />
+                    </div>
+                    <div>
+                      <label className="apple-label">Website</label>
+                      <input
+                        type="text"
+                        value={companyData.website}
+                        onChange={e => setCompanyData({ ...companyData, website: e.target.value })}
+                        className="apple-input"
+                      />
+                    </div>
+                  </div>
+                  <div className="pt-6 border-t border-[var(--apple-gray-2)]">
+                    <button
+                      onClick={() => {
+                        localStorage.setItem('srr_company_data', JSON.stringify(companyData));
+                        setDoc(doc(db, 'users', user.uid), { companyData }, { merge: true });
+                        alert('Settings saved successfully!');
+                      }}
+                      className="btn-primary"
+                    >
+                      <Save size={18} /> Save Settings
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
+        )}
+
+        {/* VIEW: EMAILER */}
+        {view === 'emailer' && (
+          <EmailerView driveFiles={driveFiles} />
         )}
       </main>
 
