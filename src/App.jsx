@@ -286,6 +286,52 @@ function App() {
     body: '',
     selectedDriveFiles: [] // Array of file objects
   });
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
+
+  const handleGlobalSendEmail = async () => {
+    if (!emailForm.to) return alert('Please enter recipient email.');
+    setIsSendingEmail(true);
+    const scriptUrl = import.meta.env.VITE_GMAIL_SCRIPT_URL;
+    const token = import.meta.env.VITE_GMAIL_TOKEN;
+
+    if (!scriptUrl) {
+      const { to, subject, body } = emailForm;
+      const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(to)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      window.open(gmailUrl, '_blank');
+      setIsSendingEmail(false);
+      return;
+    }
+
+    const filesToAttach = (emailForm.selectedDriveFiles || []).map(f => ({
+      fileName: f.fileName,
+      url: f.data
+    }));
+
+    try {
+      await fetch(scriptUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: token,
+          to: emailForm.to,
+          subject: emailForm.subject,
+          body: emailForm.body,
+          files: filesToAttach
+        })
+      });
+      alert('Email sent successfully via srrorthoplus999@gmail.com!');
+      setShowEmailComposer(false);
+    } catch (err) {
+      console.error('Email error:', err);
+      alert('Connection issue. Falling back to manual Gmail.');
+      const { to, subject, body } = emailForm;
+      const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(to)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      window.open(gmailUrl, '_blank');
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
 
   const confirmDelete = (callback) => {
     const pw = prompt('Enter admin password to delete:');
@@ -1447,10 +1493,11 @@ function App() {
                     <div className="p-8 bg-[var(--apple-gray-1)] border-t border-[var(--apple-gray-2)] flex items-center justify-between">
                       <p className="text-[12px] text-[var(--apple-gray-5)] font-medium">Draft saved to cloud</p>
                       <button 
-                        onClick={() => alert('Email integration coming soon! (Configuration required)')} 
-                        className="btn-primary !py-2.5 !px-8"
+                        onClick={handleGlobalSendEmail} 
+                        disabled={isSendingEmail}
+                        className={`btn-primary !py-2.5 !px-8 ${isSendingEmail ? 'opacity-70 cursor-not-allowed' : ''}`}
                       >
-                        Send Message
+                        {isSendingEmail ? 'Sending...' : 'Send Message'}
                       </button>
                     </div>
                   </div>
