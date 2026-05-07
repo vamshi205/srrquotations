@@ -42,7 +42,8 @@ import {
   Award,
   FileCheck,
   Mail,
-  CheckSquare
+  CheckSquare,
+  Menu
 } from 'lucide-react';
 
 function App() {
