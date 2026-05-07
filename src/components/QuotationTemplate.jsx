@@ -131,9 +131,28 @@ const QuotationTemplate = memo(({ id = "quotation-template", data, company, cont
                   <tbody>
                     {block.rows.map((row, ri) => (
                       <tr key={ri}>
-                        {row.map((cell, ci) => (
-                          <td key={ci} className="py-1 px-2 text-center text-[10pt]" style={{ border: '1px solid #111' }}>{cell}</td>
-                        ))}
+                        {row.map((cell, ci) => {
+                          const isLong = (cell || '').toString().length > 30 || (cell || '').toString().includes('\n');
+                          const lines = (cell || '').toString().split('\n');
+                          
+                          return (
+                            <td 
+                              key={ci} 
+                              className={`py-1.5 px-3 text-[10pt] leading-tight ${isLong ? 'text-left' : 'text-center'}`} 
+                              style={{ border: '1px solid #111', verticalAlign: 'top' }}
+                            >
+                              {lines.map((line, li) => {
+                                const isBullet = line.trim().startsWith('-') || line.trim().startsWith('*');
+                                return (
+                                  <div key={li} className={isBullet ? 'pl-3 relative' : ''}>
+                                    {isBullet && <span className="absolute left-0">•</span>}
+                                    {isBullet ? line.trim().substring(1).trim() : line}
+                                  </div>
+                                );
+                              })}
+                            </td>
+                          );
+                        })}
                       </tr>
                     ))}
                     {(() => {

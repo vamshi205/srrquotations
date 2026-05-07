@@ -82,14 +82,29 @@ function App() {
       if (data) {
         if (data.companyData) setCompanyData(data.companyData);
         
-        // Only overwrite templates if Firestore actually has some. 
-        // This prevents an empty Firestore from wiping out our hardcoded defaults.
+        // 1. Templates: Always trust the backend.
         if (data.templates && data.templates.length > 0) {
           setTemplates(data.templates);
-        } else if (templates.length > 0 && currentUser) {
-          // If Firestore is empty but we have local/default templates, seed Firestore!
-          console.log("Seeding Firestore with default templates...");
-          templates.forEach(t => saveTemplate(t));
+        } else if (currentUser) {
+          // If Firestore is empty, seed it with a professional default template
+          const defaultTemplate = {
+            id: 'default-' + Date.now(),
+            name: 'Standard Implants',
+            description: 'Standard quotation for surgical implants.',
+            subject: 'Quotation for Orthopedic Implants & instruments',
+            defaultMake: '',
+            defaultDelivery: 'Immediate',
+            defaultDiscount: '40%',
+            defaultGst: '5%',
+            defaultPayment: '30 days',
+            defaultValidity: '31/03/2027',
+            content: [
+              { type: 'text', value: 'With reference to the subject cited above we are herewith submitting our lowest quotation for the enclosed Orthopedic Implants & instruments under the following terms& conditions. Please find the same.' }
+            ]
+          };
+          console.log("Seeding Firestore with default template...");
+          await saveTemplate(defaultTemplate);
+          setTemplates([defaultTemplate]);
         }
 
         if (data.history) setQuotationHistory(data.history);
@@ -220,29 +235,7 @@ function App() {
 
 
 
-  const [templates, setTemplates] = useState(() => {
-    const saved = localStorage.getItem('srr_templates');
-    const parsed = saved ? JSON.parse(saved) : [];
-    // If no templates at all, use the hardcoded default
-    if (parsed.length === 0) {
-      return [{
-        id: 'default',
-        name: 'Standard Implants',
-        description: 'Standard quotation for surgical implants.',
-        subject: 'Quotation for Orthopedic Implants & instruments',
-        defaultMake: '',
-        defaultDelivery: 'Immediate',
-        defaultDiscount: '40%',
-        defaultGst: '5%',
-        defaultPayment: '30 days',
-        defaultValidity: '31/03/2027',
-        content: [
-          { type: 'text', value: 'With reference to the subject cited above we are herewith submitting our lowest quotation for the enclosed Orthopedic Implants & instruments under the following terms& conditions. Please find the same.' }
-        ]
-      }];
-    }
-    return parsed;
-  });
+  const [templates, setTemplates] = useState([]);
 
   const [quotationHistory, setQuotationHistory] = useState(() => {
     const saved = localStorage.getItem('srr_history');
@@ -1049,8 +1042,7 @@ function App() {
                       if (success) {
                         // 1. Update local state
                         setTemplates(updated);
-                        // 2. Force immediate LocalStorage update
-                        localStorage.setItem('srr_templates', JSON.stringify(updated));
+                        // 2. Clear editor
                         setSyncStatus('saved');
                         setEditingTemplate(null);
                         setView('library');
@@ -1076,7 +1068,7 @@ function App() {
             {/* Right Canvas */}
             {showPreview && (
               <div className="flex-1 bg-[var(--apple-bg)] overflow-y-auto p-12">
-                <div className="max-w-3xl mx-auto space-y-8">
+                <div className="max-w-6xl mx-auto space-y-8">
                   {(editingTemplate?.content || []).length === 0 && (
                     <div className="text-center py-32 opacity-40">
                       <Database size={48} className="mx-auto mb-4" />
@@ -1155,29 +1147,45 @@ function App() {
                                 <tr key={ri} className="border-b border-[var(--apple-gray-2)] last:border-none hover:bg-[var(--apple-gray-1)] transition-colors">
                                   {row.map((cell, ci) => (
                                     <td key={ci} className="p-0 border-r border-[var(--apple-gray-2)] last:border-none">
-                                      <input
-                                        value={cell}
-                                        onChange={e => {
-                                          const nc = [...editingTemplate.content];
-                                          const newRows = nc[idx].rows.map(r => [...r]);
-                                          newRows[ri][ci] = e.target.value;
-                                          
-                                          const headers = nc[idx].headers.map(h => h.toLowerCase());
-                                          const qtyIdx = headers.findIndex(h => h === 'qty' || h === 'quantity');
-                                          const rateIdx = headers.findIndex(h => h === 'rate' || h === 'mrp' || h === 'price');
-                                          const amountIdx = headers.findIndex(h => h === 'amount' || h === 'total');
+                                      {block.headers[ci]?.toLowerCase().includes('item') || block.headers[ci]?.toLowerCase().includes('desc') ? (
+                                        <textarea
+                                          value={cell}
+                                          rows={cell.toString().split('\n').length || 1}
+                                          onChange={e => {
+                                            const nc = [...editingTemplate.content];
+                                            const newRows = nc[idx].rows.map(r => [...r]);
+                                            newRows[ri][ci] = e.target.value;
+                                            nc[idx] = { ...nc[idx], rows: newRows };
+                                            setEditingTemplate({ ...editingTemplate, content: nc });
+                                          }}
+                                          className="w-full py-2.5 px-3 bg-transparent outline-none text-left text-[13px] hover:bg-black/5 focus:bg-white focus:ring-1 focus:ring-[var(--emerald)] transition-all resize-none overflow-hidden"
+                                          placeholder="Enter set details..."
+                                        />
+                                      ) : (
+                                        <input
+                                          value={cell}
+                                          onChange={e => {
+                                            const nc = [...editingTemplate.content];
+                                            const newRows = nc[idx].rows.map(r => [...r]);
+                                            newRows[ri][ci] = e.target.value;
+                                            
+                                            const headers = nc[idx].headers.map(h => h.toLowerCase());
+                                            const qtyIdx = headers.findIndex(h => h === 'qty' || h === 'quantity');
+                                            const rateIdx = headers.findIndex(h => h === 'rate' || h === 'mrp' || h === 'price');
+                                            const amountIdx = headers.findIndex(h => h === 'amount' || h === 'total');
 
-                                          if (qtyIdx !== -1 && rateIdx !== -1 && amountIdx !== -1 && (ci === qtyIdx || ci === rateIdx)) {
-                                            const qty = parseFloat(newRows[ri][qtyIdx]) || 0;
-                                            const rate = parseFloat(newRows[ri][rateIdx]) || 0;
-                                            newRows[ri][amountIdx] = (qty * rate).toFixed(2).replace(/\.00$/, '');
-                                          }
+                                            if (qtyIdx !== -1 && rateIdx !== -1 && amountIdx !== -1 && (ci === qtyIdx || ci === rateIdx)) {
+                                              const qty = parseFloat(newRows[ri][qtyIdx]) || 0;
+                                              const rate = parseFloat(newRows[ri][rateIdx]) || 0;
+                                              newRows[ri][amountIdx] = (qty * rate).toFixed(2).replace(/\.00$/, '');
+                                            }
 
-                                          nc[idx] = { ...nc[idx], rows: newRows };
-                                          setEditingTemplate({ ...editingTemplate, content: nc });
-                                        }}
-                                        className="w-full py-2.5 px-3 bg-transparent outline-none text-center text-[13px] hover:bg-black/5 focus:bg-white focus:ring-1 focus:ring-[var(--emerald)] transition-all"
-                                      />
+                                            nc[idx] = { ...nc[idx], rows: newRows };
+                                            setEditingTemplate({ ...editingTemplate, content: nc });
+                                          }}
+                                          className="w-full py-2.5 px-3 bg-transparent outline-none text-center text-[13px] hover:bg-black/5 focus:bg-white focus:ring-1 focus:ring-[var(--emerald)] transition-all"
+                                        />
+                                      )}
                                     </td>
                                   ))}
                                   <td className="p-0 text-center w-8">
@@ -1361,29 +1369,45 @@ function App() {
                                   <tr key={ri} className="border-b border-[var(--apple-gray-2)] last:border-none hover:bg-[var(--apple-gray-1)] transition-colors">
                                     {row.map((cell, ci) => (
                                       <td key={ci} className="p-0 border-r border-[var(--apple-gray-2)] last:border-none">
-                                        <input
-                                          value={cell}
-                                          onChange={e => {
-                                            const nc = [...draftContent];
-                                            const newRows = nc[idx].rows.map(r => [...r]);
-                                            newRows[ri][ci] = e.target.value;
+                                        {block.headers[ci]?.toLowerCase().includes('item') || block.headers[ci]?.toLowerCase().includes('desc') ? (
+                                          <textarea
+                                            value={cell}
+                                            rows={cell.toString().split('\n').length || 1}
+                                            onChange={e => {
+                                              const nc = [...draftContent];
+                                              const newRows = nc[idx].rows.map(r => [...r]);
+                                              newRows[ri][ci] = e.target.value;
+                                              nc[idx] = { ...nc[idx], rows: newRows };
+                                              setDraftContent(nc);
+                                            }}
+                                            className="w-full py-2.5 px-3 bg-transparent outline-none text-left text-[13px] hover:bg-black/5 focus:bg-white focus:ring-1 focus:ring-[var(--emerald)] transition-all resize-none overflow-hidden"
+                                            placeholder="Enter set details..."
+                                          />
+                                        ) : (
+                                          <input
+                                            value={cell}
+                                            onChange={e => {
+                                              const nc = [...draftContent];
+                                              const newRows = nc[idx].rows.map(r => [...r]);
+                                              newRows[ri][ci] = e.target.value;
 
-                                            const headers = nc[idx].headers.map(h => h.toLowerCase());
-                                            const qtyIdx = headers.findIndex(h => h === 'qty' || h === 'quantity');
-                                            const rateIdx = headers.findIndex(h => h === 'rate' || h === 'mrp' || h === 'price');
-                                            const amountIdx = headers.findIndex(h => h === 'amount' || h === 'total');
+                                              const headers = nc[idx].headers.map(h => h.toLowerCase());
+                                              const qtyIdx = headers.findIndex(h => h === 'qty' || h === 'quantity');
+                                              const rateIdx = headers.findIndex(h => h === 'rate' || h === 'mrp' || h === 'price');
+                                              const amountIdx = headers.findIndex(h => h === 'amount' || h === 'total');
 
-                                            if (qtyIdx !== -1 && rateIdx !== -1 && amountIdx !== -1 && (ci === qtyIdx || ci === rateIdx)) {
-                                              const qty = parseFloat(newRows[ri][qtyIdx]) || 0;
-                                              const rate = parseFloat(newRows[ri][rateIdx]) || 0;
-                                              newRows[ri][amountIdx] = (qty * rate).toFixed(2).replace(/\.00$/, '');
-                                            }
+                                              if (qtyIdx !== -1 && rateIdx !== -1 && amountIdx !== -1 && (ci === qtyIdx || ci === rateIdx)) {
+                                                const qty = parseFloat(newRows[ri][qtyIdx]) || 0;
+                                                const rate = parseFloat(newRows[ri][rateIdx]) || 0;
+                                                newRows[ri][amountIdx] = (qty * rate).toFixed(2).replace(/\.00$/, '');
+                                              }
 
-                                            nc[idx] = { ...nc[idx], rows: newRows };
-                                            setDraftContent(nc);
-                                          }}
-                                          className="w-full py-2.5 px-3 bg-transparent outline-none text-center text-[13px] hover:bg-black/5 focus:bg-white focus:ring-1 focus:ring-[var(--emerald)] transition-all"
-                                        />
+                                              nc[idx] = { ...nc[idx], rows: newRows };
+                                              setDraftContent(nc);
+                                            }}
+                                            className="w-full py-2.5 px-3 bg-transparent outline-none text-center text-[13px] hover:bg-black/5 focus:bg-white focus:ring-1 focus:ring-[var(--emerald)] transition-all"
+                                          />
+                                        )}
                                       </td>
                                     ))}
                                     <td className="p-0 text-center w-8">
@@ -1957,7 +1981,7 @@ function App() {
         {/* VIEW: PRICE LISTS */}
         {view === 'pricelists' && (
           <div className="h-full overflow-y-auto px-8 py-12 md:px-16 md:py-16">
-            <div className="max-w-3xl mx-auto">
+            <div className="max-w-6xl mx-auto">
               <header className="mb-12">
                 <h1 className="apple-title-1 mb-2">Price Lists</h1>
                 <p className="apple-subtitle">Manage and access manufacturer price lists.</p>

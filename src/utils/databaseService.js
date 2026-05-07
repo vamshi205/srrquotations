@@ -32,7 +32,12 @@ export const saveCompanyData = async (data) => {
 export const saveTemplate = async (template) => {
   try {
     const docRef = doc(db, 'templates', template.id);
-    await setDoc(docRef, template);
+    // Sanitize for Firestore (No nested arrays allowed)
+    const sanitized = {
+      ...template,
+      content: JSON.stringify(template.content || [])
+    };
+    await setDoc(docRef, sanitized);
     return true;
   } catch (err) {
     console.error('Firestore Save Error (Template):', err);
@@ -60,7 +65,12 @@ export const deleteTemplate = async (templateId) => {
 export const saveHistoryItem = async (item) => {
   try {
     const docRef = doc(db, 'history', item.id);
-    await setDoc(docRef, item);
+    // Sanitize for Firestore (No nested arrays allowed)
+    const sanitized = {
+      ...item,
+      content: JSON.stringify(item.content || [])
+    };
+    await setDoc(docRef, sanitized);
     return true;
   } catch (err) {
     console.error('Firestore Save Error (History):', err);
@@ -80,12 +90,28 @@ export const loadDatabase = async () => {
 
     // Load Templates
     const templatesSnap = await getDocs(collection(db, 'templates'));
-    const templates = templatesSnap.docs.map(doc => doc.data());
+    const templates = templatesSnap.docs.map(doc => {
+      const data = doc.data();
+      try {
+        // Unpack sanitized content
+        return { ...data, content: typeof data.content === 'string' ? JSON.parse(data.content) : (data.content || []) };
+      } catch (e) {
+        return data;
+      }
+    });
 
     // Load History (Limited to recent 100 for performance)
     const historyQuery = query(collection(db, 'history'), orderBy('id', 'desc'), limit(100));
     const historySnap = await getDocs(historyQuery);
-    const history = historySnap.docs.map(doc => doc.data());
+    const history = historySnap.docs.map(doc => {
+      const data = doc.data();
+      try {
+        // Unpack sanitized content
+        return { ...data, content: typeof data.content === 'string' ? JSON.parse(data.content) : (data.content || []) };
+      } catch (e) {
+        return data;
+      }
+    });
 
     // Load Price Lists
     const plSnap = await getDocs(collection(db, 'priceLists'));
