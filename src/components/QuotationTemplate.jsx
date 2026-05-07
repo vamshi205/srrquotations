@@ -1,8 +1,36 @@
 import React, { memo } from 'react';
 
 const QuotationTemplate = memo(({ id = "quotation-template", data, company, content }) => {
-  const { hospitalName, address, date, referenceNumber, discount, payment, gst, validity, make, delivery, subject } = data;
+  const { hospitalName, address, date, referenceNumber, discount, payment, gst, validity, make, delivery, subject, lineSpacing = 'standard' } = data;
   const { name: companyName, address: companyAddress, phone: companyPhone, email: companyEmail, website: companyWebsite } = company;
+
+  // Dynamic Spacing Config
+  const spacing = {
+    compact: {
+      leading: 'leading-[1.1]',
+      tablePy: 'py-0.5',
+      tablePx: 'px-2',
+      gap: 'mb-2',
+      subGap: 'mb-1',
+      fontSize: 'text-[9.5pt]'
+    },
+    standard: {
+      leading: 'leading-[1.3]',
+      tablePy: 'py-1.5',
+      tablePx: 'px-3',
+      gap: 'mb-4',
+      subGap: 'mb-2',
+      fontSize: 'text-[10pt]'
+    },
+    relaxed: {
+      leading: 'leading-[1.6]',
+      tablePy: 'py-3',
+      tablePx: 'px-4',
+      gap: 'mb-8',
+      subGap: 'mb-4',
+      fontSize: 'text-[11pt]'
+    }
+  }[lineSpacing] || spacing.standard;
 
   const numberToWords = (num) => {
     if (num === 0) return 'Zero';
@@ -72,7 +100,12 @@ const QuotationTemplate = memo(({ id = "quotation-template", data, company, cont
       {/* Header */}
       <div className="flex justify-between items-center mb-2">
         <div className="flex-1">
-          <h1 className="text-[20pt] font-bold text-slate-900 leading-tight uppercase whitespace-nowrap">{companyName}</h1>
+          <h1 
+            className="text-[17pt] text-slate-900 leading-tight uppercase whitespace-nowrap"
+            style={{ fontFamily: "'Jost', sans-serif", fontWeight: 800, letterSpacing: '-0.02em' }}
+          >
+            {companyName}
+          </h1>
           <div className="text-[9pt] text-slate-700 font-medium mt-1 leading-[1.15]">
             <p>{companyAddress}</p>
             <p>Phone: {companyPhone}</p>
@@ -80,18 +113,18 @@ const QuotationTemplate = memo(({ id = "quotation-template", data, company, cont
           </div>
         </div>
         <div className="w-[50mm] ml-4 flex justify-end">
-          <img src="/logo.png" alt="Logo" className="w-full object-contain max-h-[28mm]" onError={(e) => e.target.style.display = 'none'} />
+          <img src="/logo.png" alt="Logo" className="w-full object-contain max-h-[20mm]" onError={(e) => e.target.style.display = 'none'} />
         </div>
       </div>
 
       <div className="w-full h-[1.5px] bg-slate-900 mb-3"></div>
 
-      <div className="flex justify-between items-center mb-3 text-[11pt]">
+      <div className={`flex justify-between items-center ${spacing.gap} text-[11pt]`}>
         <div className="font-bold">Ref No: {referenceNumber}</div>
         <div className="font-bold text-right">Date: {formatDate(date)}</div>
       </div>
 
-      <div className="mb-3 text-[11pt]">
+      <div className={`mb-2 text-[11pt]`}>
         <p className="font-bold mb-1">To</p>
         <div className="max-w-md">
           <p className="font-bold uppercase text-[12pt] mb-1">{hospitalName || '[HOSPITAL NAME]'}</p>
@@ -103,7 +136,7 @@ const QuotationTemplate = memo(({ id = "quotation-template", data, company, cont
         </div>
       </div>
 
-      <div className="mb-4 text-center text-[11pt]">
+      <div className="mb-2 text-center text-[11pt]">
         <p className="font-bold mb-0.5 underline">Sub : {(subject || 'Quotation for Orthopedic Implants & instruments').replace(/^Sub\s*:\s*/i, '')}</p>
         <p className="font-bold">Kind attn: Department purchase</p>
       </div>
@@ -132,13 +165,18 @@ const QuotationTemplate = memo(({ id = "quotation-template", data, company, cont
                     {block.rows.map((row, ri) => (
                       <tr key={ri}>
                         {row.map((cell, ci) => {
+                          const headerName = (block.headers[ci] || '').toLowerCase();
+                          const isItemCol = headerName.includes('item') || headerName.includes('desc') || headerName.includes('description');
                           const isLong = (cell || '').toString().length > 30 || (cell || '').toString().includes('\n');
                           const lines = (cell || '').toString().split('\n');
+                          const hasBullets = lines.some(line => line.trim().startsWith('-') || line.trim().startsWith('*'));
+                          
+                          const shouldLeftAlign = isLong || isItemCol || hasBullets;
                           
                           return (
                             <td 
                               key={ci} 
-                              className={`py-1.5 px-3 text-[10pt] leading-tight ${isLong ? 'text-left' : 'text-center'}`} 
+                              className={`${spacing.tablePy} ${spacing.tablePx} ${spacing.fontSize} ${spacing.leading} ${shouldLeftAlign ? 'text-left' : 'text-center'}`} 
                               style={{ border: '1px solid #111', verticalAlign: 'top' }}
                             >
                               {lines.map((line, li) => {
@@ -207,37 +245,38 @@ const QuotationTemplate = memo(({ id = "quotation-template", data, company, cont
       </div>
 
       {/* Footer / Terms Section (Remains Static) */}
-      <div className="mt-4 border-t border-slate-200 pt-4">
-        <p className="font-bold underline mb-2 text-[11pt]">Terms and Conditions:</p>
-        <table className="w-full text-[11pt] leading-[1.5] mb-3">
+      <div className="mt-1 pt-1">
+        <p className="font-bold underline mb-1 text-[11pt]">Terms and Conditions:</p>
+        <table className={`w-full text-[11pt] ${spacing.leading} ${spacing.subGap}`}>
           <tbody>
-            {make && <tr><td className="w-32 font-bold">Make</td><td className="w-4 text-center">:</td><td>{make}</td></tr>}
-            {delivery && <tr><td className="w-32 font-bold">Delivery</td><td className="w-4 text-center">:</td><td>{delivery}</td></tr>}
-            {payment && <tr><td className="w-32 font-bold">Payment</td><td className="w-4 text-center">:</td><td>{payment}</td></tr>}
-            {gst && <tr><td className="w-32 font-bold">GST</td><td className="w-4 text-center">:</td><td>{gst}</td></tr>}
-            {discount && <tr><td className="w-32 font-bold">Discount</td><td className="w-4 text-center">:</td><td><span className="bg-yellow-200 font-bold px-1.5 border border-yellow-400">{discount} on MRP Price</span></td></tr>}
-            {validity && <tr><td className="w-32 font-bold">Validity</td><td className="w-4 text-center">:</td><td>{formatDate(validity)}</td></tr>}
+            {make && <tr><td className="w-32 font-bold py-0.5">Make</td><td className="w-4 text-center">:</td><td>{make}</td></tr>}
+            {delivery && <tr><td className="w-32 font-bold py-0.5">Delivery</td><td className="w-4 text-center">:</td><td>{delivery}</td></tr>}
+            {payment && <tr><td className="w-32 font-bold py-0.5">Payment</td><td className="w-4 text-center">:</td><td>{payment}</td></tr>}
+            {gst && <tr><td className="w-32 font-bold py-0.5">GST</td><td className="w-4 text-center">:</td><td>{gst}</td></tr>}
+            {discount && <tr><td className="w-32 font-bold py-0.5">Discount</td><td className="w-4 text-center">:</td><td><span className="bg-yellow-200 font-bold px-1.5 border border-yellow-400">{discount} on MRP Price</span></td></tr>}
+            {validity && <tr><td className="w-32 font-bold py-0.5">Validity</td><td className="w-4 text-center">:</td><td>{formatDate(validity)}</td></tr>}
           </tbody>
         </table>
 
-        <div className="mb-4 text-[11pt] leading-[1.5]">
+        <div className={`${spacing.subGap} text-[11pt] ${spacing.leading}`}>
           <p>We look forward to receive your valuable orders assuring you the best service all the time.</p>
           <p>Thanking you,</p>
         </div>
 
-        <div className="flex justify-between items-end">
+        <div className="flex justify-between items-end gap-10">
           <div className="flex-1">
             <p className="font-bold underline mb-2 text-[10pt]">Bank Details:</p>
-            <div className="grid grid-cols-1 text-[9pt] leading-[1.15]">
-              <p><span className="font-bold">Name:</span> <span className="uppercase">{companyName}</span></p>
-              <p><span className="font-bold">Bank:</span> HDFC, KALYAN NAGAR | <span className="font-bold">A/C:</span> 50200095456569</p>
+            <div className="text-[9pt] leading-[1.3]">
+              <p><span className="font-bold">NAME:</span> <span className="uppercase">{companyName}</span></p>
+              <p><span className="font-bold">A/C NO:</span> <span className="bg-yellow-100 font-bold border-b border-black px-1">50200095456569</span></p>
+              <p><span className="font-bold">BANK NAME:</span> HDFC BANK, KALYAN NAGAR</p>
               <p><span className="font-bold">IFSC:</span> HDFC0004348</p>
             </div>
           </div>
-          <div className="text-center w-64">
+          <div className="text-center w-72">
             <p className="font-bold text-[10pt]">For {companyName.toUpperCase()}</p>
-            <div className="h-16"></div>
-            <p className="font-bold text-[11pt]">(A. Padmavathi)</p>
+            <div className="h-12"></div>
+            <p className="font-bold text-[11pt] border-t border-black pt-1">(A. Padmavathi)</p>
             <p className="text-[9pt] font-medium italic">Proprietor</p>
           </div>
         </div>

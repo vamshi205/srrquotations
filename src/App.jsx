@@ -56,6 +56,8 @@ function App() {
   const [previewPdfUrl, setPreviewPdfUrl] = useState(null);
   const [pdfCache, setPdfCache] = useState({}); // Legacy, will use Ref for speed
   const pdfCacheRef = useRef({}); // { fileId/url: Uint8Array }
+  const [isDesignerMaximized, setIsDesignerMaximized] = useState(false);
+  const [isDraftingMaximized, setIsDraftingMaximized] = useState(false);
 
   useEffect(() => {
     if (!hasFirebaseConfig) {
@@ -208,7 +210,8 @@ function App() {
     validity: '31/03/2027',
     make: '',
     delivery: '',
-    selectedTemplateId: ''
+    selectedTemplateId: '',
+    lineSpacing: 'standard'
   });
 
   const [draftContent, setDraftContent] = useState([]);
@@ -905,7 +908,7 @@ function App() {
         {view === 'builder' && (
           <div className="flex h-full overflow-hidden">
             {/* Left Properties Panel */}
-            <div className={`${showPreview ? 'w-[450px]' : 'flex-1'} bg-white border-r border-[var(--apple-gray-2)] flex flex-col overflow-y-auto transition-all duration-300`}>
+            <div className={`${isDesignerMaximized ? 'w-0 overflow-hidden opacity-0 p-0' : (showPreview ? 'w-[450px]' : 'flex-1')} bg-white border-r border-[var(--apple-gray-2)] flex flex-col overflow-y-auto transition-all duration-300`}>
               <div className="p-8 pb-4">
                 <div className="flex justify-between items-center mb-8">
                   <button
@@ -914,12 +917,21 @@ function App() {
                   >
                     <ChevronLeft size={16} /> Library
                   </button>
-                  <button
-                    onClick={() => setShowPreview(!showPreview)}
-                    className="px-3 py-1.5 border border-[var(--apple-gray-3)] rounded-lg text-[11px] font-semibold text-[var(--apple-gray-6)] hover:bg-[var(--apple-gray-1)] transition-colors"
-                  >
-                    {showPreview ? 'Hide Canvas' : 'Show Canvas'}
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setShowPreview(!showPreview)}
+                      className="px-3 py-1.5 border border-[var(--apple-gray-3)] rounded-lg text-[11px] font-semibold text-[var(--apple-gray-6)] hover:bg-[var(--apple-gray-1)] transition-colors"
+                    >
+                      {showPreview ? 'Hide Canvas' : 'Show Canvas'}
+                    </button>
+                    <button
+                      onClick={() => setIsDesignerMaximized(!isDesignerMaximized)}
+                      className="px-3 py-1.5 border border-[var(--apple-gray-3)] rounded-lg text-[11px] font-semibold text-[var(--apple-gray-6)] hover:bg-[var(--apple-gray-1)] transition-colors"
+                      title={isDesignerMaximized ? "Restore Sidebar" : "Maximize Table"}
+                    >
+                      {isDesignerMaximized ? 'Minimize' : 'Maximize'}
+                    </button>
+                  </div>
                 </div>
                 <h2 className="text-[28px] font-bold tracking-tight leading-tight mb-8">Designer</h2>
 
@@ -1067,8 +1079,16 @@ function App() {
 
             {/* Right Canvas */}
             {showPreview && (
-              <div className="flex-1 bg-[var(--apple-bg)] overflow-y-auto p-12">
-                <div className="max-w-6xl mx-auto space-y-8">
+              <div className="flex-1 bg-[var(--apple-bg)] overflow-y-auto p-12 relative">
+                {isDesignerMaximized && (
+                  <button 
+                    onClick={() => setIsDesignerMaximized(false)}
+                    className="fixed top-8 left-8 z-50 bg-white border border-[var(--apple-gray-3)] rounded-full px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-[var(--emerald)] shadow-lg hover:bg-[var(--apple-gray-1)] transition-all flex items-center gap-2"
+                  >
+                    <ChevronLeft size={14} /> Restore Sidebar
+                  </button>
+                )}
+                <div className={`${isDesignerMaximized ? 'max-w-none px-4' : 'max-w-6xl'} mx-auto space-y-8 transition-all duration-300`}>
                   {(editingTemplate?.content || []).length === 0 && (
                     <div className="text-center py-32 opacity-40">
                       <Database size={48} className="mx-auto mb-4" />
@@ -1088,11 +1108,22 @@ function App() {
                         <Trash2 size={14} />
                       </button>
 
-                      <div className="flex items-center gap-3 mb-6">
-                        <span className="badge-gray">SECTION {idx + 1}</span>
-                        <span className="text-[13px] font-medium text-[var(--apple-gray-5)]">
-                          {block.type === 'text' ? 'Text Block' : 'Table Block'}
-                        </span>
+                      <div className="flex items-center justify-between mb-6">
+                        <div className="flex items-center gap-3">
+                          <span className="badge-gray">SECTION {idx + 1}</span>
+                          <span className="text-[13px] font-medium text-[var(--apple-gray-5)]">
+                            {block.type === 'text' ? 'Text Block' : 'Table Block'}
+                          </span>
+                        </div>
+                        {block.type === 'table' && (
+                          <button
+                            onClick={() => setIsDesignerMaximized(!isDesignerMaximized)}
+                            className="flex items-center gap-2 px-3 py-1.5 bg-[var(--apple-gray-1)] hover:bg-[var(--apple-gray-2)] rounded-lg text-[11px] font-bold text-[var(--apple-gray-6)] transition-all"
+                          >
+                            <LayoutDashboard size={14} />
+                            {isDesignerMaximized ? 'Minimize View' : 'Maximize Table'}
+                          </button>
+                        )}
                       </div>
 
                       {block.type === 'text' ? (
@@ -1243,7 +1274,7 @@ function App() {
         {view === 'drafting' && (
           <div className="flex h-full overflow-hidden">
             {/* Left Input Form */}
-            <div className={`${showPreview ? 'w-[450px]' : 'flex-1'} bg-white border-r border-[var(--apple-gray-2)] flex flex-col overflow-y-auto transition-all duration-300`}>
+            <div className={`${isDraftingMaximized ? 'flex-1' : (showPreview ? 'w-[450px]' : 'flex-1')} bg-white border-r border-[var(--apple-gray-2)] flex flex-col overflow-y-auto transition-all duration-300`}>
               <div className="p-8 pb-4">
                 <div className="flex justify-between items-center mb-8">
                   <button
@@ -1252,12 +1283,21 @@ function App() {
                   >
                     <ChevronLeft size={16} /> Library
                   </button>
-                  <button
-                    onClick={() => setShowPreview(!showPreview)}
-                    className="px-3 py-1.5 border border-[var(--apple-gray-3)] rounded-lg text-[11px] font-semibold text-[var(--apple-gray-6)] hover:bg-[var(--apple-gray-1)] transition-colors"
-                  >
-                    {showPreview ? 'Hide Preview' : 'Show Preview'}
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setShowPreview(!showPreview)}
+                      className="px-3 py-1.5 border border-[var(--apple-gray-3)] rounded-lg text-[11px] font-semibold text-[var(--apple-gray-6)] hover:bg-[var(--apple-gray-1)] transition-colors"
+                    >
+                      {showPreview ? 'Hide Preview' : 'Show Preview'}
+                    </button>
+                    <button
+                      onClick={() => setIsDraftingMaximized(!isDraftingMaximized)}
+                      className="px-3 py-1.5 border border-[var(--apple-gray-3)] rounded-lg text-[11px] font-semibold text-[var(--apple-gray-6)] hover:bg-[var(--apple-gray-1)] transition-colors"
+                      title={isDraftingMaximized ? "Restore Sidebar" : "Maximize Table"}
+                    >
+                      {isDraftingMaximized ? 'Minimize' : 'Maximize'}
+                    </button>
+                  </div>
                 </div>
                 <h2 className="text-[28px] font-bold tracking-tight leading-tight mb-8">Draft Quotation</h2>
 
@@ -1309,16 +1349,47 @@ function App() {
                     )}
                   </div>
 
+                  {/* Layout Controls */}
+                  <div className="space-y-4 pt-4">
+                    <h3 className="apple-label border-b border-[var(--apple-gray-2)] pb-2">Layout & Spacing</h3>
+                    <div className="flex gap-2">
+                      {['compact', 'standard', 'relaxed'].map(s => (
+                        <button
+                          key={s}
+                          onClick={() => setFormData({ ...formData, lineSpacing: s })}
+                          className={`flex-1 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all border ${
+                            formData.lineSpacing === s 
+                              ? 'bg-[var(--emerald)] text-white border-[var(--emerald)]' 
+                              : 'bg-white text-[var(--apple-gray-5)] border-[var(--apple-gray-2)] hover:bg-[var(--apple-gray-1)]'
+                          }`}
+                        >
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
                   {/* Template Editor */}
                   <div className="space-y-4 pt-4">
                     <h3 className="apple-label border-b border-[var(--apple-gray-2)] pb-2">Content Blocks</h3>
                     {draftContent.map((block, idx) => (
                       <div key={idx} className="bg-[var(--apple-gray-1)] p-4 rounded-xl border border-[var(--apple-gray-2)]">
-                        <div className="flex items-center gap-2 mb-3">
-                          <span className="w-5 h-5 rounded flex items-center justify-center bg-[var(--coral)] text-white text-[10px] font-bold">{idx + 1}</span>
-                          <span className="text-[11px] font-bold text-[var(--apple-gray-5)] uppercase tracking-wider">
-                            {block.type === 'text' ? 'Text' : 'Table'}
-                          </span>
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            <span className="w-5 h-5 rounded flex items-center justify-center bg-[var(--coral)] text-white text-[10px] font-bold">{idx + 1}</span>
+                            <span className="text-[11px] font-bold text-[var(--apple-gray-5)] uppercase tracking-wider">
+                              {block.type === 'text' ? 'Text' : 'Table'}
+                            </span>
+                          </div>
+                          {block.type === 'table' && (
+                            <button
+                              onClick={() => setIsDraftingMaximized(!isDraftingMaximized)}
+                              className="flex items-center gap-2 px-3 py-1 bg-white hover:bg-[var(--apple-gray-1)] border border-[var(--apple-gray-2)] rounded-lg text-[10px] font-bold text-[var(--apple-gray-5)] transition-all"
+                            >
+                              <LayoutDashboard size={12} />
+                              {isDraftingMaximized ? 'MINIMIZE' : 'MAXIMIZE'}
+                            </button>
+                          )}
                         </div>
                         {block.type === 'text' ? (
                           <textarea
@@ -1504,7 +1575,7 @@ function App() {
             </div>
 
             {/* Right Live Preview Area OR Email Composer */}
-            {showPreview && (
+            {(showPreview && !isDraftingMaximized) && (
               <div className="flex-1 bg-[var(--apple-gray-2)] overflow-y-auto p-12 relative">
                 {showEmailComposer ? (
                   /* ── EMAIL COMPOSER OVERLAY ── */
