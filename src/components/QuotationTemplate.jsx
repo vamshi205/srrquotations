@@ -65,35 +65,32 @@ const QuotationTemplate = memo(({ id = "quotation-template", data, company, cont
   React.useLayoutEffect(() => {
     if (!containerRef.current || !contentRef.current) return;
     
+    // Reset for calculation
     contentRef.current.style.transform = 'none';
-    contentRef.current.style.width = '100%';
+    contentRef.current.style.width = '210mm'; // Fixed target width for calculation
     
-    const style = window.getComputedStyle(containerRef.current);
-    const paddingTop = parseFloat(style.paddingTop) || 0;
-    const paddingBottom = parseFloat(style.paddingBottom) || 0;
+    const availableWidth = containerRef.current.parentElement.clientWidth - 32; // - padding
+    const availableHeight = containerRef.current.parentElement.clientHeight - 32;
     
-    const availableHeight = containerRef.current.clientHeight - paddingTop - paddingBottom;
-    const contentHeight = contentRef.current.scrollHeight;
+    const targetWidthPx = 794; // 210mm in px at 96dpi
+    const targetHeightPx = 1123; // 297mm in px at 96dpi
     
-    if (contentHeight > availableHeight && availableHeight > 0) {
-      const newScale = availableHeight / contentHeight;
-      setScale(newScale * 0.995);
-    } else {
-      setScale(1);
-    }
+    const scaleW = availableWidth / targetWidthPx;
+    const scaleH = availableHeight / targetHeightPx;
+    
+    const newScale = Math.min(scaleW, scaleH, 1); // Never scale up beyond 1
+    setScale(newScale * 0.99);
   }, [data, company, content]);
 
   return (
-    <div id={id} ref={containerRef} className="quotation-page bg-white text-black font-sans select-none p-[10mm]" style={{ width: '210mm', height: '297mm', maxHeight: '297mm', overflow: 'hidden', position: 'relative' }}>
+    <div id={id} ref={containerRef} className="quotation-page bg-white text-black font-sans select-none p-[10mm] shadow-2xl mx-auto" style={{ width: '210mm', height: '297mm', transform: `scale(${scale})`, transformOrigin: 'top center' }}>
       <div 
         ref={contentRef} 
         style={{ 
-          transform: `scale(${scale})`, 
-          transformOrigin: 'top left', 
-          width: `${100 / scale}%`,
           display: 'flex', 
           flexDirection: 'column',
-          minHeight: '100%'
+          minHeight: '100%',
+          width: '100%'
         }}
       >
       

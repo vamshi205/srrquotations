@@ -58,6 +58,14 @@ function App() {
   const pdfCacheRef = useRef({}); // { fileId/url: Uint8Array }
   const [isDesignerMaximized, setIsDesignerMaximized] = useState(false);
   const [isDraftingMaximized, setIsDraftingMaximized] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 1024);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   useEffect(() => {
     if (!hasFirebaseConfig) {
@@ -816,14 +824,16 @@ function App() {
       {/* ─────────────────────────────────────────
           APPLE NAV BAR (TOP)
           ───────────────────────────────────────── */}
-      <nav className="apple-nav">
-        <div className="flex items-center gap-2 mr-8">
-          <div className="w-8 h-8 bg-[var(--coral)] rounded-lg flex items-center justify-center">
+      <nav className="apple-nav px-4 md:px-6">
+        <div className="flex items-center gap-2 mr-auto lg:mr-8">
+          <div className="w-8 h-8 bg-[var(--coral)] rounded-lg flex items-center justify-center shrink-0">
             <FileUp className="text-white w-4 h-4" />
           </div>
-          <span className="font-bold text-lg tracking-tight">SRR Quotation Maker</span>
+          <span className="font-bold text-base md:text-lg tracking-tight truncate">SRR Ortho Plus</span>
         </div>
-        <div className="flex gap-4">
+        
+        {/* Desktop Nav */}
+        <div className="hidden lg:flex gap-1 xl:gap-4">
           <NavItem id="library" label="Library" />
           <NavItem id="history" label="History" />
           <NavItem id="drive" label="Drive" />
@@ -831,13 +841,48 @@ function App() {
           <NavItem id="pricelists" label="Price List" />
           <NavItem id="settings" label="Settings" />
         </div>
-        <div className="ml-auto flex items-center gap-4">
-          <span className="text-[13px] font-medium text-[var(--apple-gray-5)] hidden sm:block">{user.email}</span>
-          <button onClick={handleLogout} className="text-[13px] font-medium text-red-500 hover:text-red-600 transition-colors">
+
+        {/* Mobile Nav Toggle */}
+        <button 
+          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+          className="lg:hidden p-2 text-[var(--apple-gray-6)] hover:bg-[var(--apple-gray-1)] rounded-xl"
+        >
+          {isMobileMenuOpen ? <Plus className="rotate-45" size={24} /> : <Menu size={24} />}
+        </button>
+
+        <div className="ml-4 lg:ml-auto flex items-center gap-4">
+          <span className="text-[13px] font-medium text-[var(--apple-gray-5)] hidden xl:block">{user.email}</span>
+          <button onClick={handleLogout} className="text-[13px] font-medium text-red-500 hover:text-red-600 transition-colors hidden sm:block">
             Sign Out
           </button>
         </div>
       </nav>
+
+      {/* Mobile Menu Overlay */}
+      {isMobileMenuOpen && (
+        <div className="fixed inset-0 z-[2000] bg-white lg:hidden flex flex-col p-6 animate-in slide-in-from-top duration-300">
+          <div className="flex justify-between items-center mb-10">
+            <span className="font-bold text-xl">Menu</span>
+            <button onClick={() => setIsMobileMenuOpen(false)}><Plus className="rotate-45" size={32} /></button>
+          </div>
+          <div className="flex flex-col gap-2">
+            {['library', 'history', 'drive', 'emailer', 'pricelists', 'settings'].map(id => (
+              <button
+                key={id}
+                onClick={() => { setView(id); setIsMobileMenuOpen(false); }}
+                className={`text-left p-4 rounded-2xl text-lg font-semibold uppercase tracking-wide transition-all ${
+                  view === id ? 'bg-[var(--apple-gray-1)] text-[var(--emerald)]' : 'text-[var(--apple-gray-5)]'
+                }`}
+              >
+                {id}
+              </button>
+            ))}
+            <button onClick={handleLogout} className="text-left p-4 rounded-2xl text-lg font-semibold text-red-500 uppercase tracking-wide mt-4 border-t border-[var(--apple-gray-2)] pt-8">
+              Sign Out
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ─────────────────────────────────────────
           MAIN CONTENT AREA
@@ -906,9 +951,9 @@ function App() {
 
         {/* VIEW: BUILDER (Template Designer) */}
         {view === 'builder' && (
-          <div className="flex h-full overflow-hidden">
+          <div className="flex flex-col lg:flex-row h-full overflow-hidden">
             {/* Left Properties Panel */}
-            <div className={`${isDesignerMaximized ? 'w-0 overflow-hidden opacity-0 p-0' : (showPreview ? 'w-[450px]' : 'flex-1')} bg-white border-r border-[var(--apple-gray-2)] flex flex-col overflow-y-auto transition-all duration-300`}>
+            <div className={`${isDesignerMaximized ? 'w-0 overflow-hidden opacity-0 p-0' : (showPreview ? 'w-full lg:w-[450px]' : 'flex-1')} bg-white border-r border-[var(--apple-gray-2)] flex flex-col overflow-y-auto transition-all duration-300`}>
               <div className="p-8 pb-4">
                 <div className="flex justify-between items-center mb-8">
                   <button
@@ -1079,7 +1124,7 @@ function App() {
 
             {/* Right Canvas */}
             {showPreview && (
-              <div className="flex-1 bg-[var(--apple-bg)] overflow-y-auto p-12 relative">
+              <div className="flex-1 bg-[var(--apple-bg)] overflow-y-auto p-4 md:p-12 relative">
                 {isDesignerMaximized && (
                   <button 
                     onClick={() => setIsDesignerMaximized(false)}
@@ -1272,9 +1317,9 @@ function App() {
 
         {/* VIEW: DRAFTING */}
         {view === 'drafting' && (
-          <div className="flex h-full overflow-hidden">
+          <div className="flex flex-col lg:flex-row h-full overflow-hidden">
             {/* Left Input Form */}
-            <div className={`${isDraftingMaximized ? 'flex-1' : (showPreview ? 'w-[450px]' : 'flex-1')} bg-white border-r border-[var(--apple-gray-2)] flex flex-col overflow-y-auto transition-all duration-300`}>
+            <div className={`${isDraftingMaximized ? 'flex-1' : (showPreview ? 'w-full lg:w-[450px]' : 'flex-1')} bg-white border-r border-[var(--apple-gray-2)] flex flex-col overflow-y-auto transition-all duration-300`}>
               <div className="p-8 pb-4">
                 <div className="flex justify-between items-center mb-8">
                   <button
@@ -1576,7 +1621,7 @@ function App() {
 
             {/* Right Live Preview Area OR Email Composer */}
             {(showPreview && !isDraftingMaximized) && (
-              <div className="flex-1 bg-[var(--apple-gray-2)] overflow-y-auto p-12 relative">
+              <div className="flex-1 bg-[var(--apple-gray-2)] overflow-y-auto p-4 md:p-12 relative">
                 {showEmailComposer ? (
                   /* ── EMAIL COMPOSER OVERLAY ── */
                   <div className="max-w-2xl mx-auto bg-white shadow-2xl overflow-hidden border border-[var(--apple-gray-3)] flex flex-col h-[calc(100vh-160px)]">
