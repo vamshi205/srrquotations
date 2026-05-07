@@ -12,21 +12,21 @@ const DriveView = ({ driveFiles, handleDriveUpload, handleDeleteDriveFile, handl
 
         {/* ── SRR DRIVE ── */}
         <div className="mb-12">
-          <div className="relative overflow-hidden rounded-2xl border-2 border-[var(--emerald)] bg-gradient-to-br from-emerald-50 via-white to-teal-50 p-5 md:p-6 mb-4">
+          <div className="apple-card p-5 md:p-6 mb-4 bg-[var(--apple-gray-1)]/30 border-[var(--apple-gray-2)]">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
               <div className="flex items-center gap-3">
-                <div className="w-11 h-11 bg-[var(--emerald)] rounded-xl flex items-center justify-center shadow-md shadow-emerald-200 shrink-0">
-                  <Award size={22} className="text-white" />
+                <div className="w-11 h-11 bg-white border border-[var(--apple-gray-2)] text-[var(--emerald)] rounded-xl flex items-center justify-center shadow-sm shrink-0">
+                  <Award size={22} />
                 </div>
                 <div>
                   <h2 className="text-[18px] md:text-[20px] font-bold tracking-tight">SRR Drive</h2>
-                  <p className="text-[12px] md:text-[13px] text-[var(--apple-gray-5)]">Business certificates & documents • {(driveFiles.srr || []).length} files</p>
+                  <p className="text-[12px] md:text-[13px] text-[var(--apple-gray-5)]">{(driveFiles.srr || []).length} Business certificates & documents</p>
                 </div>
               </div>
               <div className="w-full sm:w-auto">
                 <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={(e) => handleDriveUpload(e, 'drive_srr')} className="hidden" id="srr-upload" />
                 <label htmlFor="srr-upload" className="btn-primary cursor-pointer w-full justify-center sm:w-auto">
-                  <Plus size={18} /> Upload
+                  <Plus size={18} /> Upload File
                 </label>
               </div>
             </div>

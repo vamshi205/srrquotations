@@ -135,7 +135,7 @@ const QuotationTemplate = memo(({ id = "quotation-template", data, company, cont
             <div className="font-bold text-right">Date: {formatDate(date)}</div>
           </div>
 
-          <div className={`mb-2 text-[11pt]`}>
+          <div className={`${spacing.subGap} text-[11pt]`}>
             <p className="font-bold mb-1">To</p>
             <div className="max-w-md">
               <p className="font-bold uppercase text-[12pt] mb-1">{hospitalName || '[HOSPITAL NAME]'}</p>
@@ -147,16 +147,16 @@ const QuotationTemplate = memo(({ id = "quotation-template", data, company, cont
             </div>
           </div>
 
-          <div className="mb-2 text-center text-[11pt]">
+          <div className={`${spacing.subGap} text-center text-[11pt]`}>
             <p className="font-bold mb-0.5 underline">Sub : {(subject || 'Quotation for Orthopedic Implants & instruments').replace(/^Sub\s*:\s*/i, '')}</p>
             <p className="font-bold">Kind attn: Department purchase</p>
           </div>
 
           {/* RENDER DYNAMIC TEMPLATE CONTENT */}
-          <div className="mb-2">
+          <div className={spacing.subGap}>
             {content && content.length > 0 ? (
               content.map((block, idx) => (
-                <div key={idx} className="mb-4 text-[11pt] leading-[1.5]">
+                <div key={idx} className={`${spacing.gap} text-[11pt] leading-[1.5]`}>
                   {block.type === 'text' ? (
                     <div className="text-left">
                       {(block.value || '').split('\n').map((line, i) => (
@@ -250,7 +250,7 @@ const QuotationTemplate = memo(({ id = "quotation-template", data, company, cont
           </div>
 
           {/* Footer */}
-          <div className="mt-auto pt-1">
+          <div className={`${lineSpacing === 'compact' ? 'mt-4' : 'mt-auto'} pt-1`}>
             <p className="font-bold underline mb-1 text-[11pt]">Terms and Conditions:</p>
             <table className={`w-full text-[11pt] ${spacing.leading} ${spacing.subGap}`}>
               <tbody>

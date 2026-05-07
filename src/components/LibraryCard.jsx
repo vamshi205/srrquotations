@@ -1,17 +1,7 @@
 import React from 'react';
 import { Edit2, Trash2, ArrowRight, Copy } from 'lucide-react';
 
-export default function LibraryCard({ template, onEdit, onDelete, onUse, onDuplicate }) {
-  const handleDelete = () => {
-    const pwd = window.prompt('Enter password to delete this template:');
-    if (pwd === null) return; // cancelled
-    if (pwd !== 'srrortho') {
-      window.alert('Incorrect password. Template not deleted.');
-      return;
-    }
-    onDelete(template.id);
-  };
-
+export default function LibraryCard({ template, onEdit, onDelete, onUse, onDuplicate, showAdminTools }) {
   return (
     <div className="apple-card p-6 flex flex-col justify-between group">
       {/* Top: name + description */}
@@ -33,29 +23,32 @@ export default function LibraryCard({ template, onEdit, onDelete, onUse, onDupli
         >
           Use Template <ArrowRight size={16} />
         </button>
-        <div className="flex gap-2">
-          <button
-            onClick={() => onEdit(template)}
-            className="w-8 h-8 flex items-center justify-center rounded-full text-[var(--apple-gray-4)] hover:text-[var(--apple-black)] hover:bg-[var(--apple-gray-1)] transition-all"
-            title="Edit template"
-          >
-            <Edit2 size={16} />
-          </button>
-          <button
-            onClick={() => onDuplicate(template)}
-            className="w-8 h-8 flex items-center justify-center rounded-full text-[var(--apple-gray-4)] hover:text-[var(--apple-black)] hover:bg-[var(--apple-gray-1)] transition-all"
-            title="Duplicate template"
-          >
-            <Copy size={16} />
-          </button>
-          <button
-            onClick={handleDelete}
-            className="w-8 h-8 flex items-center justify-center rounded-full text-[var(--apple-gray-4)] hover:text-red-500 hover:bg-red-50 transition-all"
-            title="Delete template"
-          >
-            <Trash2 size={16} />
-          </button>
-        </div>
+        
+        {showAdminTools && (
+          <div className="flex gap-2">
+            <button
+              onClick={() => onEdit(template)}
+              className="w-8 h-8 flex items-center justify-center rounded-full text-[var(--apple-gray-4)] hover:text-[var(--apple-black)] hover:bg-[var(--apple-gray-1)] transition-all"
+              title="Edit template"
+            >
+              <Edit2 size={16} />
+            </button>
+            <button
+              onClick={() => onDuplicate(template)}
+              className="w-8 h-8 flex items-center justify-center rounded-full text-[var(--apple-gray-4)] hover:text-[var(--apple-black)] hover:bg-[var(--apple-gray-1)] transition-all"
+              title="Duplicate template"
+            >
+              <Copy size={16} />
+            </button>
+            <button
+              onClick={() => onDelete(template.id)}
+              className="w-8 h-8 flex items-center justify-center rounded-full text-[var(--apple-gray-4)] hover:text-red-500 hover:bg-red-50 transition-all"
+              title="Delete template"
+            >
+              <Trash2 size={16} />
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

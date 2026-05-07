@@ -14,6 +14,7 @@ import { doc, getDoc, setDoc, collection, getDocs, deleteDoc, query, orderBy, wr
 import { validateFile } from './utils/fileValidation';
 import { uploadFile, deleteFile, saveFileMetadata, deleteFileMetadata } from './utils/storageService';
 import EmailerView from './components/EmailerView';
+import { sendEmailWithResend } from './utils/emailService';
 import {
   Download,
   Plus,
@@ -61,6 +62,8 @@ function App() {
   const [isDraftingMaximized, setIsDraftingMaximized] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
+  const [isManagementActive, setIsManagementActive] = useState(false);
+  const ADMIN_PASSWORD = "2025";
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 1024);
@@ -220,7 +223,7 @@ function App() {
     make: '',
     delivery: '',
     selectedTemplateId: '',
-    lineSpacing: 'standard'
+    lineSpacing: 'compact'
   });
 
   const [draftContent, setDraftContent] = useState([]);
@@ -380,43 +383,36 @@ function App() {
   });
   const [isSendingEmail, setIsSendingEmail] = useState(false);
 
-    const handleGlobalSendEmail = async () => {
-      if (!emailForm.to) return alert('Please enter recipient email.');
-      setIsSendingEmail(true);
-      const webhookUrl = import.meta.env.VITE_EMAIL_WEBHOOK_URL || import.meta.env.VITE_GMAIL_SCRIPT_URL;
+  const handleGlobalSendEmail = async () => {
+    if (!emailForm.to) return alert('Please enter recipient email.');
+    setIsSendingEmail(true);
 
-      const filesToAttach = (emailForm.selectedDriveFiles || []).map(f => ({
-        fileName: f.fileName || f.label || 'Document.pdf',
-        url: f.data
-      }));
+    const filesToAttach = (emailForm.selectedDriveFiles || []).map(f => ({
+      fileName: f.fileName || f.label || 'Document.pdf',
+      url: f.data
+    }));
 
-      const payload = {
+    try {
+      const result = await sendEmailWithResend({
         to: emailForm.to,
         subject: emailForm.subject,
         body: emailForm.body,
         files: filesToAttach
-      };
+      });
 
-      try {
-        if (!webhookUrl) throw new Error("Automated email service is not configured.");
-        
-        await fetch(webhookUrl, {
-          method: 'POST',
-          mode: 'no-cors',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(payload)
-        });
-        alert('Email request processed. Your Gmail account is sending the message with all attachments. Please check your "Sent" folder in a few moments.');
+      if (result.success) {
+        alert('Success! Email sent via Resend.');
         setShowEmailComposer(false);
-      } catch (err) {
-        console.error('Email error:', err);
-        alert(`Failed to send email: ${err.message || 'Check your internet connection.'}`);
-      } finally {
-        setIsSendingEmail(false);
+      } else {
+        alert(`Resend Error: ${result.message}`);
       }
-    };
+    } catch (err) {
+      console.error('Email error:', err);
+      alert(`Failed to send email: ${err.message || 'Check your internet connection.'}`);
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
 
   const confirmDelete = (callback) => {
     const pw = prompt('Enter admin password to delete:');
@@ -447,17 +443,22 @@ function App() {
     let baseMessage = `Dear Sir/Madam,\n\nPlease find the attached Quotation for ${templateName} for your kind reference.`;
 
     if (selectedFiles.length > 0) {
-      const srrFiles = selectedFiles.filter(f => !f.folderId);
-      const vendorFiles = selectedFiles.filter(f => f.folderId);
+      // Filter out the main generated quotation from the additional documents list
+      const additionalFiles = selectedFiles.filter(f => !f.isGenerated);
+      
+      if (additionalFiles.length > 0) {
+        const srrFiles = additionalFiles.filter(f => !f.folderId);
+        const vendorFiles = additionalFiles.filter(f => f.folderId);
 
-      baseMessage += `\n\nI have also attached the requested documents:`;
+        baseMessage += `\n\nI have also attached the requested documents:`;
 
-      if (srrFiles.length > 0) {
-        baseMessage += `\n\nSRR Certificates:\n` + srrFiles.map((f, i) => `${i + 1}. ${f.label || f.fileName}`).join('\n');
-      }
+        if (srrFiles.length > 0) {
+          baseMessage += `\n\nSRR Certificates:\n` + srrFiles.map((f, i) => `${i + 1}. ${f.label || f.fileName}`).join('\n');
+        }
 
-      if (vendorFiles.length > 0) {
-        baseMessage += `\n\nManufacturer Certificates:\n` + vendorFiles.map((f, i) => `${i + 1}. ${f.label || f.fileName}`).join('\n');
+        if (vendorFiles.length > 0) {
+          baseMessage += `\n\nManufacturer Certificates:\n` + vendorFiles.map((f, i) => `${i + 1}. ${f.label || f.fileName}`).join('\n');
+        }
       }
     }
 
@@ -546,26 +547,43 @@ function App() {
 
         const blob = new Blob([finalPdfBytes], { type: 'application/pdf' });
         const fileName = `Quotation_${regeneratingItem.formData.hospitalName}.pdf`;
+        const blobUrl = URL.createObjectURL(blob);
 
-        if (regeneratingItem._shareMode && navigator.share && navigator.canShare) {
-          const file = new File([blob], fileName, { type: 'application/pdf' });
-          if (navigator.canShare({ files: [file] })) {
-            try {
-              await navigator.share({
-                title: `Quotation - ${regeneratingItem.formData.hospitalName}`,
-                text: `Quotation ${regeneratingItem.formData.referenceNumber} for ${regeneratingItem.formData.hospitalName}`,
-                files: [file]
-              });
-            } catch (shareErr) {
-              if (shareErr.name !== 'AbortError') console.error('Share failed:', shareErr);
+        if (regeneratingItem._shareMode) {
+          // If native share is available and user is likely on mobile, try it first
+          if (navigator.share && navigator.canShare) {
+            const file = new File([blob], fileName, { type: 'application/pdf' });
+            if (navigator.canShare({ files: [file] })) {
+              try {
+                await navigator.share({
+                  title: `Quotation - ${regeneratingItem.formData.hospitalName}`,
+                  text: `Quotation ${regeneratingItem.formData.referenceNumber} for ${regeneratingItem.formData.hospitalName}`,
+                  files: [file]
+                });
+                setIsGenerating(false);
+                setRegeneratingItem(null);
+                return;
+              } catch (shareErr) {
+                if (shareErr.name !== 'AbortError') console.error('Share failed:', shareErr);
+              }
             }
-          } else {
-            const url = URL.createObjectURL(blob);
-            window.open(url, '_blank');
           }
+
+          // Fallback: Open in our App's Emailer
+          setEmailForm({
+            to: '',
+            subject: `Quotation: ${regeneratingItem.formData.referenceNumber} - ${regeneratingItem.formData.hospitalName}`,
+            body: `Dear Sir/Madam,\n\nPlease find the attached Quotation for ${regeneratingItem.formData.hospitalName} for your kind reference.\n\nRegards,\nSri Raja Rajeshwari Ortho Plus`,
+            selectedDriveFiles: [{
+              id: 'generated-' + Date.now(),
+              fileName: fileName,
+              data: blobUrl, // This is a blob: URL which our new emailService handles!
+              isGenerated: true
+            }]
+          });
+          setView('email');
         } else {
-          const url = URL.createObjectURL(blob);
-          window.open(url, '_blank');
+          window.open(blobUrl, '_blank');
         }
       } catch (e) {
         console.error(e);
@@ -639,6 +657,7 @@ function App() {
       gst: template.defaultGst || '5%',
       payment: template.defaultPayment || '30 days',
       validity: template.defaultValidity || '31/03/2027',
+      lineSpacing: template.defaultSpacing || 'compact'
     });
     setDraftContent(JSON.parse(JSON.stringify(template.content)));
     setView('drafting');
@@ -851,7 +870,30 @@ function App() {
           {isMobileMenuOpen ? <Plus className="rotate-45" size={24} /> : <Menu size={24} />}
         </button>
 
-        <div className="ml-4 lg:ml-auto flex items-center gap-4">
+        <div className="ml-4 lg:ml-auto flex items-center gap-3 md:gap-4">
+          <button 
+            onClick={() => {
+              if (isManagementActive) {
+                setIsManagementActive(false);
+              } else {
+                const pass = prompt('Enter Admin Password to enable management tools:');
+                if (pass === ADMIN_PASSWORD) {
+                  setIsManagementActive(true);
+                } else if (pass !== null) {
+                  alert('Incorrect Password');
+                }
+              }
+            }}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[13px] font-bold transition-all ${
+              isManagementActive 
+                ? 'bg-[var(--emerald-light)] text-[var(--emerald)] border border-[var(--emerald)]' 
+                : 'bg-[var(--apple-gray-1)] text-[var(--apple-gray-5)] border border-transparent hover:border-[var(--apple-gray-3)]'
+            }`}
+          >
+            {isManagementActive ? <ShieldCheck size={16} /> : <LayoutDashboard size={16} />}
+            <span className="hidden sm:inline">{isManagementActive ? 'Admin Active' : 'Admin'}</span>
+          </button>
+          
           <span className="text-[13px] font-medium text-[var(--apple-gray-5)] hidden xl:block">{user.email}</span>
           <button onClick={handleLogout} className="text-[13px] font-medium text-red-500 hover:text-red-600 transition-colors hidden sm:block">
             Sign Out
@@ -899,28 +941,30 @@ function App() {
                   <h1 className="apple-title-1">Templates</h1>
                   <p className="apple-subtitle">Select a template to generate a quotation, or create a new one.</p>
                 </div>
-                <button
-                  onClick={() => {
-                    setEditingTemplate({
-                      id: Date.now().toString(),
-                      name: 'New Template',
-                      description: '',
-                      requiresPriceList: false,
-                      subject: '',
-                      defaultMake: '',
-                      defaultDelivery: '',
-                      defaultDiscount: '',
-                      defaultGst: '',
-                      defaultPayment: '',
-                      defaultValidity: '',
-                      content: []
-                    });
-                    setView('builder');
-                  }}
-                  className="btn-primary"
-                >
-                  <Plus size={18} /> New Template
-                </button>
+                {isManagementActive && (
+                  <button
+                    onClick={() => {
+                      setEditingTemplate({
+                        id: Date.now().toString(),
+                        name: 'New Template',
+                        description: '',
+                        requiresPriceList: false,
+                        subject: '',
+                        defaultMake: '',
+                        defaultDelivery: '',
+                        defaultDiscount: '',
+                        defaultGst: '',
+                        defaultPayment: '',
+                        defaultValidity: '',
+                        content: []
+                      });
+                      setView('builder');
+                    }}
+                    className="btn-primary"
+                  >
+                    <Plus size={18} /> New Template
+                  </button>
+                )}
               </header>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -928,6 +972,7 @@ function App() {
                   <LibraryCard
                     key={t.id}
                     template={t}
+                    showAdminTools={isManagementActive}
                     onUse={useTemplate}
                     onEdit={(t) => { setEditingTemplate(JSON.parse(JSON.stringify(t))); setView('builder'); }}
                     onDuplicate={handleDuplicateTemplate}
@@ -1048,6 +1093,21 @@ function App() {
                           </div>
                         )
                       })}
+                    </div>
+                  </div>
+
+                  <div className="pt-6 border-t border-[var(--apple-gray-2)]">
+                    <label className="apple-label mb-4">Default Spacing</label>
+                    <div className="flex gap-2">
+                      {['compact', 'standard', 'relaxed'].map(s => (
+                        <button
+                          key={s}
+                          onClick={() => setEditingTemplate({ ...editingTemplate, defaultSpacing: s })}
+                          className={`flex-1 py-2 text-[12px] font-bold border transition-all rounded-xl capitalize ${ (editingTemplate?.defaultSpacing === s || (!editingTemplate?.defaultSpacing && s === 'compact')) ? 'bg-[var(--apple-black)] text-white border-[var(--apple-black)]' : 'bg-white text-[var(--apple-gray-5)] border-[var(--apple-gray-2)] hover:border-[var(--apple-gray-4)]'}`}
+                        >
+                          {s}
+                        </button>
+                      ))}
                     </div>
                   </div>
 
@@ -1184,7 +1244,7 @@ function App() {
                           placeholder="Type paragraph content..."
                         />
                       ) : (
-                        <div className="border border-[var(--apple-gray-2)] rounded-xl overflow-hidden shadow-sm bg-white">
+                        <div className="border border-[var(--apple-gray-2)] rounded-xl overflow-x-auto shadow-sm bg-white">
                           <table className="w-full border-collapse">
                             <thead className="bg-[var(--apple-gray-1)] border-b border-[var(--apple-gray-2)]">
                               <tr>
@@ -1605,12 +1665,67 @@ function App() {
                   {isGenerating ? 'Processing...' : <><Download size={18} /> Generate PDF</>}
                 </button>
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     if (!formData.hospitalName.trim() || !formData.address.trim()) {
                       alert('Please enter Hospital Name and Hospital Address to enable email composition.');
                       return;
                     }
-                    setShowEmailComposer(!showEmailComposer);
+                    
+                    if (!showEmailComposer) {
+                      // Generating PDF before showing composer
+                      setIsGenerating(true);
+                      try {
+                        const element = document.getElementById('quotation-template');
+                        const dataUrl = await toJpeg(element, { quality: 0.95, backgroundColor: '#ffffff', pixelRatio: 2 });
+                        const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+                        pdf.addImage(dataUrl, 'JPEG', 0, 0, 210, 297);
+                        let finalPdfBytes = pdf.output('arraybuffer');
+                        
+                        // Merge price list if needed
+                        if (formData.priceListId) {
+                          const selectedPriceList = priceLists.find(pl => pl.id === formData.priceListId);
+                          if (selectedPriceList && (selectedPriceList.data || selectedPriceList.fileId)) {
+                            const priceListBytes = await getFileData(selectedPriceList.data, selectedPriceList.fileId);
+                            if (priceListBytes) {
+                              const mainPdfDoc = await PDFDocument.load(finalPdfBytes);
+                              const priceListPdfDoc = await PDFDocument.load(priceListBytes);
+                              const mergedPdfDoc = await PDFDocument.create();
+                              const mainPages = await mergedPdfDoc.copyPages(mainPdfDoc, mainPdfDoc.getPageIndices());
+                              mainPages.forEach(p => mergedPdfDoc.addPage(p));
+                              const priceListPages = await mergedPdfDoc.copyPages(priceListPdfDoc, priceListPdfDoc.getPageIndices());
+                              priceListPages.forEach(p => mergedPdfDoc.addPage(p));
+                              finalPdfBytes = await mergedPdfDoc.save();
+                            }
+                          }
+                        }
+                        
+                        const blob = new Blob([finalPdfBytes], { type: 'application/pdf' });
+                        const fileName = `Quotation_${formData.hospitalName}.pdf`;
+                        const blobUrl = URL.createObjectURL(blob);
+                        
+                        setEmailForm(prev => ({
+                          ...prev,
+                          selectedDriveFiles: [
+                            ...prev.selectedDriveFiles.filter(f => !f.isGenerated), // Remove old generated
+                            {
+                              id: 'draft-' + Date.now(),
+                              fileName: fileName,
+                              data: blobUrl,
+                              isGenerated: true
+                            }
+                          ]
+                        }));
+                        setShowEmailComposer(true);
+                      } catch (err) {
+                        console.error("Failed to generate PDF for email:", err);
+                        alert("Failed to generate PDF. You can still compose the email and attach documents manually.");
+                        setShowEmailComposer(true);
+                      } finally {
+                        setIsGenerating(false);
+                      }
+                    } else {
+                      setShowEmailComposer(false);
+                    }
                   }}
                   className={`btn-outline !py-3 !px-4 ${showEmailComposer ? 'bg-[var(--apple-gray-1)]' : ''} ${(!formData.hospitalName.trim() || !formData.address.trim()) ? 'opacity-40 grayscale pointer-events-auto cursor-not-allowed' : ''}`}
                   title={(!formData.hospitalName.trim() || !formData.address.trim()) ? "Enter Hospital Name & Address to enable email" : "Compose Email"}
@@ -1842,7 +1957,8 @@ function App() {
                 );
                 return (
                   <div className="apple-card overflow-hidden">
-                    <table className="w-full">
+                    <div className="overflow-x-auto">
+                      <table className="w-full min-w-[800px]">
                       <thead>
                         <tr className="bg-[var(--apple-gray-1)] border-b border-[var(--apple-gray-2)]">
                           <th className="text-left py-3 px-5 text-[11px] font-bold uppercase tracking-wider text-[var(--apple-gray-5)]">Ref No.</th>
@@ -1880,7 +1996,7 @@ function App() {
                                       <Download size={13} /> Download
                                     </button>
                                     <button
-                                      onClick={async () => {
+                                      onClick={() => {
                                         setRegeneratingItem({ ...item, _shareMode: true });
                                       }}
                                       disabled={isGenerating || regeneratingItem}
@@ -1889,6 +2005,32 @@ function App() {
                                     >
                                       <Share2 size={13} /> Share
                                     </button>
+                                    
+                                    {isManagementActive && (
+                                      <>
+                                        <button
+                                          onClick={() => {
+                                            setFormData(item.formData);
+                                            setDraftContent(item.content || []);
+                                            setView('drafting');
+                                          }}
+                                          className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-[var(--apple-gray-2)] rounded-lg text-[12px] font-semibold text-[var(--apple-black)] hover:border-[var(--apple-gray-4)] transition-colors"
+                                          title="Edit as Draft"
+                                        >
+                                          <Edit2 size={13} /> Edit
+                                        </button>
+                                        <button
+                                          onClick={() => confirmDelete(async () => {
+                                            setQuotationHistory(prev => prev.filter(h => h.id !== item.id));
+                                            await syncItem('history', item, true);
+                                          })}
+                                          className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                          title="Delete History Item"
+                                        >
+                                          <Trash2 size={16} />
+                                        </button>
+                                      </>
+                                    )}
                                   </>
                                 )}
                               </div>
@@ -1898,8 +2040,9 @@ function App() {
                       </tbody>
                     </table>
                   </div>
-                );
-              })()}
+                </div>
+              );
+            })()}
             </div>
           </div>
         )}
@@ -1956,12 +2099,14 @@ function App() {
                           <a href={file.data} download={file.fileName} className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-[var(--emerald)] rounded-lg transition-colors" title="Download">
                             <Download size={15} />
                           </a>
-                          <button onClick={() => confirmDelete(async () => {
-                            setDriveFiles(prev => ({ ...prev, srr: prev.srr.filter(f => f.id !== file.id) }));
-                            await syncItem('drive_srr', file, true);
-                          })} className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 rounded-lg transition-colors" title="Delete">
-                            <Trash2 size={15} />
-                          </button>
+                          {isManagementActive && (
+                            <button onClick={() => confirmDelete(async () => {
+                              setDriveFiles(prev => ({ ...prev, srr: prev.srr.filter(f => f.id !== file.id) }));
+                              await syncItem('drive_srr', file, true);
+                            })} className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 rounded-lg transition-colors" title="Delete">
+                              <Trash2 size={15} />
+                            </button>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -2013,14 +2158,16 @@ function App() {
                             <button onClick={(e) => { e.stopPropagation(); downloadFolderAsZip(folder); }} className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-[var(--apple-black)] rounded-lg transition-colors" title="Download folder as ZIP">
                               <Download size={14} />
                             </button>
-                            <button onClick={(e) => {
-                              e.stopPropagation(); confirmDelete(async () => {
-                                setDriveFiles(prev => ({ ...prev, vendor: prev.vendor.filter(f => f.id !== folder.id) }));
-                                await syncItem('drive_folders', folder, true);
-                              });
-                            }} className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 rounded-lg transition-colors" title="Delete folder">
-                              <Trash2 size={14} />
-                            </button>
+                            {isManagementActive && (
+                              <button onClick={(e) => {
+                                e.stopPropagation(); confirmDelete(async () => {
+                                  setDriveFiles(prev => ({ ...prev, vendor: prev.vendor.filter(f => f.id !== folder.id) }));
+                                  await syncItem('drive_folders', folder, true);
+                                });
+                              }} className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 rounded-lg transition-colors" title="Delete folder">
+                                <Trash2 size={14} />
+                              </button>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -2075,12 +2222,14 @@ function App() {
                                   <a href={file.data} download={file.fileName} className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-[var(--apple-black)] rounded-lg transition-colors" title="Download">
                                     <Download size={15} />
                                   </a>
-                                  <button onClick={() => confirmDelete(async () => {
-                                    setDriveFiles(prev => ({ ...prev, vendor: prev.vendor.map(f => f.id === folder.id ? { ...f, files: f.files.filter(fi => fi.id !== file.id) } : f) }));
-                                    await syncItem('drive_vendor_files', file, true);
-                                  })} className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 rounded-lg transition-colors" title="Delete">
-                                    <Trash2 size={15} />
-                                  </button>
+                                  {isManagementActive && (
+                                    <button onClick={() => confirmDelete(async () => {
+                                      setDriveFiles(prev => ({ ...prev, vendor: prev.vendor.map(f => f.id === folder.id ? { ...f, files: f.files.filter(fi => fi.id !== file.id) } : f) }));
+                                      await syncItem('drive_vendor_files', file, true);
+                                    })} className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 rounded-lg transition-colors" title="Delete">
+                                      <Trash2 size={15} />
+                                    </button>
+                                  )}
                                 </div>
                               </div>
                             ))}
@@ -2099,40 +2248,31 @@ function App() {
         {view === 'pricelists' && (
           <div className="h-full overflow-y-auto px-8 py-12 md:px-16 md:py-16">
             <div className="max-w-6xl mx-auto">
-              <header className="mb-12">
-                <h1 className="apple-title-1 mb-2">Price Lists</h1>
-                <p className="apple-subtitle">Manage and access manufacturer price lists.</p>
+              <header className="flex flex-col md:flex-row md:items-end justify-between mb-12 gap-6">
+                <div>
+                  <h1 className="apple-title-1 mb-2">Price Lists</h1>
+                  <p className="apple-subtitle">Manage and access manufacturer price lists. <span className="font-semibold text-[var(--apple-black)]">{priceLists.length}</span> total</p>
+                </div>
+                <div>
+                  <input type="file" onChange={(e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    const label = prompt('Enter a name for this Price List (e.g. Stryker 2024):');
+                    if (!label) { e.target.value = ''; return; }
+                    const newItem = { id: Date.now().toString(), label, fileName: file.name, uploadedAt: new Date().toLocaleDateString('en-GB') };
+                    syncItem('price_lists', newItem, false, file).then(success => {
+                      if (success) setPriceLists(prev => [...prev, newItem]);
+                    });
+                    e.target.value = '';
+                  }} className="hidden" id="price-list-upload" />
+                  <label htmlFor="price-list-upload" className="btn-primary cursor-pointer">
+                    <Plus size={18} /> Upload List
+                  </label>
+                </div>
               </header>
 
-              <div className="apple-card p-12 text-center mb-12 border-2 border-dashed border-[var(--apple-gray-3)] bg-[var(--apple-gray-1)]/30">
-                <div className="w-16 h-16 bg-white text-[var(--apple-black)] rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-sm">
-                  <UploadCloud size={32} />
-                </div>
-                <h2 className="text-[24px] font-semibold tracking-tight mb-2">Upload Price List</h2>
-                <p className="text-[15px] text-[var(--apple-gray-5)] mb-8">Upload a document and give it a name.</p>
-                
-                <input type="file" onChange={(e) => {
-                  const file = e.target.files[0];
-                  if (!file) return;
-                  const label = prompt('Enter a name for this Price List (e.g. Stryker 2024):');
-                  if (!label) { e.target.value = ''; return; }
-                  const newItem = { id: Date.now().toString(), label, fileName: file.name, uploadedAt: new Date().toLocaleDateString('en-GB') };
-                  syncItem('price_lists', newItem, false, file).then(success => {
-                    if (success) setPriceLists(prev => [...prev, newItem]);
-                  });
-                  e.target.value = '';
-                }} className="hidden" id="price-list-upload" />
-                <label htmlFor="price-list-upload" className="btn-primary cursor-pointer inline-flex items-center gap-2">
-                  <Plus size={18} /> Select File
-                </label>
-              </div>
-
               <div>
-                <h3 className="apple-label mb-6 flex items-center gap-2">
-                  <FileText size={18} className="text-[var(--apple-gray-5)]" />
-                  Your Price Lists ({priceLists.length})
-                </h3>
-                <div className="grid gap-4">
+                <div className="grid gap-3">
                   {priceLists.map(item => (
                     <div key={item.id} className="apple-card p-5 flex items-center justify-between hover:border-[var(--apple-gray-4)] transition-all">
                       <div className="flex items-center gap-4">
@@ -2148,16 +2288,18 @@ function App() {
                         <a href={item.data} download={item.fileName} className="w-9 h-9 flex items-center justify-center text-[var(--apple-gray-5)] hover:text-[var(--apple-black)] hover:bg-[var(--apple-gray-1)] rounded-lg transition-all" title="Download">
                           <Download size={18} />
                         </a>
-                        <button 
-                          onClick={() => confirmDelete(async () => {
-                            setPriceLists(prev => prev.filter(p => p.id !== item.id));
-                            await syncItem('price_lists', item, true);
-                          })}
-                          className="w-9 h-9 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
-                          title="Delete"
-                        >
-                          <Trash2 size={18} />
-                        </button>
+                        {isManagementActive && (
+                          <button 
+                            onClick={() => confirmDelete(async () => {
+                              setPriceLists(prev => prev.filter(p => p.id !== item.id));
+                              await syncItem('price_lists', item, true);
+                            })}
+                            className="w-9 h-9 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                            title="Delete"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))}
