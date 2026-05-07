@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Mail, FileText, FileCheck, CheckSquare, ChevronRight, HardDrive } from 'lucide-react';
 
-const EmailerView = ({ driveFiles }) => {
+const EmailerView = ({ driveFiles, priceLists }) => {
   const [emailForm, setEmailForm] = useState({
     to: '',
     subject: 'Documents from Sri Raja Rajeshwari Ortho Plus',
@@ -75,47 +75,49 @@ const EmailerView = ({ driveFiles }) => {
 
   const handleSendEmail = async () => {
     if (!emailForm.to) return alert('Please enter recipient email.');
-    
     setIsSending(true);
-    const scriptUrl = import.meta.env.VITE_GMAIL_SCRIPT_URL;
+    const webhookUrl = import.meta.env.VITE_EMAIL_WEBHOOK_URL || import.meta.env.VITE_GMAIL_SCRIPT_URL;
+    const token = import.meta.env.VITE_GMAIL_TOKEN;
 
-    if (!scriptUrl) {
-      alert('Gmail Script URL not configured in .env.local. Falling back to manual Gmail.');
-      const { to, subject, body } = emailForm;
-      const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(to)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-      window.open(gmailUrl, '_blank');
+    const filesToAttach = (emailForm.selectedDriveFiles || []).map(f => ({
+      fileName: f.fileName || f.label || 'Document.pdf',
+      url: f.data,
+      fileId: f.fileId || f.id
+    }));
+
+    const payload = {
+      action: 'send_email',
+      token,
+      to: emailForm.to,
+      subject: emailForm.subject,
+      body: emailForm.body,
+      files: filesToAttach
+    };
+
+    if (!webhookUrl) {
+      alert('Error: Automated email service is not configured. Please contact the developer.');
       setIsSending(false);
       return;
     }
 
-    // Prepare files for attachment
-    const filesToAttach = emailForm.selectedDriveFiles.map(f => ({
-      fileName: f.fileName || f.label || 'Document.pdf',
-      url: f.data // This is the Firebase Storage download URL
-    }));
-
     try {
-      const response = await fetch(scriptUrl, {
+      // Use no-cors for Google Apps Script Webhooks
+      await fetch(webhookUrl, {
         method: 'POST',
-        mode: 'no-cors', // Google Apps Script requires no-cors for simple redirect handling
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          token: import.meta.env.VITE_GMAIL_TOKEN,
-          to: emailForm.to,
-          subject: emailForm.subject,
-          body: emailForm.body,
-          files: filesToAttach
-        })
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload)
       });
-
-      // Note: with 'no-cors', we can't read the response body, 
-      // but if it doesn't throw, it usually sent successfully.
-      alert('Email sent successfully via srrorthoplus999@gmail.com!');
-      setEmailForm(prev => ({ ...prev, selectedDriveFiles: [] }));
+      
+      // Since no-cors doesn't return a readable response, we assume success after trigger
+      setTimeout(() => {
+        alert('Email Dispatch Triggered!\n\nThe documents are being sent via your Gmail account. Please check your Gmail "Sent" folder in a few moments to confirm delivery.');
+        setEmailForm(prev => ({ ...prev, selectedDriveFiles: [] }));
+        setIsSending(false);
+      }, 1500);
     } catch (err) {
       console.error('Email error:', err);
-      alert('Failed to send email automatically. Please try the manual Gmail option.');
-    } finally {
+      alert('Failed to connect to the automated email service. Please check your internet connection and try again.');
       setIsSending(false);
     }
   };
@@ -253,6 +255,32 @@ const EmailerView = ({ driveFiles }) => {
               ))}
               {(!driveFiles.vendor || driveFiles.vendor.length === 0) && (
                 <p className="text-[13px] text-[var(--apple-gray-4)] italic p-4 border border-dashed border-[var(--apple-gray-3)] text-center">No vendor folders found</p>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <h4 className="text-[13px] font-bold text-[var(--apple-gray-5)] uppercase tracking-wider mb-4 flex items-center gap-2">
+              <FileText size={16} /> Price Lists
+            </h4>
+            <div className="space-y-2">
+              {(priceLists || []).map(file => (
+                <button
+                  key={file.id}
+                  onClick={() => toggleFile(file, false)}
+                  className={`w-full flex items-center gap-3 p-3 border text-left transition-all ${emailForm.selectedDriveFiles.find(f => f.id === file.id) ? 'bg-blue-50 border-blue-400' : 'bg-white border-[var(--apple-gray-2)] hover:bg-[var(--apple-gray-1)]'}`}
+                >
+                  <div className={`w-4 h-4 border flex items-center justify-center ${emailForm.selectedDriveFiles.find(f => f.id === file.id) ? 'bg-blue-500 border-blue-500' : 'border-[var(--apple-gray-3)]'}`}>
+                    {emailForm.selectedDriveFiles.find(f => f.id === file.id) && <CheckSquare size={10} className="text-white" />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[12px] font-semibold truncate">{file.label}</p>
+                    <span className="text-[10px] text-[var(--apple-gray-4)] uppercase">{file.fileName}</span>
+                  </div>
+                </button>
+              ))}
+              {(!priceLists || priceLists.length === 0) && (
+                <p className="text-[13px] text-[var(--apple-gray-4)] italic p-4 border border-dashed border-[var(--apple-gray-3)] text-center">No price lists found</p>
               )}
             </div>
           </div>

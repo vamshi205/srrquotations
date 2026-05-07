@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import QuotationTemplate from './components/QuotationTemplate';
 import LibraryCard from './components/LibraryCard';
 import jsPDF from 'jspdf';
@@ -6,11 +6,13 @@ import { toJpeg } from 'html-to-image';
 import { PDFDocument } from 'pdf-lib';
 import JSZip from 'jszip';
 import Login from './components/Login';
-import { auth, db, hasFirebaseConfig } from './firebase';
+import { saveDatabase, loadDatabase, saveTemplate, deleteTemplate, saveHistoryItem, saveCompanyData } from './utils/databaseService';
+import { auth, db, storage, hasFirebaseConfig } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { ref, getBlob } from 'firebase/storage';
 import { doc, getDoc, setDoc, collection, getDocs, deleteDoc, query, orderBy, writeBatch } from 'firebase/firestore';
 import { validateFile } from './utils/fileValidation';
-import { uploadFile, deleteFile } from './utils/storageService';
+import { uploadFile, deleteFile, saveFileMetadata, deleteFileMetadata } from './utils/storageService';
 import EmailerView from './components/EmailerView';
 import {
   Download,
@@ -29,7 +31,7 @@ import {
   ShieldCheck,
   Eye,
   FilePlus2,
-  Building2,
+
   FileUp,
   Save,
   Search,
@@ -51,6 +53,9 @@ function App() {
   const [syncStatus, setSyncStatus] = useState('saved');
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
+  const [previewPdfUrl, setPreviewPdfUrl] = useState(null);
+  const [pdfCache, setPdfCache] = useState({}); // Legacy, will use Ref for speed
+  const pdfCacheRef = useRef({}); // { fileId/url: Uint8Array }
 
   useEffect(() => {
     if (!hasFirebaseConfig) {
@@ -73,37 +78,24 @@ function App() {
     if (!currentUser) return;
     setSyncStatus('syncing');
     try {
-      // 1. Fetch Basic Settings & Templates
-      const docRef = doc(db, 'users', currentUser.uid);
-      const docSnap = await getDoc(docRef);
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        if (data.companyData) setCompanyData(typeof data.companyData === 'string' ? JSON.parse(data.companyData) : data.companyData);
-        if (data.templates) setTemplates(typeof data.templates === 'string' ? JSON.parse(data.templates) : data.templates);
+      const data = await loadDatabase();
+      if (data) {
+        if (data.companyData) setCompanyData(data.companyData);
+        
+        // Only overwrite templates if Firestore actually has some. 
+        // This prevents an empty Firestore from wiping out our hardcoded defaults.
+        if (data.templates && data.templates.length > 0) {
+          setTemplates(data.templates);
+        } else if (templates.length > 0 && currentUser) {
+          // If Firestore is empty but we have local/default templates, seed Firestore!
+          console.log("Seeding Firestore with default templates...");
+          templates.forEach(t => saveTemplate(t));
+        }
+
+        if (data.history) setQuotationHistory(data.history);
+        if (data.driveFiles) setDriveFiles(data.driveFiles);
+        if (data.priceLists) setPriceLists(data.priceLists);
       }
-
-      // 2. Fetch Attachments
-      const attsSnap = await getDocs(collection(db, 'users', currentUser.uid, 'attachments'));
-      const attsList = attsSnap.docs.map(d => d.data()).filter(d => d.data && !d.data.includes('firebasestorage') && !d.data.includes('TRUNCATED'));
-      setAttachments(attsList);
-
-      // 3. Fetch History
-      const historySnap = await getDocs(query(collection(db, 'users', currentUser.uid, 'history'), orderBy('id', 'desc')));
-      setQuotationHistory(historySnap.docs.map(d => d.data()));
-
-      // 4. Fetch Drive Files
-      const srrSnap = await getDocs(collection(db, 'users', currentUser.uid, 'drive_srr'));
-      const srrList = srrSnap.docs.map(d => d.data()).filter(d => d.data && !d.data.includes('firebasestorage') && !d.data.includes('TRUNCATED'));
-
-      const foldersSnap = await getDocs(collection(db, 'users', currentUser.uid, 'drive_folders'));
-      const foldersList = foldersSnap.docs.map(d => d.data());
-      const vFilesSnap = await getDocs(collection(db, 'users', currentUser.uid, 'drive_vendor_files'));
-      const vFilesList = vFilesSnap.docs.map(d => d.data()).filter(d => d.data && !d.data.includes('firebasestorage') && !d.data.includes('TRUNCATED'));
-
-      setDriveFiles({
-        srr: srrList,
-        vendor: foldersList.map(folder => ({ ...folder, files: vFilesList.filter(f => f.folderId === folder.id) }))
-      });
       setSyncStatus('saved');
     } catch (e) {
       console.error("Refresh error:", e);
@@ -129,31 +121,65 @@ function App() {
     return `${prefix}${String(maxNum + 1).padStart(3, '0')}`;
   };
 
-  const getFileData = async (dataOrUrl) => {
-    if (!dataOrUrl || dataOrUrl.includes('firebasestorage')) return null;
+  const getFileData = async (dataOrUrl, storagePath = null) => {
+    if (!dataOrUrl) return null;
+    
+    // 1. Try to determine the best storage path
+    let bestPath = storagePath;
+    
+    // If path looks like just a filename (no slash), try to extract it from the URL
+    if (typeof dataOrUrl === 'string' && dataOrUrl.includes('firebasestorage') && (!bestPath || !bestPath.includes('/'))) {
+      try {
+        // Extract the part between /o/ and ?
+        const match = dataOrUrl.match(/\/o\/([^?]+)/);
+        if (match && match[1]) {
+          bestPath = decodeURIComponent(match[1]);
+        }
+      } catch (e) {
+        console.warn("Could not parse storage path from URL:", e);
+      }
+    }
+
+    const cacheKey = bestPath || dataOrUrl;
+    
+    // 2. Check cache first
+    if (pdfCacheRef.current[cacheKey]) {
+      return pdfCacheRef.current[cacheKey];
+    }
+    
     try {
-      if (dataOrUrl.startsWith('http')) {
+      // 3. If we have a storage path, use the SDK (Best for CORS)
+      if (bestPath) {
+        const fileRef = ref(storage, bestPath);
+        const blob = await getBlob(fileRef);
+        const arrayBuffer = await blob.arrayBuffer();
+        const binary = new Uint8Array(arrayBuffer);
+        pdfCacheRef.current[cacheKey] = binary;
+        return binary;
+      }
+
+      // 4. Fallback for direct URLs
+      if (typeof dataOrUrl === 'string' && dataOrUrl.startsWith('http')) {
         const response = await fetch(dataOrUrl);
         if (!response.ok) throw new Error('Network response was not ok');
         const arrayBuffer = await response.arrayBuffer();
-        return new Uint8Array(arrayBuffer);
-      }
-      // Handle legacy base64 data
-      if (dataOrUrl.includes('base64,')) {
-        const base64 = dataOrUrl.split(',')[1];
-        const binaryString = window.atob(base64);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
-        }
-        return bytes;
+        const binary = new Uint8Array(arrayBuffer);
+        pdfCacheRef.current[cacheKey] = binary;
+        return binary;
       }
       return dataOrUrl;
     } catch (err) {
-      console.error('Error fetching file data:', err);
-      return null;
+      if (err.name === 'FirebaseError' && err.code === 'storage/unauthorized') {
+        console.error('CORS/Security Block: Please run the gsutil command in the CORS_FIX_GUIDE.md file to enable file downloads.');
+      } else {
+        console.error('File retrieval error:', err);
+      }
+      // Final fallback: just return the URL if fetch/SDK both failed (might work in some contexts)
+      return dataOrUrl;
     }
   };
+
+
 
   const [formData, setFormData] = useState({
     hospitalName: '',
@@ -167,12 +193,10 @@ function App() {
     validity: '31/03/2027',
     make: '',
     delivery: '',
-    attachmentLabel: '',
     selectedTemplateId: ''
   });
 
   const [draftContent, setDraftContent] = useState([]);
-  const [draftRequiresAttachment, setDraftRequiresAttachment] = useState(false);
   const [showPreview, setShowPreview] = useState(true);
 
   // Persistent Storage
@@ -187,20 +211,24 @@ function App() {
     };
   });
 
-  const [attachments, setAttachments] = useState(() => {
-    const saved = localStorage.getItem('srr_attachments');
+  const [priceLists, setPriceLists] = useState(() => {
+    const saved = localStorage.getItem('srr_price_lists');
     const parsed = saved ? JSON.parse(saved) : [];
-    return parsed.filter(a => a.data && !a.data.includes('firebasestorage') && !a.data.includes('TRUNCATED'));
+    // CRITICAL: Filter out any legacy Google Drive links or truncated data
+    return parsed.filter(a => a.data && a.data.startsWith('http') && !a.data.includes('drive.google.com') && !a.data.includes('googleusercontent'));
   });
+
+
 
   const [templates, setTemplates] = useState(() => {
     const saved = localStorage.getItem('srr_templates');
-    return saved ? JSON.parse(saved) : [
-      {
+    const parsed = saved ? JSON.parse(saved) : [];
+    // If no templates at all, use the hardcoded default
+    if (parsed.length === 0) {
+      return [{
         id: 'default',
         name: 'Standard Implants',
         description: 'Standard quotation for surgical implants.',
-        requiresAttachment: true,
         subject: 'Quotation for Orthopedic Implants & instruments',
         defaultMake: '',
         defaultDelivery: 'Immediate',
@@ -211,8 +239,9 @@ function App() {
         content: [
           { type: 'text', value: 'With reference to the subject cited above we are herewith submitting our lowest quotation for the enclosed Orthopedic Implants & instruments under the following terms& conditions. Please find the same.' }
         ]
-      }
-    ];
+      }];
+    }
+    return parsed;
   });
 
   const [quotationHistory, setQuotationHistory] = useState(() => {
@@ -223,15 +252,38 @@ function App() {
   const [driveFiles, setDriveFiles] = useState(() => {
     const saved = localStorage.getItem('srr_drive');
     const parsed = saved ? JSON.parse(saved) : { srr: [], vendor: [] };
-    // Filter SRR files
-    const srr = (parsed.srr || []).filter(f => f.data && !f.data.includes('firebasestorage') && !f.data.includes('TRUNCATED'));
+    // Only filter out legacy TRUNCATED data, keep firebasestorage URLs
+    // CRITICAL: Filter out legacy Google Drive links
+    const srr = (parsed.srr || []).filter(f => f.data && f.data.startsWith('http') && !f.data.includes('drive.google.com'));
     // Filter Vendor files
     const vendor = (parsed.vendor || []).map(folder => ({
       ...folder,
-      files: (folder.files || []).filter(f => f.data && !f.data.includes('firebasestorage') && !f.data.includes('TRUNCATED'))
+      files: (folder.files || []).filter(f => f.data && f.data.startsWith('http') && !f.data.includes('drive.google.com'))
     }));
     return { srr, vendor };
   });
+
+  // Background Pre-fetching for Speed
+  useEffect(() => {
+    const prefetch = async () => {
+      const allFiles = [
+        ...priceLists,
+        ...(driveFiles.srr || []),
+        ...((driveFiles.vendor || []).flatMap(f => f.files || []))
+      ];
+      
+      for (const file of allFiles) {
+        if (file.data && file.data.startsWith('http')) {
+          const cacheKey = file.storagePath || file.data;
+          if (!pdfCacheRef.current[cacheKey]) {
+            // Fetch silently in background
+            getFileData(file.data, file.storagePath);
+          }
+        }
+      }
+    };
+    if (user) prefetch();
+  }, [priceLists, driveFiles, user]);
 
   // Set initial ref number from history
   const refInitialized = React.useRef(false);
@@ -250,47 +302,58 @@ function App() {
       setUploadProgress(0);
     }
     try {
-      // Upload file to Google Drive if a file object is provided
       if (fileObject && !isDelete) {
         const validation = validateFile(fileObject);
         if (!validation.isValid) throw new Error(validation.error);
 
-        // uploadFile now returns { url, fileId, success }
-        const result = await uploadFile(fileObject, '', (p) => {
+        const result = await uploadFile(fileObject, colName, (p) => {
           setUploadProgress(p);
           if (onProgress) onProgress(p);
         });
 
-        if (!result || (!result.success && !result.url)) {
-          throw new Error("Failed to upload to Google Drive");
+        if (!result || !result.success) {
+          throw new Error("Failed to upload to Firebase Storage");
         }
 
         item.data = result.url || '';
         item.fileId = result.fileId || '';
-        item.storagePath = result.fileId || '';
+        item.storagePath = result.path || '';
       }
 
-      const itemRef = doc(db, 'users', user.uid, colName, item.id);
-      if (isDelete) {
-        await deleteDoc(itemRef);
-        // Delete from Google Drive if it's a Drive file
-        if (item.fileId) {
-          try {
-            await deleteFile(item.fileId);
-          } catch (e) {
-            console.warn('Google Drive deletion failed:', e);
-          }
+      if (isDelete && (item.storagePath || item.fileId)) {
+        try {
+          await deleteFile(item.storagePath || item.fileId);
+        } catch (e) {
+          console.warn('Firebase Storage deletion failed:', e);
         }
-      } else {
-        await setDoc(itemRef, item);
       }
+
+      // Save metadata to Firestore
+      // Standardize collection names to match databaseService.js
+      let collectionName = colName;
+      if (colName === 'drive_srr' || colName === 'drive_vendor_files') {
+        collectionName = 'driveFiles';
+      } else if (colName === 'price_lists') {
+        collectionName = 'priceLists';
+      } else if (colName === 'drive_folders') {
+        collectionName = 'driveFolders';
+      }
+      
+      if (isDelete) {
+        await deleteFileMetadata(collectionName, item.id);
+      } else {
+        // Prepare item for Firestore (ensure no binary data)
+        const metadata = { ...item, type: colName };
+        await saveFileMetadata(collectionName, metadata);
+      }
+      
       setSyncStatus('saved');
       if (fileObject && !isDelete) {
         setTimeout(() => setIsUploading(false), 800);
       }
       return true;
     } catch (err) {
-      console.error(`Sync error (${colName}):`, err);
+      console.error(`Sync error:`, err);
       setSyncStatus('error');
       setIsUploading(false);
       alert(`Sync failed: ${err.message || 'Check your internet connection.'}`);
@@ -312,55 +375,43 @@ function App() {
   });
   const [isSendingEmail, setIsSendingEmail] = useState(false);
 
-  const handleGlobalSendEmail = async () => {
-    if (!emailForm.to) return alert('Please enter recipient email.');
-    setIsSendingEmail(true);
-    const scriptUrl = import.meta.env.VITE_GMAIL_SCRIPT_URL;
-    const token = import.meta.env.VITE_GMAIL_TOKEN;
+    const handleGlobalSendEmail = async () => {
+      if (!emailForm.to) return alert('Please enter recipient email.');
+      setIsSendingEmail(true);
+      const webhookUrl = import.meta.env.VITE_EMAIL_WEBHOOK_URL || import.meta.env.VITE_GMAIL_SCRIPT_URL;
 
-    if (!scriptUrl) {
-      const { to, subject, body } = emailForm;
-      const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(to)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-      window.open(gmailUrl, '_blank');
-      setIsSendingEmail(false);
-      return;
-    }
+      const filesToAttach = (emailForm.selectedDriveFiles || []).map(f => ({
+        fileName: f.fileName || f.label || 'Document.pdf',
+        url: f.data
+      }));
 
-    const filesToAttach = (emailForm.selectedDriveFiles || []).map(f => ({
-      fileName: f.fileName || f.label || 'Document.pdf',
-      url: f.data
-    }));
+      const payload = {
+        to: emailForm.to,
+        subject: emailForm.subject,
+        body: emailForm.body,
+        files: filesToAttach
+      };
 
-    const payload = {
-      token: token,
-      to: emailForm.to,
-      subject: emailForm.subject,
-      body: emailForm.body,
-      files: filesToAttach
+      try {
+        if (!webhookUrl) throw new Error("Automated email service is not configured.");
+        
+        await fetch(webhookUrl, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        });
+        alert('Email request processed. Your Gmail account is sending the message with all attachments. Please check your "Sent" folder in a few moments.');
+        setShowEmailComposer(false);
+      } catch (err) {
+        console.error('Email error:', err);
+        alert(`Failed to send email: ${err.message || 'Check your internet connection.'}`);
+      } finally {
+        setIsSendingEmail(false);
+      }
     };
-
-    try {
-      // Using 'no-cors' is often more reliable for Google Apps Script triggers 
-      // as it avoids complex pre-flight checks that some browsers block.
-      await fetch(scriptUrl, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify(payload)
-      });
-
-      alert('Email request sent successfully! Check your Gmail "Sent" folder in a moment.');
-      setShowEmailComposer(false);
-    } catch (err) {
-      console.error('Email error:', err);
-      alert('Automated sending failed. Opening manual Gmail window...');
-      const { to, subject, body } = emailForm;
-      const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(to)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-      window.open(gmailUrl, '_blank');
-    } finally {
-      setIsSendingEmail(false);
-    }
-  };
 
   const confirmDelete = (callback) => {
     const pw = prompt('Enter admin password to delete:');
@@ -430,6 +481,28 @@ function App() {
     }
   }, [emailForm.selectedDriveFiles]);
 
+  // Preview PDF for Price List
+  useEffect(() => {
+    if (!formData.priceListId) {
+      setPreviewPdfUrl(null);
+      return;
+    }
+    const fetchPreview = async () => {
+      const selected = priceLists.find(pl => pl.id === formData.priceListId);
+      if (selected && (selected.data || selected.fileId)) {
+        const bytes = await getFileData(selected.data, selected.fileId);
+        if (bytes) {
+          const blob = new Blob([bytes], { type: 'application/pdf' });
+          const url = URL.createObjectURL(blob);
+          setPreviewPdfUrl(url);
+        }
+      }
+    };
+    fetchPreview();
+    return () => { if (previewPdfUrl) URL.revokeObjectURL(previewPdfUrl); };
+  }, [formData.priceListId, priceLists]); // Removed pdfCache dependency
+
+
   useEffect(() => {
     if (!regeneratingItem) return;
     const generateHistoryPDF = async () => {
@@ -439,50 +512,31 @@ function App() {
         const dataUrl = await toJpeg(element, { quality: 0.95, backgroundColor: '#ffffff', pixelRatio: 2 });
         const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
         pdf.addImage(dataUrl, 'JPEG', 0, 0, 210, 297);
-        const coverArrayBuffer = pdf.output('arraybuffer');
+        let finalPdfBytes = pdf.output('arraybuffer');
 
-        let finalPdfBytes;
-        const attachmentRef = regeneratingItem.formData.attachmentLabel || regeneratingItem.formData.make;
-        const selectedAttachment = regeneratingItem.requiresAttachment ? attachments.find(a => a.label === attachmentRef) : null;
-        if (selectedAttachment) {
-          if (!selectedAttachment.data || typeof selectedAttachment.data !== 'string') {
-            alert('The brand PDF attachment in history is corrupted (likely from a previous session). Please re-upload it in the Library.');
-            setIsGenerating(false);
-            setRegeneratingItem(null);
-            return;
+        // MERGE PRICE LIST IF IT WAS SELECTED IN HISTORY
+        if (regeneratingItem.formData?.priceListId) {
+          const selectedPriceList = priceLists.find(pl => pl.id === regeneratingItem.formData.priceListId);
+          if (selectedPriceList && (selectedPriceList.data || selectedPriceList.fileId)) {
+            try {
+              const priceListBytes = await getFileData(selectedPriceList.data, selectedPriceList.fileId);
+              if (priceListBytes) {
+                const mainPdfDoc = await PDFDocument.load(finalPdfBytes);
+                const priceListPdfDoc = await PDFDocument.load(priceListBytes);
+                const mergedPdfDoc = await PDFDocument.create();
+                
+                const mainPages = await mergedPdfDoc.copyPages(mainPdfDoc, mainPdfDoc.getPageIndices());
+                mainPages.forEach(p => mergedPdfDoc.addPage(p));
+                
+                const priceListPages = await mergedPdfDoc.copyPages(priceListPdfDoc, priceListPdfDoc.getPageIndices());
+                priceListPages.forEach(p => mergedPdfDoc.addPage(p));
+                
+                finalPdfBytes = await mergedPdfDoc.save();
+              }
+            } catch (err) {
+              console.error("Historical PDF Merge failed:", err);
+            }
           }
-          const mergedPdf = await PDFDocument.create();
-          const coverDoc = await PDFDocument.load(coverArrayBuffer);
-          const [coverPage] = await mergedPdf.copyPages(coverDoc, [0]);
-          mergedPdf.addPage(coverPage);
-
-          const fileData = await getFileData(selectedAttachment.data);
-          const base64Data = fileData.includes('base64,') ? fileData.split(',')[1] : fileData;
-          const attachmentDoc = await PDFDocument.load(base64Data);
-          // A4 dimensions in points (595.28 x 841.89)
-          const A4_WIDTH = 595.28;
-          const A4_HEIGHT = 841.89;
-          const attachmentPages = attachmentDoc.getPages();
-          for (const page of attachmentPages) {
-            const embeddedPage = await mergedPdf.embedPage(page);
-            const origW = embeddedPage.width;
-            const origH = embeddedPage.height;
-            const scaleX = A4_WIDTH / origW;
-            const scaleY = A4_HEIGHT / origH;
-            const scale = Math.min(scaleX, scaleY);
-            const scaledW = origW * scale;
-            const scaledH = origH * scale;
-            const newPage = mergedPdf.addPage([A4_WIDTH, A4_HEIGHT]);
-            newPage.drawPage(embeddedPage, {
-              x: (A4_WIDTH - scaledW) / 2,
-              y: (A4_HEIGHT - scaledH) / 2,
-              width: scaledW,
-              height: scaledH,
-            });
-          }
-          finalPdfBytes = await mergedPdf.save();
-        } else {
-          finalPdfBytes = coverArrayBuffer;
         }
 
         const blob = new Blob([finalPdfBytes], { type: 'application/pdf' });
@@ -501,13 +555,12 @@ function App() {
               if (shareErr.name !== 'AbortError') console.error('Share failed:', shareErr);
             }
           } else {
-            // Fallback: download
             const url = URL.createObjectURL(blob);
-            const link = document.createElement('a'); link.href = url; link.download = fileName; link.click();
+            window.open(url, '_blank');
           }
         } else {
           const url = URL.createObjectURL(blob);
-          const link = document.createElement('a'); link.href = url; link.download = fileName; link.click();
+          window.open(url, '_blank');
         }
       } catch (e) {
         console.error(e);
@@ -518,25 +571,38 @@ function App() {
     };
 
     setTimeout(generateHistoryPDF, 150);
-  }, [regeneratingItem, attachments]);
+  }, [regeneratingItem]);
 
-  // Sync metadata to Firestore & LocalStorage (Truncated data for Quota)
+  // Global Sync to Firebase (Granular saves)
   useEffect(() => {
-    localStorage.setItem('srr_company_data', JSON.stringify(companyData));
-    if (user) setDoc(doc(db, 'users', user.uid), { companyData }, { merge: true }).catch(console.error);
+    if (!user) return;
+    const saveToFirebase = async () => {
+      setSyncStatus('syncing');
+      const success = await saveCompanyData(companyData);
+      setSyncStatus(success ? 'saved' : 'error');
+    };
+    const timer = setTimeout(saveToFirebase, 2000);
+    return () => clearTimeout(timer);
   }, [companyData, user]);
 
+  // Template Save Logic moved to the button handler for immediate persistence
+  // History Save Logic moved to generatePDF for immediate persistence
+
+  // Local Storage backups (Truncated)
   useEffect(() => {
-    localStorage.setItem('srr_attachments', JSON.stringify(attachments.map(a => ({ ...a, data: 'TRUNCATED_FOR_QUOTA' }))));
-  }, [attachments]);
+    localStorage.setItem('srr_company_data', JSON.stringify(companyData));
+  }, [companyData]);
+
+  useEffect(() => {
+    localStorage.setItem('srr_price_lists', JSON.stringify(priceLists.map(a => ({ ...a, data: 'TRUNCATED_FOR_QUOTA' }))));
+  }, [priceLists]);
 
   useEffect(() => {
     localStorage.setItem('srr_templates', JSON.stringify(templates));
-    if (user) setDoc(doc(db, 'users', user.uid), { templates }, { merge: true }).catch(console.error);
-  }, [templates, user]);
+  }, [templates]);
 
   useEffect(() => {
-    localStorage.setItem('srr_history', JSON.stringify(quotationHistory.slice(0, 10))); // Only last 10 in localStorage
+    localStorage.setItem('srr_history', JSON.stringify(quotationHistory.slice(0, 10)));
   }, [quotationHistory]);
 
   useEffect(() => {
@@ -568,31 +634,30 @@ function App() {
       gst: template.defaultGst || '5%',
       payment: template.defaultPayment || '30 days',
       validity: template.defaultValidity || '31/03/2027',
-      attachmentLabel: ''
     });
     setDraftContent(JSON.parse(JSON.stringify(template.content)));
-    setDraftRequiresAttachment(template.requiresAttachment || false);
     setView('drafting');
   };
 
-  const handleFileUpload = (e) => {
-    const file = e.target.files[0];
-    const label = prompt('Enter Brand Name (e.g. Zimmer, Stryker):');
-    if (file && label) {
-      const newAttachment = { id: Date.now().toString(), label, fileName: file.name };
-      syncItem('attachments', newAttachment, false, file).then(success => {
-        if (success) setAttachments(prev => [...prev, newAttachment]);
-      });
+  const handleDuplicateTemplate = async (template) => {
+    setSyncStatus('syncing');
+    const newTemplate = {
+      ...JSON.parse(JSON.stringify(template)),
+      id: Date.now().toString(),
+      name: `${template.name} (Copy)`
+    };
+    
+    const success = await saveTemplate(newTemplate);
+    if (success) {
+      setTemplates(prev => [newTemplate, ...prev]);
+      setSyncStatus('saved');
+    } else {
+      setSyncStatus('error');
+      alert('Failed to duplicate template to cloud.');
     }
-    e.target.value = '';
   };
 
-  const deleteAttachment = async (att) => {
-    confirmDelete(async () => {
-      setAttachments(attachments.filter(a => a.id !== att.id));
-      await syncItem('attachments', att, true);
-    });
-  };
+
 
   const handleDriveUpload = (e, colName, folderId = null) => {
     const files = Array.from(e.target.files);
@@ -638,13 +703,7 @@ function App() {
     });
   };
 
-  const handleCreateFolder = async () => {
-    const name = prompt('Enter vendor/folder name:');
-    if (!name) return;
-    const newFolder = { id: Date.now().toString(), name, files: [] };
-    const success = await syncItem('drive_folders', newFolder);
-    if (success) setDriveFiles(prev => ({ ...prev, vendor: [...prev.vendor, newFolder] }));
-  };
+
 
   const handleDeleteFolder = (folder) => {
     confirmDelete(async () => {
@@ -664,56 +723,34 @@ function App() {
       const dataUrl = await toJpeg(element, { quality: 0.95, backgroundColor: '#ffffff', pixelRatio: 2 });
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       pdf.addImage(dataUrl, 'JPEG', 0, 0, 210, 297);
-      const coverArrayBuffer = pdf.output('arraybuffer');
-      let finalPdfBytes;
-      const attachmentRef = (formData.attachmentLabel || formData.make || '').toLowerCase().trim();
-      const selectedAttachment = draftRequiresAttachment ? attachments.find(a => (a.label || '').toLowerCase().trim() === attachmentRef) : null;
+      let finalPdfBytes = pdf.output('arraybuffer');
 
-      if (selectedAttachment) {
-        const attachmentData = await getFileData(selectedAttachment.data);
-        if (!attachmentData) {
-          alert(`Failed to load the attachment for "${selectedAttachment.label}". Please check your internet or re-upload the document.`);
-          setIsGenerating(false);
-          return;
-        }
-
-        try {
-          const mergedPdf = await PDFDocument.create();
-          const coverDoc = await PDFDocument.load(coverArrayBuffer);
-          const [coverPage] = await mergedPdf.copyPages(coverDoc, [0]);
-          mergedPdf.addPage(coverPage);
-
-          const attachmentDoc = await PDFDocument.load(attachmentData);
-          const A4_WIDTH = 595.28;
-          const A4_HEIGHT = 841.89;
-          const attachmentPages = attachmentDoc.getPages();
-
-          for (const page of attachmentPages) {
-            const embeddedPage = await mergedPdf.embedPage(page);
-            const { width, height } = embeddedPage;
-            const scale = Math.min(A4_WIDTH / width, A4_HEIGHT / height);
-            const scaledW = width * scale;
-            const scaledH = height * scale;
-
-            const newPage = mergedPdf.addPage([A4_WIDTH, A4_HEIGHT]);
-            newPage.drawPage(embeddedPage, {
-              x: (A4_WIDTH - scaledW) / 2,
-              y: (A4_HEIGHT - scaledH) / 2,
-              width: scaledW,
-              height: scaledH,
-            });
+      // MERGE PRICE LIST IF SELECTED
+      if (formData.priceListId) {
+        const selectedPriceList = priceLists.find(pl => pl.id === formData.priceListId);
+        if (selectedPriceList && (selectedPriceList.data || selectedPriceList.fileId)) {
+          try {
+            const priceListBytes = await getFileData(selectedPriceList.data, selectedPriceList.fileId);
+            if (priceListBytes) {
+              const mainPdfDoc = await PDFDocument.load(finalPdfBytes);
+              const priceListPdfDoc = await PDFDocument.load(priceListBytes);
+              const mergedPdfDoc = await PDFDocument.create();
+              
+              const mainPages = await mergedPdfDoc.copyPages(mainPdfDoc, mainPdfDoc.getPageIndices());
+              mainPages.forEach(p => mergedPdfDoc.addPage(p));
+              
+              const priceListPages = await mergedPdfDoc.copyPages(priceListPdfDoc, priceListPdfDoc.getPageIndices());
+              priceListPages.forEach(p => mergedPdfDoc.addPage(p));
+              
+              finalPdfBytes = await mergedPdfDoc.save();
+            } else {
+              throw new Error("Could not retrieve Price List from Firebase Storage.");
+            }
+          } catch (err) {
+            console.error("PDF Merge failed:", err);
+            alert("Warning: Price List merge failed. The document was generated without the attachment. Error: " + err.message);
           }
-          finalPdfBytes = await mergedPdf.save();
-        } catch (mergeErr) {
-          console.error('Merge error:', mergeErr);
-          alert('Could not merge the brand attachment. Sending quotation only.');
-          finalPdfBytes = coverArrayBuffer;
         }
-      } else {
-        if (draftRequiresAttachment && attachmentRef) {
-          console.warn(`No attachment found matching: ${attachmentRef}`);
-        }
-        finalPdfBytes = coverArrayBuffer;
       }
 
       // Check ref number uniqueness
@@ -731,18 +768,14 @@ function App() {
         ref: formData.referenceNumber,
         templateName: templates.find(t => t.id === formData.selectedTemplateId)?.name || 'Custom',
         formData: JSON.parse(JSON.stringify(formData)),
-        draftContent: JSON.parse(JSON.stringify(draftContent)),
-        requiresAttachment: draftRequiresAttachment
+        draftContent: JSON.parse(JSON.stringify(draftContent))
       };
       setQuotationHistory([historyItem, ...quotationHistory]);
-      await syncItem('history', historyItem);
+      await saveHistoryItem(historyItem);
 
       const blob = new Blob([finalPdfBytes], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `Quotation_${formData.hospitalName}.pdf`;
-      link.click();
+      window.open(url, '_blank');
     } catch (e) { console.error(e); } finally { setIsGenerating(false); }
   };
 
@@ -799,7 +832,7 @@ function App() {
           <NavItem id="history" label="History" />
           <NavItem id="drive" label="Drive" />
           <NavItem id="emailer" label="Emailer" />
-          <NavItem id="admin" label="Brands" />
+          <NavItem id="pricelists" label="Price List" />
           <NavItem id="settings" label="Settings" />
         </div>
         <div className="ml-auto flex items-center gap-4">
@@ -830,7 +863,7 @@ function App() {
                       id: Date.now().toString(),
                       name: 'New Template',
                       description: '',
-                      requiresAttachment: false,
+                      requiresPriceList: false,
                       subject: '',
                       defaultMake: '',
                       defaultDelivery: '',
@@ -855,11 +888,11 @@ function App() {
                     template={t}
                     onUse={useTemplate}
                     onEdit={(t) => { setEditingTemplate(JSON.parse(JSON.stringify(t))); setView('builder'); }}
+                    onDuplicate={handleDuplicateTemplate}
                     onDelete={async (id) => {
                       confirmDelete(async () => {
-                        const item = templates.find(temp => temp.id === id);
+                        await deleteTemplate(id);
                         setTemplates(templates.filter(temp => temp.id !== id));
-                        // Add sync logic if needed, currently only local/company doc sync happens on state change
                       });
                     }}
                   />
@@ -928,6 +961,24 @@ function App() {
                     />
                   </div>
 
+                  <div className="flex items-center justify-between p-4 bg-[var(--apple-gray-1)] rounded-2xl border border-[var(--apple-gray-2)]">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${editingTemplate?.requiresPriceList ? 'bg-emerald-100 text-emerald-600' : 'bg-white text-[var(--apple-gray-4)]'}`}>
+                        <FileText size={20} />
+                      </div>
+                      <div>
+                        <p className="text-[14px] font-bold text-[var(--apple-black)]">Price List Needed</p>
+                        <p className="text-[11px] text-[var(--apple-gray-5)] font-medium">Require selecting a price list when drafting</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setEditingTemplate({ ...editingTemplate, requiresPriceList: !editingTemplate?.requiresPriceList })}
+                      className={`w-12 h-6 rounded-full transition-all duration-300 relative ${editingTemplate?.requiresPriceList ? 'bg-emerald-500' : 'bg-[var(--apple-gray-3)]'}`}
+                    >
+                      <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all duration-300 ${editingTemplate?.requiresPriceList ? 'left-7' : 'left-1'}`} />
+                    </button>
+                  </div>
+
                   <div className="pt-6 border-t border-[var(--apple-gray-2)]">
                     <label className="apple-label mb-4">Default Terms</label>
                     <div className="grid grid-cols-2 gap-4">
@@ -949,13 +1000,7 @@ function App() {
                     </div>
                   </div>
 
-                  <div className="pt-6 border-t border-[var(--apple-gray-2)] flex items-center justify-between">
-                    <label className="text-[15px] font-medium">Requires Attachment?</label>
-                    <button
-                      onClick={() => setEditingTemplate({ ...editingTemplate, requiresAttachment: !editingTemplate?.requiresAttachment })}
-                      className={`apple-toggle ${editingTemplate?.requiresAttachment ? 'on' : ''}`}
-                    />
-                  </div>
+
 
                   <div className="pt-6 border-t border-[var(--apple-gray-2)]">
                     <label className="apple-label mb-4">Add Section</label>
@@ -979,20 +1024,51 @@ function App() {
                 </div>
               </div>
 
-              <div className="p-8 mt-auto pt-4 bg-white border-t border-[var(--apple-gray-2)] sticky bottom-0">
+              <div className="p-8 mt-auto pt-4 bg-white border-t border-[var(--apple-gray-2)] sticky bottom-0 flex flex-col gap-3">
+                <div className="flex justify-between items-center px-1">
+                  <span className="text-[11px] font-bold text-[var(--apple-gray-5)] uppercase tracking-wider">Storage Status</span>
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${syncStatus === 'syncing' ? 'bg-amber-400 animate-pulse' : syncStatus === 'error' ? 'bg-red-500' : 'bg-emerald-500'}`} />
+                    <span className="text-[12px] font-medium text-[var(--apple-gray-6)]">
+                      {syncStatus === 'syncing' ? 'Saving to Cloud...' : syncStatus === 'error' ? 'Sync Error' : 'All Changes Saved'}
+                    </span>
+                  </div>
+                </div>
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     if (!editingTemplate) return;
+                    setSyncStatus('syncing');
+                    
+                    // Prepare the update
                     const updated = templates.some(t => t.id === editingTemplate.id)
                       ? templates.map(t => t.id === editingTemplate.id ? editingTemplate : t)
                       : [...templates, editingTemplate];
-                    setTemplates(updated);
-                    setEditingTemplate(null);
-                    setView('library');
+                    
+                    try {
+                      const success = await saveTemplate(editingTemplate);
+                      if (success) {
+                        // 1. Update local state
+                        setTemplates(updated);
+                        // 2. Force immediate LocalStorage update
+                        localStorage.setItem('srr_templates', JSON.stringify(updated));
+                        setSyncStatus('saved');
+                        setEditingTemplate(null);
+                        setView('library');
+                      } else {
+                        throw new Error("Firestore rejection");
+                      }
+                    } catch (err) {
+                      setSyncStatus('error');
+                      alert('Cloud Save Failed! Your changes are saved locally but not in the cloud. Check your internet.');
+                      // Still update local state so they don't lose work
+                      setTemplates(updated);
+                      setEditingTemplate(null);
+                      setView('library');
+                    }
                   }}
-                  className="btn-primary w-full"
+                  className="btn-primary w-full py-4"
                 >
-                  <Save size={18} /> Save Template
+                  <Save size={18} /> Save & Close
                 </button>
               </div>
             </div>
@@ -1031,7 +1107,8 @@ function App() {
                         <textarea
                           value={block.value}
                           onChange={e => {
-                            const nc = [...editingTemplate.content]; nc[idx].value = e.target.value;
+                            const nc = [...editingTemplate.content];
+                            nc[idx] = { ...nc[idx], value: e.target.value };
                             setEditingTemplate({ ...editingTemplate, content: nc });
                           }}
                           className="apple-input min-h-[140px]"
@@ -1047,7 +1124,10 @@ function App() {
                                     <input
                                       value={h}
                                       onChange={e => {
-                                        const nc = [...editingTemplate.content]; nc[idx].headers[hi] = e.target.value;
+                                        const nc = [...editingTemplate.content];
+                                        const newHeaders = [...nc[idx].headers];
+                                        newHeaders[hi] = e.target.value;
+                                        nc[idx] = { ...nc[idx], headers: newHeaders };
                                         setEditingTemplate({ ...editingTemplate, content: nc });
                                       }}
                                       className="w-full bg-transparent outline-none font-semibold text-center text-[11px] uppercase tracking-wider text-[var(--apple-gray-6)]"
@@ -1079,19 +1159,21 @@ function App() {
                                         value={cell}
                                         onChange={e => {
                                           const nc = [...editingTemplate.content];
-                                          nc[idx].rows[ri][ci] = e.target.value;
-
+                                          const newRows = nc[idx].rows.map(r => [...r]);
+                                          newRows[ri][ci] = e.target.value;
+                                          
                                           const headers = nc[idx].headers.map(h => h.toLowerCase());
                                           const qtyIdx = headers.findIndex(h => h === 'qty' || h === 'quantity');
                                           const rateIdx = headers.findIndex(h => h === 'rate' || h === 'mrp' || h === 'price');
                                           const amountIdx = headers.findIndex(h => h === 'amount' || h === 'total');
 
                                           if (qtyIdx !== -1 && rateIdx !== -1 && amountIdx !== -1 && (ci === qtyIdx || ci === rateIdx)) {
-                                            const qty = parseFloat(nc[idx].rows[ri][qtyIdx]) || 0;
-                                            const rate = parseFloat(nc[idx].rows[ri][rateIdx]) || 0;
-                                            nc[idx].rows[ri][amountIdx] = (qty * rate).toFixed(2).replace(/\.00$/, '');
+                                            const qty = parseFloat(newRows[ri][qtyIdx]) || 0;
+                                            const rate = parseFloat(newRows[ri][rateIdx]) || 0;
+                                            newRows[ri][amountIdx] = (qty * rate).toFixed(2).replace(/\.00$/, '');
                                           }
 
+                                          nc[idx] = { ...nc[idx], rows: newRows };
                                           setEditingTemplate({ ...editingTemplate, content: nc });
                                         }}
                                         className="w-full py-2.5 px-3 bg-transparent outline-none text-center text-[13px] hover:bg-black/5 focus:bg-white focus:ring-1 focus:ring-[var(--emerald)] transition-all"
@@ -1117,7 +1199,9 @@ function App() {
                           <div className="flex border-t border-[var(--apple-gray-2)]">
                             <button
                               onClick={() => {
-                                const nc = [...editingTemplate.content]; nc[idx].rows.push(Array(block.headers.length).fill(''));
+                                const nc = [...editingTemplate.content];
+                                const newRows = [...nc[idx].rows, Array(block.headers.length).fill('')];
+                                nc[idx] = { ...nc[idx], rows: newRows };
                                 setEditingTemplate({ ...editingTemplate, content: nc });
                               }}
                               className="flex-1 py-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--emerald)] hover:bg-[var(--emerald-light)] transition-colors border-r border-[var(--apple-gray-2)]"
@@ -1127,8 +1211,9 @@ function App() {
                             <button
                               onClick={() => {
                                 const nc = [...editingTemplate.content];
-                                nc[idx].headers.push('NEW COL');
-                                nc[idx].rows.forEach(row => row.push(''));
+                                const newHeaders = [...nc[idx].headers, 'NEW COL'];
+                                const newRows = nc[idx].rows.map(row => [...row, '']);
+                                nc[idx] = { ...nc[idx], headers: newHeaders, rows: newRows };
                                 setEditingTemplate({ ...editingTemplate, content: nc });
                               }}
                               className="flex-1 py-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--coral)] hover:bg-red-50 transition-colors"
@@ -1197,6 +1282,23 @@ function App() {
                       <span className="text-[11px] font-semibold text-[var(--apple-gray-5)] uppercase block mb-1">Subject</span>
                       <textarea name="subject" value={formData.subject} onChange={handleInputChange} rows="2" className="apple-input" />
                     </div>
+
+                    {templates.find(t => t.id === formData.selectedTemplateId)?.requiresPriceList && (
+                      <div>
+                        <span className="text-[11px] font-semibold text-[var(--apple-gray-5)] uppercase block mb-1">Attached Price List</span>
+                        <select 
+                          name="priceListId" 
+                          value={formData.priceListId || ''} 
+                          onChange={handleInputChange}
+                          className="apple-input cursor-pointer bg-[var(--apple-gray-1)]"
+                        >
+                          <option value="">-- Select Price List --</option>
+                          {priceLists.map(pl => (
+                            <option key={pl.id} value={pl.id}>{pl.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                   </div>
 
                   {/* Template Editor */}
@@ -1263,7 +1365,8 @@ function App() {
                                           value={cell}
                                           onChange={e => {
                                             const nc = [...draftContent];
-                                            nc[idx].rows[ri][ci] = e.target.value;
+                                            const newRows = nc[idx].rows.map(r => [...r]);
+                                            newRows[ri][ci] = e.target.value;
 
                                             const headers = nc[idx].headers.map(h => h.toLowerCase());
                                             const qtyIdx = headers.findIndex(h => h === 'qty' || h === 'quantity');
@@ -1271,11 +1374,12 @@ function App() {
                                             const amountIdx = headers.findIndex(h => h === 'amount' || h === 'total');
 
                                             if (qtyIdx !== -1 && rateIdx !== -1 && amountIdx !== -1 && (ci === qtyIdx || ci === rateIdx)) {
-                                              const qty = parseFloat(nc[idx].rows[ri][qtyIdx]) || 0;
-                                              const rate = parseFloat(nc[idx].rows[ri][rateIdx]) || 0;
-                                              nc[idx].rows[ri][amountIdx] = (qty * rate).toFixed(2).replace(/\.00$/, '');
+                                              const qty = parseFloat(newRows[ri][qtyIdx]) || 0;
+                                              const rate = parseFloat(newRows[ri][rateIdx]) || 0;
+                                              newRows[ri][amountIdx] = (qty * rate).toFixed(2).replace(/\.00$/, '');
                                             }
 
+                                            nc[idx] = { ...nc[idx], rows: newRows };
                                             setDraftContent(nc);
                                           }}
                                           className="w-full py-2.5 px-3 bg-transparent outline-none text-center text-[13px] hover:bg-black/5 focus:bg-white focus:ring-1 focus:ring-[var(--emerald)] transition-all"
@@ -1285,7 +1389,9 @@ function App() {
                                     <td className="p-0 text-center w-8">
                                       <button
                                         onClick={() => {
-                                          const nc = [...draftContent]; nc[idx].rows.splice(ri, 1);
+                                          const nc = [...draftContent];
+                                          const newRows = nc[idx].rows.filter((_, i) => i !== ri);
+                                          nc[idx] = { ...nc[idx], rows: newRows };
                                           setDraftContent(nc);
                                         }}
                                         className="w-full h-full flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 hover:bg-red-50 py-2.5 transition-colors"
@@ -1301,7 +1407,9 @@ function App() {
                             <div className="flex border-t border-[var(--apple-gray-2)]">
                               <button
                                 onClick={() => {
-                                  const nc = [...draftContent]; nc[idx].rows.push(Array(block.headers.length).fill(''));
+                                  const nc = [...draftContent];
+                                  const newRows = [...nc[idx].rows, Array(block.headers.length).fill('')];
+                                  nc[idx] = { ...nc[idx], rows: newRows };
                                   setDraftContent(nc);
                                 }}
                                 className="flex-1 py-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--emerald)] hover:bg-[var(--emerald-light)] transition-colors border-r border-[var(--apple-gray-2)]"
@@ -1346,30 +1454,7 @@ function App() {
                     </div>
                   </div>
 
-                  {/* Brand Attachment */}
-                  {draftRequiresAttachment && (
-                    <div className="space-y-4 pt-4">
-                      <h3 className="apple-label border-b border-[var(--apple-gray-2)] pb-2">Brand PDF Attachment</h3>
-                      <select
-                        name="attachmentLabel"
-                        value={formData.attachmentLabel || ''}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setFormData(prev => ({
-                            ...prev,
-                            attachmentLabel: val,
-                            make: prev.make === '' || prev.make === prev.attachmentLabel ? val : prev.make
-                          }));
-                        }}
-                        className="apple-input cursor-pointer"
-                      >
-                        <option value="">-- Select Brand --</option>
-                        {attachments.map(att => (
-                          <option key={att.id} value={att.label}>{att.label}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
+
 
                 </div>
               </div>
@@ -1544,25 +1629,36 @@ function App() {
                     <div className="scale-[0.85] origin-top">
                       <QuotationTemplate id="quotation-template" data={formData} content={draftContent} company={companyData} />
                     </div>
-                    {/* Attached Brand PDF Preview */}
-                    {(() => {
-                      const attachmentRef = formData.attachmentLabel || formData.make;
-                      const selectedAtt = draftRequiresAttachment ? attachments.find(a => a.label === attachmentRef) : null;
-                      if (!selectedAtt || !selectedAtt.data) return null;
-                      return (
-                        <div className="w-full flex flex-col items-center" style={{ marginTop: '-80px' }}>
-                          <div className="flex items-center gap-2 mb-4">
-                            <span className="badge-gray">ATTACHMENT</span>
-                            <span className="text-[13px] font-medium text-[var(--apple-gray-5)]">{selectedAtt.label} — {selectedAtt.fileName}</span>
+
+                    {formData.priceListId && (
+                      <div className="scale-[0.85] origin-top flex flex-col gap-4">
+                        <div className="w-[210mm] min-h-[500px] bg-white shadow-2xl flex flex-col items-center justify-center border border-[var(--apple-gray-3)] relative overflow-hidden">
+                          <div className="absolute top-4 left-4 bg-[var(--emerald)] text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-widest shadow-sm z-10">
+                            Attached Price List
                           </div>
-                          <embed
-                            src={selectedAtt.data + '#toolbar=0&navpanes=0'}
-                            type="application/pdf"
-                            style={{ width: '178.5mm', height: '252.45mm', border: 'none', borderRadius: '4px', boxShadow: '0 4px 24px rgba(0,0,0,0.12)' }}
-                          />
+                          {previewPdfUrl ? (
+                            <iframe 
+                              src={previewPdfUrl + '#toolbar=0&navpanes=0&view=FitH'} 
+                              className="w-full h-[1100px] border-none" 
+                              title="Price List Preview" 
+                            />
+                          ) : (
+                            <div className="flex flex-col items-center gap-4 py-20 px-12 text-center">
+                              <div className="w-20 h-20 bg-[var(--apple-gray-1)] rounded-3xl flex items-center justify-center mb-4">
+                                <FileCheck size={40} className="text-[var(--emerald)] animate-pulse" />
+                              </div>
+                              <h3 className="text-[20px] font-bold text-[var(--apple-black)] tracking-tight">
+                                Loading Price List...
+                              </h3>
+                              <p className="text-[14px] text-[var(--apple-gray-5)]">
+                                Fetching the document from Google Drive.
+                              </p>
+                            </div>
+                          )}
                         </div>
-                      );
-                    })()}
+                      </div>
+                    )}
+
                   </div>
                 )}
               </div>
@@ -1667,58 +1763,7 @@ function App() {
           </div>
         )}
 
-        {/* VIEW: ADMIN (Attachments) */}
-        {view === 'admin' && (
-          <div className="h-full overflow-y-auto px-8 py-12 md:px-16 md:py-16">
-            <div className="max-w-3xl mx-auto">
-              <h1 className="apple-title-1 mb-2">Brands</h1>
-              <p className="apple-subtitle mb-12">Manage manufacturer PDF price lists to append to quotations.</p>
 
-              <div className="apple-card p-12 text-center mb-12">
-                <div className="w-16 h-16 bg-[var(--apple-gray-1)] text-[var(--apple-black)] rounded-2xl flex items-center justify-center mx-auto mb-6">
-                  <UploadCloud size={32} />
-                </div>
-                <h2 className="text-[24px] font-semibold tracking-tight mb-2">Upload Price List</h2>
-                <p className="text-[15px] text-[var(--apple-gray-5)] mb-8">Select a PDF to map to a brand name.</p>
-
-                <input type="file" accept=".pdf" onChange={handleFileUpload} className="hidden" id="admin-upload" />
-                <label htmlFor="admin-upload" className="btn-primary">
-                  <Plus size={18} /> Select PDF
-                </label>
-              </div>
-
-              <div>
-                <h3 className="apple-label mb-4">Linked Price Lists ({attachments.length})</h3>
-                <div className="space-y-4">
-                  {attachments.map(att => (
-                    <div key={att.id} className="apple-card p-6 flex items-center justify-between">
-                      <div className="flex items-center gap-5">
-                        <div className="w-12 h-12 bg-[var(--apple-gray-1)] rounded-full flex items-center justify-center">
-                          <Building2 size={24} className="text-[var(--apple-black)]" />
-                        </div>
-                        <div>
-                          <p className="text-[17px] font-semibold text-[var(--apple-black)]">{att.label}</p>
-                          <p className="text-[13px] text-[var(--apple-gray-5)] mt-1">{att.fileName}</p>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => {
-                          confirmDelete(async () => {
-                            setAttachments(attachments.filter(a => a.id !== att.id));
-                            await syncItem('attachments', att, true);
-                          });
-                        }}
-                        className="w-10 h-10 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 bg-[var(--apple-gray-1)] hover:bg-red-50 rounded-full transition-colors"
-                      >
-                        <Trash2 size={18} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* VIEW: DRIVE */}
         {view === 'drive' && (
@@ -1909,6 +1954,83 @@ function App() {
           </div>
         )}
 
+        {/* VIEW: PRICE LISTS */}
+        {view === 'pricelists' && (
+          <div className="h-full overflow-y-auto px-8 py-12 md:px-16 md:py-16">
+            <div className="max-w-3xl mx-auto">
+              <header className="mb-12">
+                <h1 className="apple-title-1 mb-2">Price Lists</h1>
+                <p className="apple-subtitle">Manage and access manufacturer price lists.</p>
+              </header>
+
+              <div className="apple-card p-12 text-center mb-12 border-2 border-dashed border-[var(--apple-gray-3)] bg-[var(--apple-gray-1)]/30">
+                <div className="w-16 h-16 bg-white text-[var(--apple-black)] rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-sm">
+                  <UploadCloud size={32} />
+                </div>
+                <h2 className="text-[24px] font-semibold tracking-tight mb-2">Upload Price List</h2>
+                <p className="text-[15px] text-[var(--apple-gray-5)] mb-8">Upload a document and give it a name.</p>
+                
+                <input type="file" onChange={(e) => {
+                  const file = e.target.files[0];
+                  if (!file) return;
+                  const label = prompt('Enter a name for this Price List (e.g. Stryker 2024):');
+                  if (!label) { e.target.value = ''; return; }
+                  const newItem = { id: Date.now().toString(), label, fileName: file.name, uploadedAt: new Date().toLocaleDateString('en-GB') };
+                  syncItem('price_lists', newItem, false, file).then(success => {
+                    if (success) setPriceLists(prev => [...prev, newItem]);
+                  });
+                  e.target.value = '';
+                }} className="hidden" id="price-list-upload" />
+                <label htmlFor="price-list-upload" className="btn-primary cursor-pointer inline-flex items-center gap-2">
+                  <Plus size={18} /> Select File
+                </label>
+              </div>
+
+              <div>
+                <h3 className="apple-label mb-6 flex items-center gap-2">
+                  <FileText size={18} className="text-[var(--apple-gray-5)]" />
+                  Your Price Lists ({priceLists.length})
+                </h3>
+                <div className="grid gap-4">
+                  {priceLists.map(item => (
+                    <div key={item.id} className="apple-card p-5 flex items-center justify-between hover:border-[var(--apple-gray-4)] transition-all">
+                      <div className="flex items-center gap-4">
+                        <div className="w-11 h-11 bg-[var(--apple-gray-1)] rounded-xl flex items-center justify-center">
+                          <FileText size={22} className="text-[var(--apple-black)]" />
+                        </div>
+                        <div>
+                          <p className="text-[16px] font-bold text-[var(--apple-black)] leading-tight">{item.label}</p>
+                          <p className="text-[12px] text-[var(--apple-gray-5)] mt-1">{item.fileName} • {item.uploadedAt}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <a href={item.data} download={item.fileName} className="w-9 h-9 flex items-center justify-center text-[var(--apple-gray-5)] hover:text-[var(--apple-black)] hover:bg-[var(--apple-gray-1)] rounded-lg transition-all" title="Download">
+                          <Download size={18} />
+                        </a>
+                        <button 
+                          onClick={() => confirmDelete(async () => {
+                            setPriceLists(prev => prev.filter(p => p.id !== item.id));
+                            await syncItem('price_lists', item, true);
+                          })}
+                          className="w-9 h-9 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                          title="Delete"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {priceLists.length === 0 && (
+                    <div className="text-center py-16 bg-white border border-dashed border-[var(--apple-gray-3)] rounded-2xl">
+                      <p className="text-[15px] text-[var(--apple-gray-4)]">No price lists uploaded yet.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* VIEW: SETTINGS */}
         {view === 'settings' && (
           <div className="h-full overflow-y-auto px-8 py-12 md:px-16 md:py-16">
@@ -1971,10 +2093,16 @@ function App() {
                   </div>
                   <div className="pt-6 border-t border-[var(--apple-gray-2)]">
                     <button
-                      onClick={() => {
-                        localStorage.setItem('srr_company_data', JSON.stringify(companyData));
-                        setDoc(doc(db, 'users', user.uid), { companyData }, { merge: true });
-                        alert('Settings saved successfully!');
+                      onClick={async () => {
+                        setSyncStatus('syncing');
+                        const success = await saveCompanyData(companyData);
+                        if (success) {
+                          setSyncStatus('saved');
+                          alert('Settings saved to Cloud successfully!');
+                        } else {
+                          setSyncStatus('error');
+                          alert('Failed to save settings to Cloud.');
+                        }
                       }}
                       className="btn-primary"
                     >
@@ -1993,30 +2121,15 @@ function App() {
                 </p>
                 <button
                   onClick={async () => {
-                    const pwd = prompt('Type "PURGE" to confirm complete database wipe:');
+                    const pwd = prompt('Type "PURGE" to confirm clearing local cache:');
                     if (pwd !== 'PURGE') return;
-
-                    try {
-                      setSyncStatus('syncing');
-                      const collectionsToWipe = ['attachments', 'drive_srr', 'drive_folders', 'drive_vendor_files'];
-                      for (const col of collectionsToWipe) {
-                        const snap = await getDocs(collection(db, 'users', user.uid, col));
-                        const batch = writeBatch(db);
-                        snap.docs.forEach(d => batch.delete(d.ref));
-                        await batch.commit();
-                      }
-                      localStorage.removeItem('srr_attachments');
-                      localStorage.removeItem('srr_drive');
-                      alert('Database purged successfully! The app will now reload.');
-                      window.location.reload();
-                    } catch (err) {
-                      console.error('Purge failed:', err);
-                      alert('Purge failed. Check console for details.');
-                    }
+                    localStorage.clear();
+                    alert('Local cache cleared successfully! The app will now reload.');
+                    window.location.reload();
                   }}
                   className="bg-red-500 hover:bg-red-600 text-white px-6 py-2.5 rounded-xl font-bold text-[14px] transition-colors flex items-center gap-2 shadow-sm"
                 >
-                  <Trash2 size={16} /> Hard Purge All Files
+                  <Trash2 size={16} /> Clear Local Cache
                 </button>
               </div>
             </div>
@@ -2033,7 +2146,7 @@ function App() {
               <ArrowRight className={syncStatus === 'syncing' ? 'animate-spin' : ''} size={16} />
               {syncStatus === 'syncing' ? 'Refreshing...' : 'Refresh Files'}
             </button>
-            <EmailerView driveFiles={driveFiles} />
+            <EmailerView driveFiles={driveFiles} priceLists={priceLists} />
           </div>
         )}
       </main>
