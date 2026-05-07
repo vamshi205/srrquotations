@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Mail, FileText, FileCheck, CheckSquare, ChevronRight, HardDrive } from 'lucide-react';
+import { Mail, FileText, FileCheck, CheckSquare, ChevronRight, HardDrive, Plus } from 'lucide-react';
 import { sendEmailWithResend } from '../utils/emailService';
 
 const EmailerView = ({ driveFiles, priceLists }) => {
