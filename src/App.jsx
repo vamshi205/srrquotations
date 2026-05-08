@@ -1995,109 +1995,171 @@ function App() {
                   </div>
                 );
                 return (
-                  <div className="apple-card overflow-hidden">
-                    <div className="overflow-x-auto">
-                      <table className="w-full min-w-[800px]">
-                      <thead>
-                        <tr className="bg-[var(--apple-gray-1)] border-b border-[var(--apple-gray-2)]">
-                          <th className="text-left py-3 px-5 text-[11px] font-bold uppercase tracking-wider text-[var(--apple-gray-5)]">Ref No.</th>
-                          <th className="text-left py-3 px-5 text-[11px] font-bold uppercase tracking-wider text-[var(--apple-gray-5)]">Hospital</th>
-                          <th className="text-left py-3 px-5 text-[11px] font-bold uppercase tracking-wider text-[var(--apple-gray-5)] hidden md:table-cell">Template</th>
-                          <th className="text-left py-3 px-5 text-[11px] font-bold uppercase tracking-wider text-[var(--apple-gray-5)]">Date</th>
-                          <th className="text-right py-3 px-5 text-[11px] font-bold uppercase tracking-wider text-[var(--apple-gray-5)]">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filtered.map((item) => (
-                          <tr key={item.id} className="border-b border-[var(--apple-gray-2)] last:border-0 hover:bg-[var(--apple-gray-1)] transition-colors">
-                            <td className="py-4 px-5">
-                              <span className="text-[13px] font-bold text-[var(--emerald)] bg-[var(--emerald-light)] px-2.5 py-1 rounded-md whitespace-nowrap">{(item.ref || '').replace('SRR/QUOT/', '')}</span>
-                            </td>
-                            <td className="py-4 px-5">
-                              <div className="flex items-center gap-2">
-                                <span className="text-[15px] font-semibold text-[var(--apple-black)]">{item.hospital}</span>
-                                {item.isEmailed && (
-                                  <div 
-                                    title={`Sent to: ${item.lastEmailedTo || 'Unknown'}\nOn: ${item.lastEmailedAt ? new Date(item.lastEmailedAt).toLocaleString() : 'Recently'}`}
-                                    className="flex items-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-600 rounded-md text-[10px] font-bold uppercase tracking-wider border border-blue-100 cursor-help"
-                                  >
-                                    <Mail size={10} /> SENT
+                  <>
+                    {/* Desktop Table View */}
+                    <div className="hidden lg:block apple-card overflow-hidden">
+                      <div className="overflow-x-auto">
+                        <table className="w-full">
+                          <thead>
+                            <tr className="bg-[var(--apple-gray-1)] border-b border-[var(--apple-gray-2)]">
+                              <th className="text-left py-3 px-5 text-[11px] font-bold uppercase tracking-wider text-[var(--apple-gray-5)]">Ref No.</th>
+                              <th className="text-left py-3 px-5 text-[11px] font-bold uppercase tracking-wider text-[var(--apple-gray-5)]">Hospital</th>
+                              <th className="text-left py-3 px-5 text-[11px] font-bold uppercase tracking-wider text-[var(--apple-gray-5)]">Template</th>
+                              <th className="text-left py-3 px-5 text-[11px] font-bold uppercase tracking-wider text-[var(--apple-gray-5)]">Date</th>
+                              <th className="text-right py-3 px-5 text-[11px] font-bold uppercase tracking-wider text-[var(--apple-gray-5)]">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {filtered.map((item) => (
+                              <tr key={item.id} className="border-b border-[var(--apple-gray-2)] last:border-0 hover:bg-[var(--apple-gray-1)] transition-colors">
+                                <td className="py-4 px-5">
+                                  <span className="text-[13px] font-bold text-[var(--emerald)] bg-[var(--emerald-light)] px-2.5 py-1 rounded-md whitespace-nowrap">{(item.ref || '').replace('SRR/QUOT/', '')}</span>
+                                </td>
+                                <td className="py-4 px-5">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[15px] font-semibold text-[var(--apple-black)]">{item.hospital}</span>
+                                    {item.isEmailed && (
+                                      <div 
+                                        title={`Sent to: ${item.lastEmailedTo || 'Unknown'}\nOn: ${item.lastEmailedAt ? new Date(item.lastEmailedAt).toLocaleString() : 'Recently'}`}
+                                        className="flex items-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-600 rounded-md text-[10px] font-bold uppercase tracking-wider border border-blue-100 cursor-help"
+                                      >
+                                        <Mail size={10} /> SENT
+                                      </div>
+                                    )}
                                   </div>
-                                )}
-                              </div>
-                            </td>
-                            <td className="py-4 px-5 hidden md:table-cell">
-                              <span className="text-[13px] text-[var(--apple-gray-5)] font-medium">{item.templateName}</span>
-                            </td>
-                            <td className="py-4 px-5">
-                              <span className="text-[13px] text-[var(--apple-gray-5)] font-medium">{item.date}</span>
-                            </td>
-                            <td className="py-4 px-5">
-                              <div className="flex items-center justify-end gap-2">
-                                {item.formData && (
-                                  <>
-                                    <button
-                                      onClick={() => setPreviewingItem(item)}
-                                      className="w-9 h-9 flex items-center justify-center bg-white border border-[var(--apple-gray-2)] rounded-full text-[var(--apple-gray-6)] hover:border-[var(--apple-gray-4)] hover:bg-[var(--apple-gray-1)] transition-all shadow-sm"
-                                      title="View Entire Quotation"
-                                    >
-                                      <Eye size={16} />
-                                    </button>
-                                    <button
-                                      onClick={() => setRegeneratingItem(item)}
-                                      disabled={isGenerating || regeneratingItem}
-                                      className="w-9 h-9 flex items-center justify-center bg-white border border-[var(--apple-gray-2)] rounded-full text-[var(--emerald)] hover:border-[var(--emerald)] hover:bg-[var(--emerald-light)] transition-all disabled:opacity-50 shadow-sm"
-                                      title="Download PDF"
-                                    >
-                                      <Download size={16} />
-                                    </button>
-
-                                    <button 
-                                      onClick={() => setRegeneratingItem({ ...item, _emailMode: true })}
-                                      disabled={isGenerating || regeneratingItem}
-                                      className="w-9 h-9 flex items-center justify-center bg-blue-50 border border-blue-100 rounded-full text-blue-600 hover:bg-blue-100 transition-all disabled:opacity-50 shadow-sm"
-                                      title="Email Quotation"
-                                    >
-                                      <Mail size={16} />
-                                    </button>
-                                    
-                                    {isManagementActive && (
+                                </td>
+                                <td className="py-4 px-5">
+                                  <span className="text-[13px] text-[var(--apple-gray-5)] font-medium">{item.templateName}</span>
+                                </td>
+                                <td className="py-4 px-5">
+                                  <span className="text-[13px] text-[var(--apple-gray-5)] font-medium">{item.date}</span>
+                                </td>
+                                <td className="py-4 px-5">
+                                  <div className="flex items-center justify-end gap-2">
+                                    {item.formData && (
                                       <>
                                         <button
-                                          onClick={() => {
-                                            setFormData(item.formData);
-                                            setDraftContent(item.content || []);
-                                            setView('drafting');
-                                          }}
-                                          className="w-9 h-9 flex items-center justify-center bg-white border border-[var(--apple-gray-2)] rounded-full text-[var(--apple-black)] hover:border-[var(--apple-gray-4)] hover:bg-[var(--apple-gray-1)] transition-all shadow-sm"
-                                          title="Edit as Draft"
+                                          onClick={() => setPreviewingItem(item)}
+                                          className="w-9 h-9 flex items-center justify-center bg-white border border-[var(--apple-gray-2)] rounded-full text-[var(--apple-gray-6)] hover:border-[var(--apple-gray-4)] hover:bg-[var(--apple-gray-1)] transition-all shadow-sm"
+                                          title="View Entire Quotation"
                                         >
-                                          <Edit2 size={16} />
+                                          <Eye size={16} />
                                         </button>
                                         <button
-                                          onClick={() => confirmDelete(async () => {
-                                            setQuotationHistory(prev => prev.filter(h => h.id !== item.id));
-                                            await syncItem('history', item, true);
-                                          })}
-                                          className="w-9 h-9 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 hover:bg-red-50 rounded-full transition-all"
-                                          title="Delete History Item"
+                                          onClick={() => setRegeneratingItem(item)}
+                                          disabled={isGenerating || regeneratingItem}
+                                          className="w-9 h-9 flex items-center justify-center bg-white border border-[var(--apple-gray-2)] rounded-full text-[var(--emerald)] hover:border-[var(--emerald)] hover:bg-[var(--emerald-light)] transition-all disabled:opacity-50 shadow-sm"
+                                          title="Download PDF"
                                         >
-                                          <Trash2 size={18} />
+                                          <Download size={16} />
                                         </button>
+
+                                        <button 
+                                          onClick={() => setRegeneratingItem({ ...item, _emailMode: true })}
+                                          disabled={isGenerating || regeneratingItem}
+                                          className="w-9 h-9 flex items-center justify-center bg-blue-50 border border-blue-100 rounded-full text-blue-600 hover:bg-blue-100 transition-all disabled:opacity-50 shadow-sm"
+                                          title="Email Quotation"
+                                        >
+                                          <Mail size={16} />
+                                        </button>
+                                        
+                                        {isManagementActive && (
+                                          <>
+                                            <button
+                                              onClick={() => {
+                                                setFormData(item.formData);
+                                                setDraftContent(item.content || []);
+                                                setView('drafting');
+                                              }}
+                                              className="w-9 h-9 flex items-center justify-center bg-white border border-[var(--apple-gray-2)] rounded-full text-[var(--apple-black)] hover:border-[var(--apple-gray-4)] hover:bg-[var(--apple-gray-1)] transition-all shadow-sm"
+                                              title="Edit as Draft"
+                                            >
+                                              <Edit2 size={16} />
+                                            </button>
+                                            <button
+                                              onClick={() => confirmDelete(async () => {
+                                                setQuotationHistory(prev => prev.filter(h => h.id !== item.id));
+                                                await syncItem('history', item, true);
+                                              })}
+                                              className="w-9 h-9 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 hover:bg-red-50 rounded-full transition-all"
+                                              title="Delete History Item"
+                                            >
+                                              <Trash2 size={18} />
+                                            </button>
+                                          </>
+                                        )}
                                       </>
                                     )}
-                                  </>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              );
-            })()}
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Mobile Card View */}
+                    <div className="lg:hidden space-y-4">
+                      {filtered.map((item) => (
+                        <div key={item.id} className="apple-card p-5 space-y-4">
+                          <div className="flex justify-between items-start">
+                            <div className="space-y-1">
+                              <p className="text-[16px] font-bold text-[var(--apple-black)] leading-tight">{item.hospital}</p>
+                              <p className="text-[12px] text-[var(--apple-gray-5)] font-medium">{item.templateName}</p>
+                            </div>
+                            <div className="flex flex-col items-end gap-2">
+                              <span className="text-[11px] font-bold text-[var(--emerald)] bg-[var(--emerald-light)] px-2 py-0.5 rounded uppercase tracking-wider">{(item.ref || '').replace('SRR/QUOT/', '')}</span>
+                              {item.isEmailed && (
+                                <div className="flex items-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-600 rounded-md text-[9px] font-bold uppercase tracking-wider border border-blue-100">
+                                  <Mail size={9} /> SENT
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between text-[13px] text-[var(--apple-gray-5)] font-medium">
+                            <span>{item.date}</span>
+                          </div>
+                          <div className="flex gap-2 pt-4 border-t border-[var(--apple-gray-2)]">
+                            <button 
+                              onClick={() => setPreviewingItem(item)}
+                              className="flex-1 flex items-center justify-center gap-2 py-3 bg-[var(--apple-gray-1)] rounded-xl text-[var(--apple-gray-6)] active:scale-[0.95] transition-all"
+                            >
+                              <Eye size={18} />
+                            </button>
+                            <button 
+                              onClick={() => setRegeneratingItem(item)}
+                              disabled={isGenerating || regeneratingItem}
+                              className="flex-1 flex items-center justify-center gap-2 py-3 bg-[var(--apple-gray-1)] rounded-xl text-[var(--emerald)] active:scale-[0.95] transition-all disabled:opacity-50"
+                            >
+                              <Download size={18} />
+                            </button>
+                            <button 
+                              onClick={() => setRegeneratingItem({ ...item, _emailMode: true })}
+                              disabled={isGenerating || regeneratingItem}
+                              className="flex-1 flex items-center justify-center gap-2 py-3 bg-blue-50 rounded-xl text-blue-600 active:scale-[0.95] transition-all disabled:opacity-50"
+                            >
+                              <Mail size={18} />
+                            </button>
+                            {isManagementActive && (
+                              <button 
+                                onClick={() => {
+                                  setFormData(item.formData);
+                                  setDraftContent(item.content || []);
+                                  setView('drafting');
+                                }}
+                                className="flex-1 flex items-center justify-center gap-2 py-3 bg-[var(--apple-gray-1)] rounded-xl text-[var(--apple-black)] active:scale-[0.95] transition-all"
+                              >
+                                <Edit2 size={18} />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           </div>
         )}
@@ -2558,19 +2620,19 @@ function App() {
             <div className="flex items-center gap-3">
               <button 
                 onClick={() => {
-                  setRegeneratingItem({ ...previewingItem, _emailMode: true });
-                }}
-                className="btn-primary !py-2 !px-4 !bg-white !text-[var(--apple-black)] border-[var(--apple-gray-3)] hover:bg-[var(--apple-gray-1)]"
-              >
-                <Mail size={16} /> Email Now
-              </button>
+        <div className="fixed inset-0 z-[6000] flex flex-col bg-[var(--apple-gray-2)] animate-in slide-in-from-bottom duration-500">
+          <header className="flex-none flex items-center justify-between px-4 md:px-12 py-4 md:py-6 bg-white/80 backdrop-blur-md border-b border-[var(--apple-gray-3)] sticky top-0 z-10">
+            <div>
+              <h2 className="text-[18px] md:text-[24px] font-bold text-[var(--apple-black)] tracking-tight leading-none">Quotation Preview</h2>
+              <p className="text-[11px] md:text-[13px] text-[var(--apple-gray-5)] mt-1 font-medium">{previewingItem.formData?.hospitalName} | {previewingItem.ref}</p>
+            </div>
+            <div className="flex items-center gap-2 md:gap-4">
               <button 
-                onClick={() => {
-                  setRegeneratingItem(previewingItem);
-                }}
-                className="btn-primary !py-2 !px-4"
+                onClick={() => setRegeneratingItem(previewingItem)}
+                className="w-10 h-10 flex items-center justify-center bg-white border border-[var(--apple-gray-3)] rounded-full text-[var(--emerald)] hover:bg-[var(--emerald-light)] transition-all"
+                title="Download PDF"
               >
-                <Download size={16} /> Download PDF
+                <Download size={20} />
               </button>
               <button 
                 onClick={() => setPreviewingItem(null)}
@@ -2580,9 +2642,9 @@ function App() {
               </button>
             </div>
           </header>
-          <main className="flex-1 overflow-y-auto p-4 md:p-12 bg-[var(--apple-gray-2)]">
-            <div className="max-w-5xl mx-auto flex flex-col items-center gap-12">
-              <div className="shadow-2xl bg-white p-1 md:p-4 rounded-xl">
+          <main className="flex-1 overflow-auto p-2 md:p-12 bg-[var(--apple-gray-2)]">
+            <div className="min-w-fit md:max-w-5xl mx-auto flex flex-col items-center gap-12">
+              <div className="shadow-2xl bg-white p-0 md:p-4 rounded-xl overflow-hidden">
                 <QuotationTemplate 
                   data={previewingItem.formData} 
                   content={previewingItem.content || []} 
