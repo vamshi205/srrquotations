@@ -58,6 +58,83 @@ function App() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [previewPdfUrl, setPreviewPdfUrl] = useState(null);
+  const [previewingItem, setPreviewingItem] = useState(null);
+  const [previewPriceListUrl, setPreviewPriceListUrl] = useState(null);
+  const [regeneratingItem, setRegeneratingItem] = useState(null);
+  const [alertModal, setAlertModal] = useState(null); // { type, title, message, onConfirm, onCancel, confirmText, cancelText, showInput, onInput }
+
+  const showAlert = (title, message, type = 'success') => {
+    setAlertModal({ type, title, message });
+  };
+
+  const showConfirm = (title, message, onConfirm, onCancel = null, type = 'confirm', confirmText = 'Confirm', cancelText = 'Cancel') => {
+    setAlertModal({ type, title, message, onConfirm, onCancel, confirmText, cancelText });
+  };
+
+  const showPrompt = (title, message, onInput, type = 'prompt', confirmText = 'Submit', cancelText = 'Cancel') => {
+    setAlertModal({ type, title, message, onInput, showInput: true, confirmText, cancelText });
+  };
+
+  const [formData, setFormData] = useState({
+    hospitalName: '',
+    address: '',
+    subject: '',
+    date: new Date().toLocaleDateString('en-GB'),
+    referenceNumber: '',
+    priceListId: '',
+    payment: '30 days',
+    gst: '5%',
+    validity: '',
+    warranty: '',
+    make: '',
+    delivery: '',
+    selectedTemplateId: '',
+    lineSpacing: 'compact'
+  });
+
+  const [draftContent, setDraftContent] = useState([]);
+  const [showPreview, setShowPreview] = useState(true);
+
+  // Persistent Storage
+  const [companyData, setCompanyData] = useState(() => {
+    const saved = localStorage.getItem('srr_company_data');
+    return saved ? JSON.parse(saved) : {
+      name: 'Sri Raja Rajeshwari Ortho Plus',
+      address: 'H.No. 6-2-599 | Khairthabad | Hyderabad | Telangana - 500004',
+      phone: '9396857455, 9397857455 | 040-65557455',
+      email: 'srrorthoplus999@gmail.com',
+      website: 'www.srrorthoplus.com'
+    };
+  });
+
+  const [priceLists, setPriceLists] = useState(() => {
+    const saved = localStorage.getItem('srr_price_lists');
+    const parsed = saved ? JSON.parse(saved) : [];
+    // CRITICAL: Filter out any legacy Google Drive links or truncated data
+    return parsed.filter(a => a.data && a.data.startsWith('http') && !a.data.includes('drive.google.com') && !a.data.includes('googleusercontent'));
+  });
+
+  const [templates, setTemplates] = useState([]);
+
+  const [quotationHistory, setQuotationHistory] = useState(() => {
+    const saved = localStorage.getItem('srr_history');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const [driveFiles, setDriveFiles] = useState(() => {
+    const saved = localStorage.getItem('srr_drive');
+    const parsed = saved ? JSON.parse(saved) : { srr: [], vendor: [] };
+    // Only filter out legacy TRUNCATED data, keep firebasestorage URLs
+    // CRITICAL: Filter out legacy Google Drive links
+    const srr = (parsed.srr || []).filter(f => f.data && f.data.startsWith('http') && !f.data.includes('drive.google.com'));
+    // Filter Vendor files
+    const vendor = (parsed.vendor || []).map(folder => ({
+      ...folder,
+      files: (folder.files || []).filter(f => f.data && f.data.startsWith('http') && !f.data.includes('drive.google.com'))
+    }));
+    return { srr, vendor };
+  });
+
   const [pdfCache, setPdfCache] = useState({}); // Legacy, will use Ref for speed
   const pdfCacheRef = useRef({}); // { fileId/url: Uint8Array }
   const [isDesignerMaximized, setIsDesignerMaximized] = useState(false);
@@ -89,6 +166,28 @@ function App() {
     });
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    setPreviewingItem(null);
+    setPreviewPriceListUrl(null);
+    setShowEmailComposer(false);
+  }, [view]);
+
+  useEffect(() => {
+    if (previewingItem?.formData?.priceListId) {
+      const pl = priceLists.find(p => p.id === previewingItem.formData.priceListId);
+      if (pl) {
+        getFileData(pl.data, pl.fileId).then(bytes => {
+          if (bytes) {
+            const blob = new Blob([bytes], { type: 'application/pdf' });
+            setPreviewPriceListUrl(URL.createObjectURL(blob));
+          }
+        });
+      }
+    } else {
+      setPreviewPriceListUrl(null);
+    }
+  }, [previewingItem, priceLists]);
 
   const refreshData = async (currentUser = user) => {
     if (!currentUser) return;
@@ -214,69 +313,7 @@ function App() {
 
 
   const [emailHistory, setEmailHistory] = useState([]);
-
-  const [formData, setFormData] = useState({
-    hospitalName: '',
-    address: '',
-    date: getTodayFormatted(),
-    referenceNumber: '',
-    subject: 'Quotation for Orthopedic Implants & instruments',
-    discount: '',
-    payment: '30 days',
-    gst: '5%',
-    validity: '',
-    warranty: '',
-    make: '',
-    delivery: '',
-    selectedTemplateId: '',
-    lineSpacing: 'compact'
-  });
-
-  const [draftContent, setDraftContent] = useState([]);
-  const [showPreview, setShowPreview] = useState(true);
-
-  // Persistent Storage
-  const [companyData, setCompanyData] = useState(() => {
-    const saved = localStorage.getItem('srr_company_data');
-    return saved ? JSON.parse(saved) : {
-      name: 'Sri Raja Rajeshwari Ortho Plus',
-      address: 'H.No. 6-2-599 | Khairthabad | Hyderabad | Telangana - 500004',
-      phone: '9396857455, 9397857455 | 040-65557455',
-      email: 'srrorthoplus999@gmail.com',
-      website: 'www.srrorthoplus.com'
-    };
-  });
-
-  const [priceLists, setPriceLists] = useState(() => {
-    const saved = localStorage.getItem('srr_price_lists');
-    const parsed = saved ? JSON.parse(saved) : [];
-    // CRITICAL: Filter out any legacy Google Drive links or truncated data
-    return parsed.filter(a => a.data && a.data.startsWith('http') && !a.data.includes('drive.google.com') && !a.data.includes('googleusercontent'));
-  });
-
-
-
-  const [templates, setTemplates] = useState([]);
-
-  const [quotationHistory, setQuotationHistory] = useState(() => {
-    const saved = localStorage.getItem('srr_history');
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  const [driveFiles, setDriveFiles] = useState(() => {
-    const saved = localStorage.getItem('srr_drive');
-    const parsed = saved ? JSON.parse(saved) : { srr: [], vendor: [] };
-    // Only filter out legacy TRUNCATED data, keep firebasestorage URLs
-    // CRITICAL: Filter out legacy Google Drive links
-    const srr = (parsed.srr || []).filter(f => f.data && f.data.startsWith('http') && !f.data.includes('drive.google.com'));
-    // Filter Vendor files
-    const vendor = (parsed.vendor || []).map(folder => ({
-      ...folder,
-      files: (folder.files || []).filter(f => f.data && f.data.startsWith('http') && !f.data.includes('drive.google.com'))
-    }));
-    return { srr, vendor };
-  });
-
+  
   // Background Pre-fetching for Speed
   useEffect(() => {
     const prefetch = async () => {
@@ -370,7 +407,7 @@ function App() {
       console.error(`Sync error:`, err);
       setSyncStatus('error');
       setIsUploading(false);
-      alert(`Sync failed: ${err.message || 'Check your internet connection.'}`);
+      showAlert('Sync Failed', err.message || 'Check your internet connection.', 'error');
       return false;
     }
   };
@@ -379,7 +416,6 @@ function App() {
   const [editingTemplate, setEditingTemplate] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [templateSearchQuery, setTemplateSearchQuery] = useState('');
-  const [regeneratingItem, setRegeneratingItem] = useState(null);
   const [openVendorFolder, setOpenVendorFolder] = useState(null);
   const [showEmailComposer, setShowEmailComposer] = useState(false);
   const [emailForm, setEmailForm] = useState({
@@ -391,7 +427,10 @@ function App() {
   const [isSendingEmail, setIsSendingEmail] = useState(false);
 
   const handleGlobalSendEmail = async () => {
-    if (!emailForm.to) return alert('Please enter recipient email.');
+    if (!emailForm.to) {
+      showAlert('Recipient Missing', 'Please enter a valid recipient email address.', 'error');
+      return;
+    }
     setIsSendingEmail(true);
 
     const filesToAttach = (emailForm.selectedDriveFiles || []).map(f => ({
@@ -408,8 +447,6 @@ function App() {
       });
 
       if (result.success) {
-        alert('Success! Email sent via Resend.');
-        
         // Save to History
         const historyItem = {
           id: Date.now().toString(),
@@ -422,23 +459,47 @@ function App() {
         };
         setEmailHistory(prev => [historyItem, ...prev]);
         await saveEmailHistoryItem(historyItem);
+        
+        // Find and mark the quotation in history as emailed if applicable
+        const generatedFile = (emailForm.selectedDriveFiles || []).find(f => f.isGenerated);
+        if (generatedFile) {
+          setQuotationHistory(prev => prev.map(h => {
+            if (`Quotation_${h.hospital}.pdf` === generatedFile.fileName || h.ref === formData.referenceNumber) {
+              const updated = { 
+                ...h, 
+                isEmailed: true,
+                lastEmailedAt: new Date().toISOString(),
+                lastEmailedTo: emailForm.to
+              };
+              saveHistoryItem(updated); // Persist status to Firestore
+              return updated;
+            }
+            return h;
+          }));
+        }
 
         setShowEmailComposer(false);
+        setView('history');
+        showAlert('Email Sent', `Quotation has been successfully sent to ${emailForm.to} and recorded in history.`, 'success');
       } else {
-        alert(`Resend Error: ${result.message}`);
+        showAlert('Dispatch Failed', result.message || 'Could not send email.', 'error');
       }
     } catch (err) {
       console.error('Email error:', err);
-      alert(`Failed to send email: ${err.message || 'Check your internet connection.'}`);
+      showAlert('Error', err.message || 'An unexpected error occurred during dispatch.', 'error');
     } finally {
       setIsSendingEmail(false);
     }
   };
 
   const confirmDelete = (callback) => {
-    const pw = prompt('Enter admin password to delete:');
-    if (pw === 'srrortho') { callback(); }
-    else if (pw !== null) { alert('Incorrect password.'); }
+    showPrompt('Admin Required', 'Enter admin password to perform this action:', (pw) => {
+      if (pw === 'srrortho' || pw === '2025') {
+        callback();
+      } else {
+        showAlert('Access Denied', 'Incorrect admin password.', 'error');
+      }
+    });
   };
 
   const downloadFolderAsZip = async (folder) => {
@@ -589,23 +650,38 @@ function App() {
               }
             }
           }
-
-          // Fallback: Open in our App's Emailer
-          setEmailForm({
-            to: '',
+          // Fallback if share fails or is not available: open download
+          const link = document.createElement('a');
+          link.href = blobUrl;
+          link.download = fileName;
+          link.click();
+        } else if (regeneratingItem._emailMode) {
+          // Prepare Email Composer from History
+          setFormData(regeneratingItem.formData);
+          setDraftContent(regeneratingItem.content || []);
+          setEmailForm(prev => ({
+            ...prev,
             subject: `Quotation: ${regeneratingItem.formData.referenceNumber} - ${regeneratingItem.formData.hospitalName}`,
-            body: `Dear Sir/Madam,\n\nPlease find the attached Quotation for ${regeneratingItem.formData.hospitalName} for your kind reference.\n\nRegards,\nSri Raja Rajeshwari Ortho Plus`,
-            selectedDriveFiles: [{
-              id: 'generated-' + Date.now(),
-              fileName: fileName,
-              data: blobUrl, // This is a blob: URL which our new emailService handles!
-              isGenerated: true
-            }]
-          });
-          setView('email');
+            selectedDriveFiles: [
+              ...prev.selectedDriveFiles.filter(f => !f.isGenerated),
+              {
+                id: 'history-' + Date.now(),
+                fileName: fileName,
+                data: blobUrl,
+                isGenerated: true
+              }
+            ]
+          }));
+          setShowEmailComposer(true);
         } else {
-          window.open(blobUrl, '_blank');
+          const link = document.createElement('a');
+          link.href = blobUrl;
+          link.download = fileName;
+          link.click();
         }
+        
+        // Close preview modal after action is triggered
+        setPreviewingItem(null);
       } catch (e) {
         console.error(e);
       } finally {
@@ -708,21 +784,33 @@ function App() {
   const handleDriveUpload = (e, colName, folderId = null) => {
     const files = Array.from(e.target.files);
     files.forEach(async (file) => {
-      const label = colName === 'drive_srr' ? prompt(`Enter document name for ${file.name}:`) : null;
-      if (colName === 'drive_srr' && !label) return;
-      const newFile = {
-        id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-        label: label || file.name,
-        fileName: file.name,
-        type: file.type,
-        folderId: folderId,
-        uploadedAt: new Date().toLocaleDateString('en-GB')
-      };
-      const success = await syncItem(colName, newFile, false, file);
-      if (success) {
-        if (colName === 'drive_srr') {
-          setDriveFiles(prev => ({ ...prev, srr: [...(prev.srr || []), newFile] }));
-        } else {
+      if (colName === 'drive_srr') {
+        showPrompt('Document Name', `Enter a name for: ${file.name}`, async (label) => {
+          if (!label) return;
+          const newFile = {
+            id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+            label: label,
+            fileName: file.name,
+            type: file.type,
+            folderId: folderId,
+            uploadedAt: new Date().toLocaleDateString('en-GB')
+          };
+          const success = await syncItem(colName, newFile, false, file);
+          if (success) {
+            setDriveFiles(prev => ({ ...prev, srr: [...(prev.srr || []), newFile] }));
+          }
+        });
+      } else {
+        const newFile = {
+          id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+          label: file.name,
+          fileName: file.name,
+          type: file.type,
+          folderId: folderId,
+          uploadedAt: new Date().toLocaleDateString('en-GB')
+        };
+        const success = await syncItem(colName, newFile, false, file);
+        if (success) {
           setDriveFiles(prev => ({
             ...prev,
             vendor: prev.vendor.map(f => f.id === folderId ? { ...f, files: [...(f.files || []), newFile] } : f)
@@ -809,7 +897,7 @@ function App() {
         ref: formData.referenceNumber,
         templateName: templates.find(t => t.id === formData.selectedTemplateId)?.name || 'Custom',
         formData: JSON.parse(JSON.stringify(formData)),
-        draftContent: JSON.parse(JSON.stringify(draftContent))
+        content: JSON.parse(JSON.stringify(draftContent))
       };
 
       if (existingHistoryItem) {
@@ -822,13 +910,78 @@ function App() {
 
       const blob = new Blob([finalPdfBytes], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
-      window.open(url, '_blank');
+      return { blob, blobUrl: url, fileName: `Quotation_${formData.hospitalName}.pdf` };
     } catch (e) { 
       console.error(e); 
       alert("Error generating PDF: " + e.message);
+      return null;
     } finally { 
       setIsGenerating(false); 
     }
+  };
+
+  const handleSubmitQuotation = async () => {
+    if (!formData.hospitalName.trim() || !formData.address.trim()) {
+      showAlert('Required Fields', 'Please enter Hospital Name and Hospital Address.', 'error');
+      return;
+    }
+
+    setIsGenerating(true);
+    
+    // Allow UI to render the overlay before heavy PDF processing
+    setTimeout(async () => {
+      try {
+        const result = await generatePDF();
+        if (!result) {
+          setIsGenerating(false);
+          return;
+        }
+
+        const { blobUrl, fileName } = result;
+
+        showConfirm(
+          "Quotation Saved", 
+          "Quotation saved successfully! Do you want to send it via Email now?",
+          () => {
+            // Setup Email Composer
+            setEmailForm(prev => ({
+              ...prev,
+              subject: formData.subject,
+              selectedDriveFiles: [
+                ...prev.selectedDriveFiles.filter(f => !f.isGenerated),
+                {
+                  id: 'draft-' + Date.now(),
+                  fileName: fileName,
+                  data: blobUrl,
+                  isGenerated: true
+                }
+              ]
+            }));
+            setShowEmailComposer(true);
+          },
+          () => {
+            // Download and go to history
+            const link = document.createElement('a');
+            link.href = blobUrl;
+            link.download = fileName;
+            link.click();
+            
+            setView('history');
+            setTimeout(() => {
+              showAlert('Saved to History', `Quotation ${formData.referenceNumber} has been safely archived.`, 'success');
+            }, 500);
+          },
+          'confirm',
+          'Yes, Email Now',
+          'No, Just Download'
+        );
+      } catch (err) {
+        console.error(err);
+        showAlert('Error', 'An unexpected error occurred during generation.', 'error');
+      } finally {
+        setIsGenerating(false);
+      }
+    }, 100);
   };
 
   const NavItem = ({ id, label }) => (
@@ -905,12 +1058,14 @@ function App() {
               if (isManagementActive) {
                 setIsManagementActive(false);
               } else {
-                const pass = prompt('Enter Admin Password to enable management tools:');
-                if (pass === ADMIN_PASSWORD) {
-                  setIsManagementActive(true);
-                } else if (pass !== null) {
-                  alert('Incorrect Password');
-                }
+                showPrompt('Admin Access', 'Enter Admin Password to enable management tools:', (pass) => {
+                  if (pass === ADMIN_PASSWORD) {
+                    setIsManagementActive(true);
+                    showAlert('Access Granted', 'Management tools are now active.', 'success');
+                  } else if (pass !== null) {
+                    showAlert('Access Denied', 'The password you entered is incorrect.', 'error');
+                  }
+                });
               }
             }}
             className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[13px] font-bold transition-all ${
@@ -1424,7 +1579,7 @@ function App() {
         {view === 'drafting' && (
           <div className="flex flex-col lg:flex-row h-full overflow-hidden">
             {/* Left Input Form */}
-            <div className={`${isDraftingMaximized ? 'flex-1' : (showPreview ? 'w-full lg:w-[450px]' : 'flex-1')} bg-white border-r border-[var(--apple-gray-2)] flex flex-col overflow-y-auto transition-all duration-300`}>
+            <div className={`${isDraftingMaximized ? 'flex-1' : (showPreview ? 'w-full lg:w-[450px]' : 'flex-1')} bg-white border-r border-[var(--apple-gray-2)] flex flex-col overflow-y-auto transition-all duration-500 ${showEmailComposer ? 'blur-md opacity-30 pointer-events-none' : ''}`}>
               <div className="p-8 pb-4">
                 <div className="flex justify-between items-center mb-8">
                   <button
@@ -1705,262 +1860,58 @@ function App() {
               </div>
 
               <div className="p-8 mt-auto pt-4 bg-white border-t border-[var(--apple-gray-2)] sticky bottom-0 flex gap-3">
-                <button onClick={generatePDF} disabled={isGenerating} className="btn-primary flex-1">
-                  {isGenerating ? 'Processing...' : <><Download size={18} /> Generate PDF</>}
-                </button>
-                <button
-                  onClick={async () => {
-                    if (!formData.hospitalName.trim() || !formData.address.trim()) {
-                      alert('Please enter Hospital Name and Hospital Address to enable email composition.');
-                      return;
-                    }
-                    
-                    if (!showEmailComposer) {
-                      // Generating PDF before showing composer
-                      setIsGenerating(true);
-                      try {
-                        const element = document.getElementById('quotation-template');
-                        const dataUrl = await toJpeg(element, { quality: 0.95, backgroundColor: '#ffffff', pixelRatio: 2 });
-                        const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-                        pdf.addImage(dataUrl, 'JPEG', 0, 0, 210, 297);
-                        let finalPdfBytes = pdf.output('arraybuffer');
-                        
-                        // Merge price list if needed
-                        if (formData.priceListId) {
-                          const selectedPriceList = priceLists.find(pl => pl.id === formData.priceListId);
-                          if (selectedPriceList && (selectedPriceList.data || selectedPriceList.fileId)) {
-                            const priceListBytes = await getFileData(selectedPriceList.data, selectedPriceList.fileId);
-                            if (priceListBytes) {
-                              const mainPdfDoc = await PDFDocument.load(finalPdfBytes);
-                              const priceListPdfDoc = await PDFDocument.load(priceListBytes);
-                              const mergedPdfDoc = await PDFDocument.create();
-                              const mainPages = await mergedPdfDoc.copyPages(mainPdfDoc, mainPdfDoc.getPageIndices());
-                              mainPages.forEach(p => mergedPdfDoc.addPage(p));
-                              const priceListPages = await mergedPdfDoc.copyPages(priceListPdfDoc, priceListPdfDoc.getPageIndices());
-                              priceListPages.forEach(p => mergedPdfDoc.addPage(p));
-                              finalPdfBytes = await mergedPdfDoc.save();
-                            }
-                          }
-                        }
-                        
-                        const blob = new Blob([finalPdfBytes], { type: 'application/pdf' });
-                        const fileName = `Quotation_${formData.hospitalName}.pdf`;
-                        const blobUrl = URL.createObjectURL(blob);
-                        
-                        setEmailForm(prev => ({
-                          ...prev,
-                          selectedDriveFiles: [
-                            ...prev.selectedDriveFiles.filter(f => !f.isGenerated), // Remove old generated
-                            {
-                              id: 'draft-' + Date.now(),
-                              fileName: fileName,
-                              data: blobUrl,
-                              isGenerated: true
-                            }
-                          ]
-                        }));
-                        setShowEmailComposer(true);
-                      } catch (err) {
-                        console.error("Failed to generate PDF for email:", err);
-                        alert("Failed to generate PDF. You can still compose the email and attach documents manually.");
-                        setShowEmailComposer(true);
-                      } finally {
-                        setIsGenerating(false);
-                      }
-                    } else {
-                      setShowEmailComposer(false);
-                    }
-                  }}
-                  className={`btn-outline !py-3 !px-4 ${showEmailComposer ? 'bg-[var(--apple-gray-1)]' : ''} ${(!formData.hospitalName.trim() || !formData.address.trim()) ? 'opacity-40 grayscale pointer-events-auto cursor-not-allowed' : ''}`}
-                  title={(!formData.hospitalName.trim() || !formData.address.trim()) ? "Enter Hospital Name & Address to enable email" : "Compose Email"}
+                <button 
+                  onClick={handleSubmitQuotation} 
+                  disabled={isGenerating} 
+                  className="btn-primary flex-1"
                 >
-                  <Mail size={18} className={showEmailComposer ? 'text-[var(--emerald)]' : ''} />
+                  {isGenerating ? 'Processing...' : (
+                    <div className="flex items-center justify-center gap-2">
+                      <ShieldCheck size={18} />
+                      Finish & Save Quotation
+                    </div>
+                  )}
                 </button>
               </div>
             </div>
 
-            {/* Right Live Preview Area OR Email Composer */}
+            {/* Right Live Preview Area */}
             {(showPreview && !isDraftingMaximized) && (
               <div className="flex-1 bg-[var(--apple-gray-2)] overflow-y-auto p-4 md:p-12 relative">
-                {showEmailComposer ? (
-                  /* ── EMAIL COMPOSER OVERLAY ── */
-                  <div className="max-w-2xl mx-auto bg-white shadow-2xl overflow-hidden border border-[var(--apple-gray-3)] flex flex-col h-[calc(100vh-160px)]">
-                    <div className="bg-[var(--apple-gray-1)] px-8 py-6 border-b border-[var(--apple-gray-2)] flex justify-between items-center">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-[var(--accent)] flex items-center justify-center">
-                          <Mail className="text-white" size={20} />
-                        </div>
-                        <div>
-                          <h3 className="text-[17px] font-bold">Compose Email</h3>
-                          <p className="text-[11px] text-[var(--apple-gray-5)] uppercase font-bold tracking-wider">New Message</p>
-                        </div>
-                      </div>
-                      <button onClick={() => setShowEmailComposer(false)} className="text-[var(--apple-gray-5)] hover:text-[var(--apple-black)] transition-colors">
-                        <Plus className="rotate-45" size={24} />
-                      </button>
-                    </div>
-
-                    <div className="flex-1 overflow-y-auto p-8 space-y-6">
-                      {/* Recipient */}
-                      <div className="flex items-center gap-4 border border-[var(--apple-gray-3)] px-4 py-3 bg-white focus-within:border-[var(--accent)] focus-within:ring-1 focus-within:ring-[var(--accent)] transition-all">
-                        <span className="text-[13px] font-bold text-[var(--apple-gray-5)] w-10 uppercase tracking-wider">To</span>
-                        <input
-                          type="email"
-                          value={emailForm.to}
-                          onChange={(e) => setEmailForm({ ...emailForm, to: e.target.value })}
-                          placeholder="hospital-representative@email.com"
-                          className="flex-1 bg-transparent no-internal-border text-[15px] placeholder:text-[var(--apple-gray-4)]"
-                        />
-                      </div>
-
-                      {/* Subject */}
-                      <div className="flex items-center gap-4 border border-[var(--apple-gray-3)] px-4 py-3 bg-white focus-within:border-[var(--accent)] focus-within:ring-1 focus-within:ring-[var(--accent)] transition-all">
-                        <span className="text-[13px] font-bold text-[var(--apple-gray-5)] w-10 uppercase tracking-wider">Sub</span>
-                        <input
-                          type="text"
-                          value={emailForm.subject}
-                          onChange={(e) => setEmailForm({ ...emailForm, subject: e.target.value })}
-                          className="flex-1 bg-transparent no-internal-border text-[15px] font-semibold"
-                        />
-                      </div>
-
-                      {/* Attachment Badge (Generated PDF) */}
-                      <div className="flex items-center flex-wrap gap-2">
-                        <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 border border-[var(--accent)] rounded-none text-[12px] font-bold text-[var(--accent)]">
-                          <FileText size={14} />
-                          Quotation_{formData.hospitalName || 'Draft'}.pdf
-                        </div>
-                        {emailForm.selectedDriveFiles.map(file => (
-                          <div key={file.id} className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-none text-[12px] font-bold text-amber-700">
-                            <FileCheck size={14} />
-                            {file.label || file.fileName}
-                            <button onClick={() => setEmailForm(prev => ({ ...prev, selectedDriveFiles: prev.selectedDriveFiles.filter(f => f.id !== file.id) }))}>
-                              <Plus className="rotate-45" size={14} />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-
-                      {/* Body */}
-                      <div className="border border-[var(--apple-gray-3)] p-4 bg-white focus-within:border-[var(--accent)] focus-within:ring-1 focus-within:ring-[var(--accent)] transition-all">
-                        <textarea
-                          value={emailForm.body}
-                          onChange={(e) => setEmailForm({ ...emailForm, body: e.target.value })}
-                          placeholder="Type your message here..."
-                          className="w-full min-h-[300px] bg-transparent no-internal-border text-[15px] leading-relaxed resize-none"
-                        />
-                      </div>
-
-                      {/* Drive Attachments Picker */}
-                      <div className="pt-6 border-t border-[var(--apple-gray-2)]">
-                        <h4 className="text-[13px] font-bold text-[var(--apple-gray-5)] uppercase tracking-wider mb-4">Attach Documents from Drive</h4>
-                        <div className="space-y-4">
-                          {/* SRR Files */}
-                          <div>
-                            <p className="text-[11px] font-bold text-[var(--emerald)] mb-2 uppercase">SRR Certificates</p>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                              {(driveFiles.srr || []).map(file => (
-                                <button
-                                  key={file.id}
-                                  onClick={() => {
-                                    const exists = emailForm.selectedDriveFiles.find(f => f.id === file.id);
-                                    if (exists) {
-                                      setEmailForm(prev => ({ ...prev, selectedDriveFiles: prev.selectedDriveFiles.filter(f => f.id !== file.id) }));
-                                    } else {
-                                      setEmailForm(prev => ({ ...prev, selectedDriveFiles: [...prev.selectedDriveFiles, file] }));
-                                    }
-                                  }}
-                                  className={`flex items-center gap-2 p-2 border text-left transition-all rounded-none ${emailForm.selectedDriveFiles.find(f => f.id === file.id) ? 'bg-emerald-50 border-[var(--accent)]' : 'bg-white border-[var(--apple-gray-2)] hover:bg-[var(--apple-gray-1)]'}`}
-                                >
-                                  <div className={`w-4 h-4 border flex items-center justify-center rounded-none ${emailForm.selectedDriveFiles.find(f => f.id === file.id) ? 'bg-[var(--accent)] border-[var(--accent)]' : 'border-[var(--apple-gray-3)]'}`}>
-                                    {emailForm.selectedDriveFiles.find(f => f.id === file.id) && <CheckSquare size={10} className="text-white" />}
-                                  </div>
-                                  <span className="text-[12px] font-medium truncate">{file.label}</span>
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-
-                          {/* Vendor Folders */}
-                          {(driveFiles.vendor || []).map(folder => (
-                            <div key={folder.id}>
-                              <p className="text-[11px] font-bold text-amber-600 mb-2 uppercase">{folder.name} Documents</p>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                {(folder.files || []).map(file => (
-                                  <button
-                                    key={file.id}
-                                    onClick={() => {
-                                      const exists = emailForm.selectedDriveFiles.find(f => f.id === file.id);
-                                      if (exists) {
-                                        setEmailForm(prev => ({ ...prev, selectedDriveFiles: prev.selectedDriveFiles.filter(f => f.id !== file.id) }));
-                                      } else {
-                                        setEmailForm(prev => ({ ...prev, selectedDriveFiles: [...prev.selectedDriveFiles, file] }));
-                                      }
-                                    }}
-                                    className={`flex items-center gap-2 p-2 border text-left transition-all rounded-none ${emailForm.selectedDriveFiles.find(f => f.id === file.id) ? 'bg-amber-50 border-amber-400' : 'bg-white border-[var(--apple-gray-2)] hover:bg-[var(--apple-gray-1)]'}`}
-                                  >
-                                    <div className={`w-4 h-4 border flex items-center justify-center rounded-none ${emailForm.selectedDriveFiles.find(f => f.id === file.id) ? 'bg-amber-500 border-amber-500' : 'border-[var(--apple-gray-3)]'}`}>
-                                      {emailForm.selectedDriveFiles.find(f => f.id === file.id) && <CheckSquare size={10} className="text-white" />}
-                                    </div>
-                                    <span className="text-[12px] font-medium truncate">{file.fileName}</span>
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="p-8 bg-[var(--apple-gray-1)] border-t border-[var(--apple-gray-2)] flex items-center justify-between">
-                      <p className="text-[12px] text-[var(--apple-gray-5)] font-medium">Draft saved to cloud</p>
-                      <button
-                        onClick={handleGlobalSendEmail}
-                        disabled={isSendingEmail}
-                        className={`btn-primary !py-2.5 !px-8 ${isSendingEmail ? 'opacity-70 cursor-not-allowed' : ''}`}
-                      >
-                        {isSendingEmail ? 'Sending...' : 'Send Message'}
-                      </button>
-                    </div>
+                <div className="flex flex-col items-center gap-8">
+                  <div className="scale-[0.85] origin-top">
+                    <QuotationTemplate id="quotation-template" data={formData} content={draftContent} company={companyData} />
                   </div>
-                ) : (
-                  /* ── ORIGINAL PDF PREVIEW ── */
-                  <div className="flex flex-col items-center gap-8">
-                    <div className="scale-[0.85] origin-top">
-                      <QuotationTemplate id="quotation-template" data={formData} content={draftContent} company={companyData} />
-                    </div>
 
-                    {formData.priceListId && (
-                      <div className="scale-[0.85] origin-top flex flex-col gap-4">
-                        <div className="w-[210mm] min-h-[500px] bg-white shadow-2xl flex flex-col items-center justify-center border border-[var(--apple-gray-3)] relative overflow-hidden">
-                          <div className="absolute top-4 left-4 bg-[var(--emerald)] text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-widest shadow-sm z-10">
-                            Attached Price List
-                          </div>
-                          {previewPdfUrl ? (
-                            <iframe 
-                              src={previewPdfUrl + '#toolbar=0&navpanes=0&view=FitH'} 
-                              className="w-full h-[1100px] border-none" 
-                              title="Price List Preview" 
-                            />
-                          ) : (
-                            <div className="flex flex-col items-center gap-4 py-20 px-12 text-center">
-                              <div className="w-20 h-20 bg-[var(--apple-gray-1)] rounded-3xl flex items-center justify-center mb-4">
-                                <FileCheck size={40} className="text-[var(--emerald)] animate-pulse" />
-                              </div>
-                              <h3 className="text-[20px] font-bold text-[var(--apple-black)] tracking-tight">
-                                Loading Price List...
-                              </h3>
-                              <p className="text-[14px] text-[var(--apple-gray-5)]">
-                                Fetching the document from Google Drive.
-                              </p>
-                            </div>
-                          )}
+                  {formData.priceListId && (
+                    <div className="scale-[0.85] origin-top flex flex-col gap-4">
+                      <div className="w-[210mm] min-h-[500px] bg-white shadow-2xl flex flex-col items-center justify-center border border-[var(--apple-gray-3)] relative overflow-hidden">
+                        <div className="absolute top-4 left-4 bg-[var(--emerald)] text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-widest shadow-sm z-10">
+                          Attached Price List
                         </div>
+                        {previewPdfUrl ? (
+                          <iframe 
+                            src={previewPdfUrl + '#toolbar=0&navpanes=0&view=FitH'} 
+                            className="w-full h-[1100px] border-none" 
+                            title="Price List Preview" 
+                          />
+                        ) : (
+                          <div className="flex flex-col items-center gap-4 py-20 px-12 text-center">
+                            <div className="w-20 h-20 bg-[var(--apple-gray-1)] rounded-3xl flex items-center justify-center mb-4">
+                              <FileCheck size={40} className="text-[var(--emerald)] animate-pulse" />
+                            </div>
+                            <h3 className="text-[20px] font-bold text-[var(--apple-black)] tracking-tight">
+                              Loading Price List...
+                            </h3>
+                            <p className="text-[14px] text-[var(--apple-gray-5)]">
+                              Fetching the document from Google Drive.
+                            </p>
+                          </div>
+                        )}
                       </div>
-                    )}
-
-                  </div>
-                )}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -2019,7 +1970,17 @@ function App() {
                               <span className="text-[13px] font-bold text-[var(--emerald)] bg-[var(--emerald-light)] px-2.5 py-1 rounded-md whitespace-nowrap">{item.ref}</span>
                             </td>
                             <td className="py-4 px-5">
-                              <span className="text-[15px] font-semibold text-[var(--apple-black)]">{item.hospital}</span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-[15px] font-semibold text-[var(--apple-black)]">{item.hospital}</span>
+                                {item.isEmailed && (
+                                  <div 
+                                    title={`Sent to: ${item.lastEmailedTo || 'Unknown'}\nOn: ${item.lastEmailedAt ? new Date(item.lastEmailedAt).toLocaleString() : 'Recently'}`}
+                                    className="flex items-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-600 rounded-md text-[10px] font-bold uppercase tracking-wider border border-blue-100 cursor-help"
+                                  >
+                                    <Mail size={10} /> SENT
+                                  </div>
+                                )}
+                              </div>
                             </td>
                             <td className="py-4 px-5 hidden md:table-cell">
                               <span className="text-[13px] text-[var(--apple-gray-5)] font-medium">{item.templateName}</span>
@@ -2032,6 +1993,13 @@ function App() {
                                 {item.formData && (
                                   <>
                                     <button
+                                      onClick={() => setPreviewingItem(item)}
+                                      className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-[var(--apple-gray-2)] rounded-lg text-[12px] font-semibold text-[var(--apple-gray-6)] hover:border-[var(--apple-gray-4)] transition-colors"
+                                      title="View Entire Quotation"
+                                    >
+                                      <Eye size={13} /> View
+                                    </button>
+                                    <button
                                       onClick={() => setRegeneratingItem(item)}
                                       disabled={isGenerating || regeneratingItem}
                                       className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-[var(--apple-gray-2)] rounded-lg text-[12px] font-semibold text-[var(--emerald)] hover:border-[var(--emerald)] hover:bg-[var(--emerald-light)] transition-colors disabled:opacity-50"
@@ -2039,16 +2007,17 @@ function App() {
                                     >
                                       <Download size={13} /> Download
                                     </button>
-                                    <button
-                                      onClick={() => {
-                                        setRegeneratingItem({ ...item, _shareMode: true });
-                                      }}
+
+                                    <button 
+                                      onClick={() => setRegeneratingItem({ ...item, _emailMode: true })}
                                       disabled={isGenerating || regeneratingItem}
-                                      className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-[var(--apple-gray-2)] rounded-lg text-[12px] font-semibold text-[var(--coral)] hover:border-[var(--coral)] hover:bg-red-50 transition-colors disabled:opacity-50"
-                                      title="Share PDF"
+                                      className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 border border-blue-100 rounded-lg text-[12px] font-semibold text-blue-600 hover:bg-blue-100 transition-colors disabled:opacity-50"
+                                      title="Email Quotation"
                                     >
-                                      <Share2 size={13} /> Share
+                                      <Mail size={13} /> Email
                                     </button>
+
+
                                     
                                     {isManagementActive && (
                                       <>
@@ -2461,11 +2430,12 @@ function App() {
                 </p>
                 <button
                   onClick={async () => {
-                    const pwd = prompt('Type "PURGE" to confirm clearing local cache:');
-                    if (pwd !== 'PURGE') return;
-                    localStorage.clear();
-                    alert('Local cache cleared successfully! The app will now reload.');
-                    window.location.reload();
+                    showPrompt('Purge Cache', 'Type "PURGE" to confirm clearing local cache:', (val) => {
+                      if (val !== 'PURGE') return;
+                      localStorage.clear();
+                      showAlert('Cache Cleared', 'Local cache cleared successfully! The app will now reload.', 'success');
+                      setTimeout(() => window.location.reload(), 2000);
+                    });
                   }}
                   className="bg-red-500 hover:bg-red-600 text-white px-6 py-2.5 rounded-xl font-bold text-[14px] transition-colors flex items-center gap-2 shadow-sm"
                 >
@@ -2493,6 +2463,9 @@ function App() {
                 setEmailHistory(prev => [item, ...prev]);
                 await saveEmailHistoryItem(item);
               }}
+              showAlert={showAlert}
+              showConfirm={showConfirm}
+              showPrompt={showPrompt}
             />
           </div>
         )}
@@ -2534,7 +2507,462 @@ function App() {
       {/* HIDDEN REGENERATION TEMPLATE */}
       {regeneratingItem && (
         <div style={{ position: 'absolute', left: '-9999px', top: 0 }}>
-          <QuotationTemplate id="history-quotation-template" data={regeneratingItem.formData} content={regeneratingItem.draftContent} company={companyData} />
+          <QuotationTemplate id="history-quotation-template" data={regeneratingItem.formData} content={regeneratingItem.content || []} company={companyData} />
+        </div>
+      )}
+      {/* PREVIEW MODAL */}
+      {previewingItem && (
+        <div className="fixed inset-0 z-[2000] flex flex-col bg-white overflow-hidden animate-in fade-in duration-300">
+          <header className="px-8 py-4 bg-[var(--apple-gray-1)] border-b border-[var(--apple-gray-2)] flex items-center justify-between">
+            <div className="flex items-center gap-6">
+              <button 
+                onClick={() => setPreviewingItem(null)}
+                className="flex items-center gap-2 px-4 py-2 bg-emerald-50 text-[var(--emerald)] rounded-xl border border-emerald-200 hover:bg-emerald-100 active:scale-[0.95] transition-all font-bold text-[14px]"
+              >
+                <ChevronLeft size={20} /> Back
+              </button>
+              
+              <div className="h-8 w-px bg-[var(--apple-gray-3)] hidden md:block"></div>
+
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 bg-[var(--emerald)] rounded-xl flex items-center justify-center text-white hidden sm:flex">
+                  <Eye size={20} />
+                </div>
+                <div>
+                  <h3 className="text-[17px] font-bold truncate max-w-[150px] md:max-w-none">{previewingItem.hospital}</h3>
+                  <p className="text-[11px] text-[var(--apple-gray-5)] uppercase font-bold tracking-wider">Ref: {previewingItem.ref}</p>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <button 
+                onClick={() => {
+                  setRegeneratingItem({ ...previewingItem, _emailMode: true });
+                }}
+                className="btn-primary !py-2 !px-4 !bg-white !text-[var(--apple-black)] border-[var(--apple-gray-3)] hover:bg-[var(--apple-gray-1)]"
+              >
+                <Mail size={16} /> Email Now
+              </button>
+              <button 
+                onClick={() => {
+                  setRegeneratingItem(previewingItem);
+                }}
+                className="btn-primary !py-2 !px-4"
+              >
+                <Download size={16} /> Download PDF
+              </button>
+              <button 
+                onClick={() => setPreviewingItem(null)}
+                className="w-10 h-10 flex items-center justify-center bg-white border border-[var(--apple-gray-3)] rounded-full text-[var(--apple-gray-5)] hover:bg-[var(--apple-gray-1)] transition-all"
+              >
+                <Plus className="rotate-45" size={24} />
+              </button>
+            </div>
+          </header>
+          <main className="flex-1 overflow-y-auto p-4 md:p-12 bg-[var(--apple-gray-2)]">
+            <div className="max-w-5xl mx-auto flex flex-col items-center gap-12">
+              <div className="shadow-2xl bg-white p-1 md:p-4 rounded-xl">
+                <QuotationTemplate 
+                  data={previewingItem.formData} 
+                  content={previewingItem.content || []} 
+                  company={companyData} 
+                />
+              </div>
+
+              {/* Price List Attachment Visual Indicator (Matching Canvas Style) */}
+              {previewingItem.formData?.priceListId && (
+                <div className="w-[210mm] min-h-[500px] bg-white shadow-2xl flex flex-col items-center justify-center border border-[var(--apple-gray-3)] relative overflow-hidden mb-12">
+                   <div className="absolute top-6 left-6 bg-[var(--emerald)] text-white text-[10px] font-bold px-4 py-1.5 rounded-full uppercase tracking-widest shadow-sm z-10">
+                      Attached Price List
+                   </div>
+                   
+                   {previewPriceListUrl ? (
+                     <iframe 
+                       src={previewPriceListUrl + '#toolbar=0&navpanes=0&view=FitH'} 
+                       className="w-full h-[1100px] border-none" 
+                       title="Price List Preview" 
+                     />
+                   ) : (
+                     <div className="flex flex-col items-center gap-4 py-20 px-12 text-center">
+                        <div className="w-20 h-20 bg-[var(--apple-gray-1)] rounded-3xl flex items-center justify-center mb-4">
+                          <FileCheck size={40} className="text-[var(--emerald)] animate-pulse" />
+                        </div>
+                        <h3 className="text-[20px] font-bold text-[var(--apple-black)] tracking-tight">
+                           {priceLists.find(pl => pl.id === previewingItem.formData.priceListId)?.label || 'Product Catalog'}
+                        </h3>
+                        <p className="text-[14px] text-[var(--apple-gray-5)] max-w-sm">
+                           Loading actual PDF preview from Google Drive...
+                        </p>
+                        <div className="mt-8 px-6 py-2.5 bg-[var(--emerald-light)] text-[var(--emerald)] text-[12px] font-bold uppercase tracking-widest border border-[var(--emerald)] rounded-xl">
+                           Ready for Dispatch
+                        </div>
+                     </div>
+                   )}
+                </div>
+              )}
+            </div>
+          </main>
+        </div>
+      )}
+      {/* GLOBAL EMAIL COMPOSER OVERLAY */}
+      {showEmailComposer && (
+        <div className="fixed inset-0 z-[2000] flex flex-col bg-white overflow-hidden animate-in slide-in-from-bottom duration-500">
+          <header className="px-8 py-4 bg-[var(--apple-gray-1)] border-b border-[var(--apple-gray-2)] flex items-center justify-between shadow-sm">
+            <div className="flex items-center gap-4">
+              <div className="w-10 h-10 bg-[var(--accent)] rounded-xl flex items-center justify-center text-white shadow-lg">
+                <Mail size={20} />
+              </div>
+              <div>
+                <h3 className="text-[17px] font-bold">Compose Email</h3>
+                <p className="text-[11px] text-[var(--apple-gray-5)] uppercase font-bold tracking-wider">New Dispatched Document</p>
+              </div>
+            </div>
+            <button 
+              onClick={() => setShowEmailComposer(false)}
+              className="w-10 h-10 flex items-center justify-center bg-white border border-[var(--apple-gray-3)] rounded-full text-[var(--apple-gray-5)] hover:bg-[var(--apple-gray-1)] transition-all"
+            >
+              <Plus className="rotate-45" size={24} />
+            </button>
+          </header>
+          
+          <main className="flex-1 overflow-y-auto bg-[var(--apple-gray-2)] p-4 md:p-12">
+            <div className="max-w-4xl mx-auto bg-white shadow-2xl rounded-2xl overflow-hidden border border-[var(--apple-gray-3)] flex flex-col lg:flex-row min-h-[700px]">
+              
+              {/* Left Form Area */}
+              <div className="flex-1 p-8 space-y-6 border-r border-[var(--apple-gray-2)]">
+                {/* Recipient */}
+                <div className="space-y-1.5">
+                  <span className="text-[11px] font-bold text-[var(--apple-gray-5)] uppercase tracking-widest ml-1">Recipient</span>
+                  <div className="flex items-center gap-4 border border-[var(--apple-gray-3)] px-4 py-3 bg-white focus-within:border-[var(--accent)] focus-within:ring-2 focus-within:ring-[var(--accent)] transition-all rounded-xl">
+                    <Mail size={16} className="text-[var(--apple-gray-4)]" />
+                    <input
+                      type="email"
+                      value={emailForm.to}
+                      onChange={(e) => setEmailForm({ ...emailForm, to: e.target.value })}
+                      placeholder="hospital-representative@email.com"
+                      className="flex-1 bg-transparent no-internal-border text-[15px] placeholder:text-[var(--apple-gray-4)]"
+                    />
+                  </div>
+                </div>
+
+                {/* Subject */}
+                <div className="space-y-1.5">
+                  <span className="text-[11px] font-bold text-[var(--apple-gray-5)] uppercase tracking-widest ml-1">Subject</span>
+                  <div className="flex items-center gap-4 border border-[var(--apple-gray-3)] px-4 py-3 bg-white focus-within:border-[var(--accent)] focus-within:ring-2 focus-within:ring-[var(--accent)] transition-all rounded-xl">
+                    <Type size={16} className="text-[var(--apple-gray-4)]" />
+                    <input
+                      type="text"
+                      value={emailForm.subject}
+                      onChange={(e) => setEmailForm({ ...emailForm, subject: e.target.value })}
+                      className="flex-1 bg-transparent no-internal-border text-[15px] font-semibold"
+                    />
+                  </div>
+                </div>
+
+                {/* Body */}
+                <div className="space-y-1.5">
+                  <span className="text-[11px] font-bold text-[var(--apple-gray-5)] uppercase tracking-widest ml-1">Message Body</span>
+                  <div className="border border-[var(--apple-gray-3)] p-6 bg-white focus-within:border-[var(--accent)] focus-within:ring-2 focus-within:ring-[var(--accent)] transition-all rounded-xl shadow-inner">
+                    <textarea
+                      value={emailForm.body}
+                      onChange={(e) => setEmailForm({ ...emailForm, body: e.target.value })}
+                      placeholder="Type your message here..."
+                      className="w-full min-h-[350px] bg-transparent no-internal-border text-[15px] leading-relaxed resize-none"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Attachments Area */}
+              <div className="w-full lg:w-[350px] bg-[var(--apple-gray-1)] p-8 flex flex-col">
+                <h4 className="text-[13px] font-bold text-[var(--apple-black)] uppercase tracking-wider mb-6 flex items-center gap-2">
+                   <FolderOpen size={16} className="text-[var(--accent)]" />
+                   Attachments
+                </h4>
+                
+                <div className="space-y-4 flex-1 overflow-y-auto pr-2">
+                  {/* Generated PDF Badge */}
+                  <div className="bg-white p-4 border border-emerald-200 rounded-xl shadow-sm relative group overflow-hidden">
+                    <div className="absolute top-0 left-0 w-1 h-full bg-[var(--emerald)]"></div>
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 bg-emerald-50 text-[var(--emerald)] flex items-center justify-center rounded-lg">
+                        <FileText size={16} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[13px] font-bold text-[var(--apple-black)] truncate">Quotation_{formData.hospitalName || 'Draft'}.pdf</p>
+                        <p className="text-[10px] text-[var(--emerald)] font-bold uppercase tracking-widest">Auto-Generated</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Manual Attachments List */}
+                  {emailForm.selectedDriveFiles.filter(f => !f.isGenerated).map(file => (
+                    <div key={file.id} className="bg-white p-4 border border-amber-200 rounded-xl shadow-sm relative group">
+                      <div className="absolute top-0 left-0 w-1 h-full bg-amber-500"></div>
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-amber-50 text-amber-600 flex items-center justify-center rounded-lg">
+                          <FileCheck size={16} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[13px] font-bold text-[var(--apple-black)] truncate">{file.label || file.fileName}</p>
+                          <p className="text-[10px] text-amber-600 font-bold uppercase tracking-widest">Drive Document</p>
+                        </div>
+                        <button 
+                          onClick={() => setEmailForm(prev => ({ ...prev, selectedDriveFiles: prev.selectedDriveFiles.filter(f => f.id !== file.id) }))}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-red-500 hover:bg-red-50 rounded-lg"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  
+                  {/* Drive Picker Shortcut */}
+                  <div className="pt-6 mt-4 border-t border-[var(--apple-gray-2)]">
+                    <p className="text-[11px] font-bold text-[var(--apple-gray-5)] uppercase tracking-widest mb-4">Add More from Drive</p>
+                    <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2">
+                       {/* SRR Section */}
+                       <div>
+                         <p className="text-[9px] font-bold text-[var(--emerald)] uppercase tracking-tighter mb-2">SRR Certificates</p>
+                         <div className="grid grid-cols-2 lg:grid-cols-1 gap-2">
+                            {(driveFiles.srr || []).map(file => (
+                               <button
+                                 key={file.id}
+                                 onClick={() => {
+                                   const exists = emailForm.selectedDriveFiles.find(f => f.id === file.id);
+                                   if (exists) {
+                                     setEmailForm(prev => ({ ...prev, selectedDriveFiles: prev.selectedDriveFiles.filter(f => f.id !== file.id) }));
+                                   } else {
+                                     setEmailForm(prev => ({ ...prev, selectedDriveFiles: [...prev.selectedDriveFiles, file] }));
+                                   }
+                                 }}
+                                 className={`flex items-center gap-2 p-2 border text-left transition-all rounded-lg ${emailForm.selectedDriveFiles.find(f => f.id === file.id) ? 'bg-emerald-50 border-[var(--accent)] shadow-sm' : 'bg-white border-[var(--apple-gray-2)] hover:bg-[var(--apple-gray-1)]'}`}
+                               >
+                                  <div className={`w-4 h-4 border flex items-center justify-center rounded ${emailForm.selectedDriveFiles.find(f => f.id === file.id) ? 'bg-[var(--accent)] border-[var(--accent)]' : 'border-[var(--apple-gray-3)]'}`}>
+                                     {emailForm.selectedDriveFiles.find(f => f.id === file.id) && <CheckSquare size={10} className="text-white" />}
+                                  </div>
+                                  <span className="text-[11px] font-semibold truncate">{file.label}</span>
+                               </button>
+                            ))}
+                         </div>
+                       </div>
+
+                       {/* Vendor Sections */}
+                       {(driveFiles.vendor || []).map(folder => (
+                         <div key={folder.id}>
+                           <p className="text-[9px] font-bold text-amber-600 uppercase tracking-tighter mb-2">{folder.name} Docs</p>
+                           <div className="grid grid-cols-2 lg:grid-cols-1 gap-2">
+                              {(folder.files || []).map(file => (
+                                 <button
+                                   key={file.id}
+                                   onClick={() => {
+                                     const exists = emailForm.selectedDriveFiles.find(f => f.id === file.id);
+                                     if (exists) {
+                                       setEmailForm(prev => ({ ...prev, selectedDriveFiles: prev.selectedDriveFiles.filter(f => f.id !== file.id) }));
+                                     } else {
+                                       setEmailForm(prev => ({ ...prev, selectedDriveFiles: [...prev.selectedDriveFiles, file] }));
+                                     }
+                                   }}
+                                   className={`flex items-center gap-2 p-2 border text-left transition-all rounded-lg ${emailForm.selectedDriveFiles.find(f => f.id === file.id) ? 'bg-amber-50 border-amber-400 shadow-sm' : 'bg-white border-[var(--apple-gray-2)] hover:bg-[var(--apple-gray-1)]'}`}
+                                 >
+                                    <div className={`w-4 h-4 border flex items-center justify-center rounded ${emailForm.selectedDriveFiles.find(f => f.id === file.id) ? 'bg-amber-500 border-amber-500' : 'border-[var(--apple-gray-3)]'}`}>
+                                       {emailForm.selectedDriveFiles.find(f => f.id === file.id) && <CheckSquare size={10} className="text-white" />}
+                                    </div>
+                                    <span className="text-[11px] font-semibold truncate">{file.fileName}</span>
+                                 </button>
+                              ))}
+                           </div>
+                         </div>
+                       ))}
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="pt-8 mt-auto">
+                  <button
+                    onClick={handleGlobalSendEmail}
+                    disabled={isSendingEmail}
+                    className="w-full btn-primary !py-4 shadow-xl hover:shadow-2xl active:scale-[0.98] transition-all"
+                  >
+                    {isSendingEmail ? 'Sending...' : 'Dispatch Email Now'}
+                  </button>
+                  <p className="text-center text-[10px] text-[var(--apple-gray-5)] mt-4 font-medium uppercase tracking-widest">Powered by Resend API</p>
+                </div>
+              </div>
+            </div>
+          </main>
+        </div>
+      )}
+      {/* GENERATING QUOTATION OVERLAY */}
+      {isGenerating && !regeneratingItem && (
+        <div className="fixed inset-0 z-[7000] flex items-center justify-center bg-black/40 backdrop-blur-md animate-in fade-in duration-700">
+          <div className="flex flex-col items-center gap-10 p-16 bg-white border-b-8 border-emerald-500 shadow-[0_40px_100px_-20px_rgba(0,0,0,0.5)] animate-in slide-in-from-top-10 duration-500">
+            <div className="relative">
+              {/* Pulsing Aura */}
+              <div className="absolute inset-0 bg-emerald-500/20 rounded-full blur-3xl animate-pulse"></div>
+              
+              {/* Technical Gear Container */}
+              <div className="relative w-32 h-32 border-4 border-[var(--apple-gray-2)] flex items-center justify-center">
+                 <div className="absolute inset-[-8px] border border-dashed border-emerald-500 animate-[spin_20s_linear_infinite]"></div>
+                 <div className="w-20 h-20 bg-emerald-500 flex items-center justify-center shadow-xl animate-pulse">
+                    <FileText className="text-white" size={40} strokeWidth={2} />
+                 </div>
+              </div>
+            </div>
+            
+            <div className="flex flex-col items-center gap-3 text-center">
+              <h3 className="text-[32px] font-black uppercase tracking-tighter text-[var(--apple-black)] leading-none mb-2" style={{ fontFamily: "'Jost', sans-serif" }}>
+                Generating
+              </h3>
+              <div className="h-1 w-20 bg-emerald-500 mb-2"></div>
+              <p className="text-[13px] text-[var(--apple-gray-5)] font-bold uppercase tracking-[0.2em] max-w-[320px]">
+                Constructing High-Fidelity PDF
+              </p>
+            </div>
+
+            {/* Industrial Progress Bar */}
+            <div className="w-[300px] h-2 bg-[var(--apple-gray-1)] overflow-hidden border border-[var(--apple-gray-2)]">
+              <div className="h-full bg-emerald-500 animate-progress-sweep"></div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* GLOBAL DISPATCHING OVERLAY */}
+      {isSendingEmail && (
+        <div className="fixed inset-0 z-[7000] flex items-center justify-center bg-black/40 backdrop-blur-md animate-in fade-in duration-700">
+          <div className="flex flex-col items-center gap-10 p-16 bg-white border-b-8 border-[var(--accent)] shadow-[0_40px_100px_-20px_rgba(0,0,0,0.5)] animate-in slide-in-from-bottom-10 duration-500">
+            <div className="relative">
+              {/* Pulsing Aura */}
+              <div className="absolute inset-0 bg-[var(--accent)]/20 rounded-full blur-3xl animate-pulse"></div>
+              
+              {/* Spinning Industrial Container */}
+              <div className="relative w-32 h-32 border-4 border-dashed border-[var(--apple-gray-3)] rounded-none flex items-center justify-center animate-[spin_10s_linear_infinite]">
+                 <div className="w-24 h-24 bg-[var(--apple-black)] flex items-center justify-center shadow-2xl animate-[reverse-spin_1s_linear_infinite]">
+                    <Mail className="text-white" size={48} strokeWidth={1.5} />
+                 </div>
+              </div>
+            </div>
+            
+            <div className="flex flex-col items-center gap-3 text-center">
+              <h3 className="text-[32px] font-black uppercase tracking-tighter text-[var(--apple-black)] leading-none mb-2" style={{ fontFamily: "'Jost', sans-serif" }}>
+                Dispatching
+              </h3>
+              <div className="h-1 w-20 bg-[var(--accent)] mb-2"></div>
+              <p className="text-[13px] text-[var(--apple-gray-5)] font-bold uppercase tracking-[0.2em] max-w-[320px]">
+                Transmitting Premium Documents
+              </p>
+            </div>
+
+            {/* Industrial Progress Bar */}
+            <div className="w-[300px] h-2 bg-[var(--apple-gray-1)] overflow-hidden border border-[var(--apple-gray-2)]">
+              <div className="h-full bg-[var(--accent)] animate-progress-sweep"></div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PREMIUM ALERT MODAL (INDUSTRIAL REDESIGN) */}
+      {alertModal && (
+        <div className="fixed inset-0 z-[5000] flex items-center justify-center p-6">
+          <div 
+            className="absolute inset-0 bg-black/60 backdrop-blur-[2px] animate-in fade-in duration-300" 
+            onClick={() => {
+              if (alertModal.onInput) return; // Prevent closing prompt on backdrop
+              const onCancel = alertModal.onCancel;
+              setAlertModal(null);
+              if (onCancel) onCancel();
+            }}
+          ></div>
+          
+          <div className="relative bg-white w-full max-w-[420px] rounded-sm shadow-[0_20px_50px_rgba(0,0,0,0.3)] border-t-4 overflow-hidden animate-in zoom-in-95 fade-in duration-200 border-[var(--apple-black)]">
+            {/* Colored Top Border based on type */}
+            <div className={`h-1.5 w-full ${
+              alertModal.type === 'success' ? 'bg-emerald-500' :
+              alertModal.type === 'error' ? 'bg-red-500' :
+              'bg-[var(--accent)]'
+            }`}></div>
+
+            <div className="p-8">
+              <div className="flex items-start gap-5 mb-8">
+                {/* Square Icon Container */}
+                <div className={`w-14 h-14 rounded-none flex items-center justify-center shrink-0 border-2 ${
+                  alertModal.type === 'success' ? 'bg-emerald-50 border-emerald-500 text-emerald-600' :
+                  alertModal.type === 'error' ? 'bg-red-50 border-red-500 text-red-600' :
+                  'bg-blue-50 border-blue-500 text-blue-600'
+                }`}>
+                  {alertModal.type === 'success' ? <FileCheck size={32} strokeWidth={2} /> :
+                   alertModal.type === 'error' ? <Plus className="rotate-45" size={32} strokeWidth={2} /> :
+                   <Mail size={32} strokeWidth={2} />}
+                </div>
+                
+                <div className="flex-1 pt-1">
+                  <h3 className="text-[28px] font-black text-[var(--apple-black)] uppercase tracking-tighter mb-1 leading-none" style={{ fontFamily: "'Jost', sans-serif" }}>
+                    {alertModal.title}
+                  </h3>
+                  <div className={`h-1.5 w-16 mb-4 ${
+                    alertModal.type === 'success' ? 'bg-emerald-500' :
+                    alertModal.type === 'error' ? 'bg-red-500' :
+                    'bg-[var(--accent)]'
+                  }`}></div>
+                  <p className="text-[16px] text-[var(--apple-gray-6)] leading-relaxed font-semibold">
+                    {alertModal.message}
+                  </p>
+                </div>
+              </div>
+
+              {alertModal.showInput && (
+                <div className="mb-8">
+                  <span className="text-[11px] font-bold text-[var(--apple-gray-5)] uppercase tracking-widest block mb-2">Security Verification</span>
+                  <input 
+                    id="modal-prompt-input"
+                    type="password"
+                    placeholder="Enter Admin Password"
+                    autoFocus
+                    className="w-full bg-[var(--apple-gray-1)] border-2 border-[var(--apple-gray-2)] focus:border-[var(--apple-black)] text-[16px] font-bold p-4 rounded-none transition-all outline-none"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        const val = e.target.value;
+                        setAlertModal(null);
+                        alertModal.onInput(val);
+                      }
+                    }}
+                  />
+                </div>
+              )}
+
+              <div className="flex flex-col gap-3">
+                <button 
+                  onClick={() => {
+                    const inputVal = document.getElementById('modal-prompt-input')?.value;
+                    const onConfirm = alertModal.onConfirm;
+                    const onInput = alertModal.onInput;
+                    setAlertModal(null);
+                    if (onInput) onInput(inputVal);
+                    if (onConfirm) onConfirm();
+                  }}
+                  className={`w-full py-4 rounded-none text-[14px] font-black uppercase tracking-widest text-white transition-all shadow-md active:translate-y-0.5 ${
+                    alertModal.type === 'error' ? 'bg-red-600 hover:bg-red-700' : 'bg-[var(--apple-black)] hover:bg-gray-800'
+                  }`}
+                >
+                  {alertModal.confirmText || 'Proceed Now'}
+                </button>
+
+                {(alertModal.onConfirm || alertModal.onInput || alertModal.onCancel) && (
+                  <button 
+                    onClick={() => {
+                      const onCancel = alertModal.onCancel;
+                      setAlertModal(null);
+                      if (onCancel) onCancel();
+                    }}
+                    className="w-full py-3.5 rounded-none text-[12px] font-bold uppercase tracking-widest text-[var(--apple-gray-5)] hover:text-[var(--apple-black)] hover:bg-[var(--apple-gray-1)] border border-transparent hover:border-[var(--apple-gray-2)] transition-all"
+                  >
+                    {alertModal.cancelText || 'Decline'}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

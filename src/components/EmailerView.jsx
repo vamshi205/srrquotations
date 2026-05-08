@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Mail, FileText, FileCheck, CheckSquare, ChevronRight, HardDrive, Plus } from 'lucide-react';
 import { sendEmailWithResend } from '../utils/emailService';
 
-const EmailerView = ({ driveFiles, priceLists, onEmailSent }) => {
+const EmailerView = ({ driveFiles, priceLists, onEmailSent, showAlert }) => {
   const [emailForm, setEmailForm] = useState({
     to: '',
     subject: 'Documents from Sri Raja Rajeshwari Ortho Plus',
@@ -82,7 +82,10 @@ const EmailerView = ({ driveFiles, priceLists, onEmailSent }) => {
 
   const [isSending, setIsSending] = useState(false);
   const handleSendEmail = async () => {
-    if (!emailForm.to) return alert('Please enter recipient email.');
+    if (!emailForm.to) {
+      showAlert('Recipient Missing', 'Please enter a valid recipient email address.', 'error');
+      return;
+    }
     setIsSending(true);
     
     const filesToAttach = (emailForm.selectedDriveFiles || []).map(f => ({
@@ -99,7 +102,7 @@ const EmailerView = ({ driveFiles, priceLists, onEmailSent }) => {
       });
 
       if (result.success) {
-        alert('Success! Email sent via Resend.');
+        showAlert('Email Dispatched', `Successfully sent to ${emailForm.to} via Resend.`, 'success');
         
         // Save to History via callback
         if (onEmailSent) {
@@ -116,11 +119,11 @@ const EmailerView = ({ driveFiles, priceLists, onEmailSent }) => {
 
         setEmailForm(prev => ({ ...prev, selectedDriveFiles: [] }));
       } else {
-        alert(`Resend Error: ${result.message}`);
+        showAlert('Dispatch Error', result.message || 'The email service returned an error.', 'error');
       }
     } catch (err) {
       console.error('Email error:', err);
-      alert('Failed to send email. Check your internet connection.');
+      showAlert('Connection Error', 'Failed to transmit email. Please check your internet connection.', 'error');
     } finally {
       setIsSending(false);
     }
