@@ -180,6 +180,7 @@ const QuotationTemplate = memo(({ id = "quotation-template", data, company, cont
                       <tbody>
                         {block.rows.map((row, ri) => (
                           <tr key={ri}>
+                            {row.map((cell, ci) => {
                               const headerName = (block.headers[ci] || '').toLowerCase();
                               const isItemCol = headerName.includes('item') || headerName.includes('desc') || headerName.includes('description');
                               const isHSNCol = headerName.includes('hsn');
