@@ -1483,7 +1483,7 @@ function App() {
                                 <tr key={ri} className="border-b border-[var(--apple-gray-2)] last:border-none hover:bg-[var(--apple-gray-1)] transition-colors">
                                   {row.map((cell, ci) => (
                                     <td key={ci} className="p-0 border-r border-[var(--apple-gray-2)] last:border-none">
-                                      {block.headers[ci]?.toLowerCase().includes('item') || block.headers[ci]?.toLowerCase().includes('desc') ? (
+                                      {block.headers[ci]?.toLowerCase().includes('item') || block.headers[ci]?.toLowerCase().includes('desc') || block.headers[ci]?.toLowerCase().includes('hsn') ? (
                                         <textarea
                                           value={cell}
                                           rows={cell.toString().split('\n').length || 1}
@@ -1494,8 +1494,8 @@ function App() {
                                             nc[idx] = { ...nc[idx], rows: newRows };
                                             setEditingTemplate({ ...editingTemplate, content: nc });
                                           }}
-                                          className="w-full py-2.5 px-3 bg-transparent outline-none text-left text-[13px] hover:bg-black/5 focus:bg-white focus:ring-1 focus:ring-[var(--emerald)] transition-all resize-none overflow-hidden"
-                                          placeholder="Enter set details..."
+                                          className={`w-full py-2.5 px-3 bg-transparent outline-none ${block.headers[ci]?.toLowerCase().includes('hsn') ? 'text-center' : 'text-left'} text-[13px] hover:bg-black/5 focus:bg-white focus:ring-1 focus:ring-[var(--emerald)] transition-all resize-none overflow-hidden`}
+                                          placeholder={block.headers[ci]?.toLowerCase().includes('hsn') ? "HSN..." : "Enter set details..."}
                                         />
                                       ) : (
                                         <input
@@ -1745,7 +1745,7 @@ function App() {
                                   <tr key={ri} className="border-b border-[var(--apple-gray-2)] last:border-none hover:bg-[var(--apple-gray-1)] transition-colors">
                                     {row.map((cell, ci) => (
                                       <td key={ci} className="p-0 border-r border-[var(--apple-gray-2)] last:border-none">
-                                        {block.headers[ci]?.toLowerCase().includes('item') || block.headers[ci]?.toLowerCase().includes('desc') ? (
+                                        {block.headers[ci]?.toLowerCase().includes('item') || block.headers[ci]?.toLowerCase().includes('desc') || block.headers[ci]?.toLowerCase().includes('hsn') ? (
                                           <textarea
                                             value={cell}
                                             rows={cell.toString().split('\n').length || 1}
@@ -1756,8 +1756,8 @@ function App() {
                                               nc[idx] = { ...nc[idx], rows: newRows };
                                               setDraftContent(nc);
                                             }}
-                                            className="w-full py-2.5 px-3 bg-transparent outline-none text-left text-[13px] hover:bg-black/5 focus:bg-white focus:ring-1 focus:ring-[var(--emerald)] transition-all resize-none overflow-hidden"
-                                            placeholder="Enter set details..."
+                                            className={`w-full py-2.5 px-3 bg-transparent outline-none ${block.headers[ci]?.toLowerCase().includes('hsn') ? 'text-center' : 'text-left'} text-[13px] hover:bg-black/5 focus:bg-white focus:ring-1 focus:ring-[var(--emerald)] transition-all resize-none overflow-hidden`}
+                                            placeholder={block.headers[ci]?.toLowerCase().includes('hsn') ? "HSN..." : "Enter set details..."}
                                           />
                                         ) : (
                                           <input
