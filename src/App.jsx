@@ -635,6 +635,13 @@ function App() {
         const fileName = `Quotation_${regeneratingItem.formData.hospitalName}.pdf`;
         const blobUrl = URL.createObjectURL(blob);
 
+        if (regeneratingItem._viewMode) {
+          window.open(blobUrl, '_blank');
+          setRegeneratingItem(null);
+          setIsGenerating(false);
+          return;
+        }
+
         if (regeneratingItem._shareMode) {
           // If native share is available and user is likely on mobile, try it first
           if (navigator.share && navigator.canShare) {
