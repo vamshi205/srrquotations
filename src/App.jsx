@@ -1323,7 +1323,7 @@ function App() {
                         <span className="text-[11px]">TEXT</span>
                       </button>
                       <button
-                        onClick={() => setEditingTemplate({ ...editingTemplate, content: [...(editingTemplate?.content || []), { type: 'table', headers: ['S.No', 'Item', 'Qty', 'Rate', 'Amount'], rows: [['1', '', '1', '', '']] }] })}
+                        onClick={() => setEditingTemplate({ ...editingTemplate, content: [...(editingTemplate?.content || []), { type: 'table', headers: ['S.No', 'Item', 'HSN Code', 'Qty', 'Rate', 'Amount'], rows: [['1', '', '', '1', '', '']] }] })}
                         className="btn-outline flex-col !gap-2 !py-4"
                       >
                         <TableIcon size={18} />
@@ -1513,15 +1513,14 @@ function App() {
                                             if (qtyIdx !== -1 && rateIdx !== -1 && amountIdx !== -1 && (ci === qtyIdx || ci === rateIdx)) {
                                               const qty = parseFloat(newRows[ri][qtyIdx]) || 0;
                                               const rate = parseFloat(newRows[ri][rateIdx]) || 0;
-                                              newRows[ri][amountIdx] = (qty * rate).toFixed(2).replace(/\.00$/, '');
+                                              newRows[ri][amountIdx] = (qty * rate).toFixed(2);
                                             }
 
                                             nc[idx] = { ...nc[idx], rows: newRows };
                                             setEditingTemplate({ ...editingTemplate, content: nc });
                                           }}
-                                          className="w-full py-2.5 px-3 bg-transparent outline-none text-center text-[13px] hover:bg-black/5 focus:bg-white focus:ring-1 focus:ring-[var(--emerald)] transition-all"
+                                          className={`w-full py-2.5 px-3 bg-transparent outline-none ${((block.headers[ci] || '').toLowerCase().includes('amount') || (block.headers[ci] || '').toLowerCase().includes('rate') || (block.headers[ci] || '').toLowerCase().includes('price') || (block.headers[ci] || '').toLowerCase().includes('qty')) ? 'text-right' : 'text-center'} text-[13px] hover:bg-black/5 focus:bg-white focus:ring-1 focus:ring-[var(--emerald)] transition-all`}
                                         />
-                                      )}
                                     </td>
                                   ))}
                                   <td className="p-0 text-center w-8">
@@ -1775,13 +1774,13 @@ function App() {
                                               if (qtyIdx !== -1 && rateIdx !== -1 && amountIdx !== -1 && (ci === qtyIdx || ci === rateIdx)) {
                                                 const qty = parseFloat(newRows[ri][qtyIdx]) || 0;
                                                 const rate = parseFloat(newRows[ri][rateIdx]) || 0;
-                                                newRows[ri][amountIdx] = (qty * rate).toFixed(2).replace(/\.00$/, '');
+                                                newRows[ri][amountIdx] = (qty * rate).toFixed(2);
                                               }
 
                                               nc[idx] = { ...nc[idx], rows: newRows };
                                               setDraftContent(nc);
                                             }}
-                                            className="w-full py-2.5 px-3 bg-transparent outline-none text-center text-[13px] hover:bg-black/5 focus:bg-white focus:ring-1 focus:ring-[var(--emerald)] transition-all"
+                                            className={`w-full py-2.5 px-3 bg-transparent outline-none ${((block.headers[ci] || '').toLowerCase().includes('amount') || (block.headers[ci] || '').toLowerCase().includes('rate') || (block.headers[ci] || '').toLowerCase().includes('price') || (block.headers[ci] || '').toLowerCase().includes('qty')) ? 'text-right' : 'text-center'} text-[13px] hover:bg-black/5 focus:bg-white focus:ring-1 focus:ring-[var(--emerald)] transition-all`}
                                           />
                                         )}
                                       </td>

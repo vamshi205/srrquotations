@@ -180,23 +180,36 @@ const QuotationTemplate = memo(({ id = "quotation-template", data, company, cont
                       <tbody>
                         {block.rows.map((row, ri) => (
                           <tr key={ri}>
-                            {row.map((cell, ci) => {
                               const headerName = (block.headers[ci] || '').toLowerCase();
                               const isItemCol = headerName.includes('item') || headerName.includes('desc') || headerName.includes('description');
+                              const isHSNCol = headerName.includes('hsn');
+                              const isAmountCol = headerName.includes('amount') || headerName.includes('rate') || headerName.includes('price') || headerName.includes('qty') || headerName.includes('quantity');
                               const isLong = (cell || '').toString().length > 30 || (cell || '').toString().includes('\n');
                               const lines = (cell || '').toString().split('\n');
                               const hasBullets = lines.some(line => line.trim().startsWith('-') || line.trim().startsWith('*'));
-                              const shouldLeftAlign = isLong || isItemCol || hasBullets;
+                              
+                              let alignClass = 'text-center';
+                              if (isItemCol || isLong || hasBullets) alignClass = 'text-left';
+                              else if (isAmountCol) alignClass = 'text-right';
+                              else if (isHSNCol) alignClass = 'text-center';
+
+                              // Auto-format number cells if they look like numbers
+                              let displayValue = cell;
+                              if (isAmountCol && !isNaN(parseFloat(cell)) && isFinite(cell)) {
+                                displayValue = parseFloat(cell).toFixed(2);
+                              }
+
                               return (
                                 <td 
                                   key={ci} 
-                                  className={`${spacing.tablePy} ${spacing.tablePx} ${spacing.fontSize} ${spacing.leading} ${shouldLeftAlign ? 'text-left' : 'text-center'}`} 
+                                  className={`${spacing.tablePy} ${spacing.tablePx} ${spacing.fontSize} ${spacing.leading} ${alignClass}`} 
                                   style={{ border: '1px solid #111', verticalAlign: 'top' }}
                                 >
-                                  {lines.map((line, li) => {
+                                  {isAmountCol ? displayValue : lines.map((line, li) => {
                                     const isBullet = line.trim().startsWith('-') || line.trim().startsWith('*');
+                                    // For HSN, we want to keep lines centered but allow multi-line matching
                                     return (
-                                      <div key={li} className={isBullet ? 'pl-3 relative' : ''}>
+                                      <div key={li} className={`${isBullet ? 'pl-3 relative' : ''} ${isHSNCol ? 'text-center' : ''}`}>
                                         {isBullet && <span className="absolute left-0">•</span>}
                                         {isBullet ? line.trim().substring(1).trim() : line}
                                       </div>
@@ -222,17 +235,17 @@ const QuotationTemplate = memo(({ id = "quotation-template", data, company, cont
                             <>
                               <tr>
                                 <td colSpan={block.headers.length - 1} className="py-1 px-2 text-right font-bold text-[10pt]" style={{ border: '1px solid #111' }}>Subtotal</td>
-                                <td className="py-1 px-2 text-center font-bold text-[10pt]" style={{ border: '1px solid #111' }}>{subtotal.toFixed(2).replace(/\.00$/, '')}</td>
+                                <td className="py-1 px-2 text-right font-bold text-[10pt]" style={{ border: '1px solid #111' }}>{subtotal.toFixed(2)}</td>
                               </tr>
                               {gstPercent > 0 && (
                                 <tr>
                                   <td colSpan={block.headers.length - 1} className="py-1 px-2 text-right font-bold text-[10pt]" style={{ border: '1px solid #111' }}>GST ({gstStr})</td>
-                                  <td className="py-1 px-2 text-center font-bold text-[10pt]" style={{ border: '1px solid #111' }}>{gstAmount.toFixed(2).replace(/\.00$/, '')}</td>
+                                  <td className="py-1 px-2 text-right font-bold text-[10pt]" style={{ border: '1px solid #111' }}>{gstAmount.toFixed(2)}</td>
                                 </tr>
                               )}
                               <tr>
                                 <td colSpan={block.headers.length - 1} className="py-1 px-2 text-right font-bold text-[10pt]" style={{ border: '1px solid #111', backgroundColor: '#f4f4f6' }}>Grand Total</td>
-                                <td className="py-1 px-2 text-center font-bold text-[10pt]" style={{ border: '1px solid #111', backgroundColor: '#f4f4f6' }}>{roundedTotal.toFixed(2).replace(/\.00$/, '')}</td>
+                                <td className="py-1 px-2 text-right font-bold text-[10pt]" style={{ border: '1px solid #111', backgroundColor: '#f4f4f6' }}>{roundedTotal.toFixed(2)}</td>
                               </tr>
                               <tr>
                                 <td colSpan={block.headers.length} className="py-1 px-2 text-left font-bold text-[10pt] italic" style={{ border: '1px solid #111' }}>
