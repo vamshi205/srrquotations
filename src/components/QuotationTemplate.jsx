@@ -1,7 +1,7 @@
 import React, { memo } from 'react';
 
 const QuotationTemplate = memo(({ id = "quotation-template", data, company, content }) => {
-  const { hospitalName, address, date, referenceNumber, discount, payment, gst, validity, make, delivery, subject, lineSpacing = 'standard' } = data;
+  const { hospitalName, address, date, referenceNumber, discount, payment, gst, validity, warranty, make, delivery, subject, lineSpacing = 'standard' } = data;
   const { name: companyName, address: companyAddress, phone: companyPhone, email: companyEmail, website: companyWebsite } = company;
 
   // Dynamic Spacing Config
@@ -51,7 +51,12 @@ const QuotationTemplate = memo(({ id = "quotation-template", data, company, cont
 
   const formatDate = (dateStr) => {
     if (!dateStr) return '';
+    // If it's a string that already looks like a formatted date or isn't a parseable date, return as is
+    if (typeof dateStr === 'string' && (dateStr.includes('/') || isNaN(Date.parse(dateStr)))) {
+      return dateStr;
+    }
     const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return dateStr;
     return date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
   };
 
@@ -156,7 +161,7 @@ const QuotationTemplate = memo(({ id = "quotation-template", data, company, cont
           <div className={spacing.subGap}>
             {content && content.length > 0 ? (
               content.map((block, idx) => (
-                <div key={idx} className={`${spacing.gap} text-[11pt] leading-[1.5]`}>
+                <div key={idx} className={`${idx === content.length - 1 ? '' : spacing.gap} text-[11pt] leading-[1.5]`}>
                   {block.type === 'text' ? (
                     <div className="text-left">
                       {(block.value || '').split('\n').map((line, i) => (
@@ -250,7 +255,7 @@ const QuotationTemplate = memo(({ id = "quotation-template", data, company, cont
           </div>
 
           {/* Footer */}
-          <div className={`${lineSpacing === 'compact' ? 'mt-4' : 'mt-auto'} pt-1`}>
+          <div className={`${lineSpacing === 'compact' ? 'mt-1' : lineSpacing === 'relaxed' ? 'mt-2' : 'mt-4'} pt-1`}>
             <p className="font-bold underline mb-1 text-[11pt]">Terms and Conditions:</p>
             <table className={`w-full text-[11pt] ${spacing.leading} ${spacing.subGap}`}>
               <tbody>
@@ -258,6 +263,7 @@ const QuotationTemplate = memo(({ id = "quotation-template", data, company, cont
                 {delivery && <tr><td className="w-32 font-bold py-0.5">Delivery</td><td className="w-4 text-center">:</td><td>{delivery}</td></tr>}
                 {payment && <tr><td className="w-32 font-bold py-0.5">Payment</td><td className="w-4 text-center">:</td><td>{payment}</td></tr>}
                 {gst && <tr><td className="w-32 font-bold py-0.5">GST</td><td className="w-4 text-center">:</td><td>{gst}</td></tr>}
+                {warranty && <tr><td className="w-32 font-bold py-0.5">Warranty</td><td className="w-4 text-center">:</td><td>{warranty}</td></tr>}
                 {discount && <tr><td className="w-32 font-bold py-0.5">Discount</td><td className="w-4 text-center">:</td><td><span className="bg-yellow-200 font-bold px-1.5 border border-yellow-400">{discount} on MRP Price</span></td></tr>}
                 {validity && <tr><td className="w-32 font-bold py-0.5">Validity</td><td className="w-4 text-center">:</td><td>{formatDate(validity)}</td></tr>}
               </tbody>

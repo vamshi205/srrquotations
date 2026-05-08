@@ -6,15 +6,17 @@ import { toJpeg } from 'html-to-image';
 import { PDFDocument } from 'pdf-lib';
 import JSZip from 'jszip';
 import Login from './components/Login';
-import { saveDatabase, loadDatabase, saveTemplate, deleteTemplate, saveHistoryItem, saveCompanyData } from './utils/databaseService';
+import EmailerView from './components/EmailerView';
+import EmailHistoryView from './components/EmailHistoryView';
+import { sendEmailWithResend } from './utils/emailService';
+import { saveDatabase, loadDatabase, saveTemplate, deleteTemplate, saveHistoryItem, saveCompanyData, saveEmailHistoryItem } from './utils/databaseService';
 import { auth, db, storage, hasFirebaseConfig } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { ref, getBlob } from 'firebase/storage';
 import { doc, getDoc, setDoc, collection, getDocs, deleteDoc, query, orderBy, writeBatch } from 'firebase/firestore';
 import { validateFile } from './utils/fileValidation';
 import { uploadFile, deleteFile, saveFileMetadata, deleteFileMetadata } from './utils/storageService';
-import EmailerView from './components/EmailerView';
-import { sendEmailWithResend } from './utils/emailService';
+
 import {
   Download,
   Plus,
@@ -30,12 +32,12 @@ import {
   UploadCloud,
   LayoutDashboard,
   ShieldCheck,
+  Search,
   Eye,
   FilePlus2,
 
   FileUp,
   Save,
-  Search,
   Share2,
   HardDrive,
   FolderOpen,
@@ -108,10 +110,11 @@ function App() {
             subject: 'Quotation for Orthopedic Implants & instruments',
             defaultMake: '',
             defaultDelivery: 'Immediate',
-            defaultDiscount: '40%',
+            defaultDiscount: '',
             defaultGst: '5%',
             defaultPayment: '30 days',
-            defaultValidity: '31/03/2027',
+            defaultValidity: '',
+            defaultWarranty: '',
             content: [
               { type: 'text', value: 'With reference to the subject cited above we are herewith submitting our lowest quotation for the enclosed Orthopedic Implants & instruments under the following terms& conditions. Please find the same.' }
             ]
@@ -122,6 +125,7 @@ function App() {
         }
 
         if (data.history) setQuotationHistory(data.history);
+        if (data.emailHistory) setEmailHistory(data.emailHistory);
         if (data.driveFiles) setDriveFiles(data.driveFiles);
         if (data.priceLists) setPriceLists(data.priceLists);
       }
@@ -138,8 +142,7 @@ function App() {
   };
 
   const getNextRefNumber = (history) => {
-    const year = new Date().getFullYear();
-    const prefix = `SRR/${year}/`;
+    const prefix = `SRR/QUOT/`;
     let maxNum = 0;
     (history || []).forEach(item => {
       if (item.ref && item.ref.startsWith(prefix)) {
@@ -147,7 +150,7 @@ function App() {
         if (!isNaN(num) && num > maxNum) maxNum = num;
       }
     });
-    return `${prefix}${String(maxNum + 1).padStart(3, '0')}`;
+    return `${prefix}${String(maxNum + 1).padStart(6, '0')}`;
   };
 
   const getFileData = async (dataOrUrl, storagePath = null) => {
@@ -210,16 +213,19 @@ function App() {
 
 
 
+  const [emailHistory, setEmailHistory] = useState([]);
+
   const [formData, setFormData] = useState({
     hospitalName: '',
     address: '',
     date: getTodayFormatted(),
     referenceNumber: '',
     subject: 'Quotation for Orthopedic Implants & instruments',
-    discount: '40%',
+    discount: '',
     payment: '30 days',
     gst: '5%',
-    validity: '31/03/2027',
+    validity: '',
+    warranty: '',
     make: '',
     delivery: '',
     selectedTemplateId: '',
@@ -372,6 +378,7 @@ function App() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [templateSearchQuery, setTemplateSearchQuery] = useState('');
   const [regeneratingItem, setRegeneratingItem] = useState(null);
   const [openVendorFolder, setOpenVendorFolder] = useState(null);
   const [showEmailComposer, setShowEmailComposer] = useState(false);
@@ -402,6 +409,20 @@ function App() {
 
       if (result.success) {
         alert('Success! Email sent via Resend.');
+        
+        // Save to History
+        const historyItem = {
+          id: Date.now().toString(),
+          to: emailForm.to,
+          subject: emailForm.subject,
+          body: emailForm.body,
+          sentAt: new Date().toISOString(),
+          attachments: filesToAttach.map(f => f.fileName),
+          status: 'success'
+        };
+        setEmailHistory(prev => [historyItem, ...prev]);
+        await saveEmailHistoryItem(historyItem);
+
         setShowEmailComposer(false);
       } else {
         alert(`Resend Error: ${result.message}`);
@@ -653,10 +674,11 @@ function App() {
       subject: template.subject || 'Quotation for Orthopedic Implants & instruments',
       make: template.defaultMake || '',
       delivery: template.defaultDelivery || '',
-      discount: template.defaultDiscount || '40%',
+      discount: template.defaultDiscount || '',
       gst: template.defaultGst || '5%',
       payment: template.defaultPayment || '30 days',
-      validity: template.defaultValidity || '31/03/2027',
+      validity: template.defaultValidity || '',
+      warranty: template.defaultWarranty || '',
       lineSpacing: template.defaultSpacing || 'compact'
     });
     setDraftContent(JSON.parse(JSON.stringify(template.content)));
@@ -777,16 +799,11 @@ function App() {
         }
       }
 
-      // Check ref number uniqueness
-      const isDuplicateRef = quotationHistory.some(h => h.ref === formData.referenceNumber);
-      if (isDuplicateRef) {
-        alert(`Reference number ${formData.referenceNumber} already exists. Please use a unique reference number.`);
-        setIsGenerating(false);
-        return;
-      }
-
+      // Handle History (Save or Update)
+      const existingHistoryItem = quotationHistory.find(h => h.ref === formData.referenceNumber);
+      
       const historyItem = {
-        id: Date.now().toString(),
+        id: existingHistoryItem ? existingHistoryItem.id : Date.now().toString(),
         hospital: formData.hospitalName,
         date: formData.date,
         ref: formData.referenceNumber,
@@ -794,13 +811,24 @@ function App() {
         formData: JSON.parse(JSON.stringify(formData)),
         draftContent: JSON.parse(JSON.stringify(draftContent))
       };
-      setQuotationHistory([historyItem, ...quotationHistory]);
+
+      if (existingHistoryItem) {
+        setQuotationHistory(prev => prev.map(h => h.id === existingHistoryItem.id ? historyItem : h));
+      } else {
+        setQuotationHistory(prev => [historyItem, ...prev]);
+      }
+      
       await saveHistoryItem(historyItem);
 
       const blob = new Blob([finalPdfBytes], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
       window.open(url, '_blank');
-    } catch (e) { console.error(e); } finally { setIsGenerating(false); }
+    } catch (e) { 
+      console.error(e); 
+      alert("Error generating PDF: " + e.message);
+    } finally { 
+      setIsGenerating(false); 
+    }
   };
 
   const NavItem = ({ id, label }) => (
@@ -858,6 +886,7 @@ function App() {
           <NavItem id="history" label="History" />
           <NavItem id="drive" label="Drive" />
           <NavItem id="emailer" label="Emailer" />
+          <NavItem id="emailHistory" label="Email History" />
           <NavItem id="pricelists" label="Price List" />
           <NavItem id="settings" label="Settings" />
         </div>
@@ -909,7 +938,7 @@ function App() {
             <button onClick={() => setIsMobileMenuOpen(false)}><Plus className="rotate-45" size={32} /></button>
           </div>
           <div className="flex flex-col gap-2">
-            {['library', 'history', 'drive', 'emailer', 'pricelists', 'settings'].map(id => (
+            {['library', 'history', 'drive', 'emailer', 'emailHistory', 'pricelists', 'settings'].map(id => (
               <button
                 key={id}
                 onClick={() => { setView(id); setIsMobileMenuOpen(false); }}
@@ -956,6 +985,7 @@ function App() {
                         defaultGst: '',
                         defaultPayment: '',
                         defaultValidity: '',
+                        defaultWarranty: '',
                         content: []
                       });
                       setView('builder');
@@ -967,8 +997,22 @@ function App() {
                 )}
               </header>
 
+              <div className="relative mb-8 max-w-md">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--apple-gray-4)] w-4 h-4" />
+                <input
+                  type="text"
+                  placeholder="Search templates..."
+                  value={templateSearchQuery}
+                  onChange={(e) => setTemplateSearchQuery(e.target.value)}
+                  className="apple-input !pl-10 !py-2.5"
+                />
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {templates.map(t => (
+                {templates.filter(t => 
+                  t.name.toLowerCase().includes(templateSearchQuery.toLowerCase()) || 
+                  (t.description || '').toLowerCase().includes(templateSearchQuery.toLowerCase())
+                ).map(t => (
                   <LibraryCard
                     key={t.id}
                     template={t}
@@ -1078,7 +1122,7 @@ function App() {
                   <div className="pt-6 border-t border-[var(--apple-gray-2)]">
                     <label className="apple-label mb-4">Default Terms</label>
                     <div className="grid grid-cols-2 gap-4">
-                      {['Make', 'Delivery', 'Discount', 'GST', 'Payment', 'Validity'].map(term => {
+                      {['Make', 'Delivery', 'Discount', 'GST', 'Payment', 'Validity', 'Warranty'].map(term => {
                         const key = `default${term}`;
                         return (
                           <div key={term}>
@@ -1429,7 +1473,7 @@ function App() {
                       </div>
                       <div>
                         <span className="text-[11px] font-semibold text-[var(--apple-gray-5)] uppercase block mb-1">Ref No.</span>
-                        <input type="text" name="referenceNumber" value={formData.referenceNumber} onChange={handleInputChange} className="apple-input !px-3" />
+                        <input type="text" name="referenceNumber" value={formData.referenceNumber} readOnly className="apple-input !px-3 bg-[var(--apple-gray-1)] cursor-not-allowed opacity-70" title="Reference number is automatically generated" />
                       </div>
                     </div>
                     <div>
@@ -1639,7 +1683,7 @@ function App() {
                   <div className="space-y-4 pt-4">
                     <h3 className="apple-label border-b border-[var(--apple-gray-2)] pb-2">Terms & Conditions</h3>
                     <div className="grid grid-cols-2 gap-4">
-                      {['make', 'delivery', 'discount', 'gst', 'payment', 'validity'].map(term => (
+                      {['make', 'delivery', 'discount', 'gst', 'payment', 'validity', 'warranty'].map(term => (
                         <div key={term}>
                           <span className="text-[11px] font-semibold text-[var(--apple-gray-5)] uppercase block mb-1">{term}</span>
                           <input
@@ -2047,6 +2091,19 @@ function App() {
           </div>
         )}
 
+        {/* VIEW: EMAIL HISTORY */}
+        {view === 'emailHistory' && (
+          <EmailHistoryView 
+            history={emailHistory} 
+            onDelete={async (id) => {
+              confirmDelete(async () => {
+                setEmailHistory(prev => prev.filter(h => h.id !== id));
+                await deleteFileMetadata('emailHistory', id);
+              });
+            }}
+          />
+        )}
+
 
 
         {/* VIEW: DRIVE */}
@@ -2429,7 +2486,14 @@ function App() {
               <ArrowRight className={syncStatus === 'syncing' ? 'animate-spin' : ''} size={16} />
               {syncStatus === 'syncing' ? 'Refreshing...' : 'Refresh Files'}
             </button>
-            <EmailerView driveFiles={driveFiles} priceLists={priceLists} />
+            <EmailerView 
+              driveFiles={driveFiles} 
+              priceLists={priceLists} 
+              onEmailSent={async (item) => {
+                setEmailHistory(prev => [item, ...prev]);
+                await saveEmailHistoryItem(item);
+              }}
+            />
           </div>
         )}
       </main>

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Mail, FileText, FileCheck, CheckSquare, ChevronRight, HardDrive, Plus } from 'lucide-react';
 import { sendEmailWithResend } from '../utils/emailService';
 
-const EmailerView = ({ driveFiles, priceLists }) => {
+const EmailerView = ({ driveFiles, priceLists, onEmailSent }) => {
   const [emailForm, setEmailForm] = useState({
     to: '',
     subject: 'Documents from Sri Raja Rajeshwari Ortho Plus',
@@ -81,7 +81,6 @@ const EmailerView = ({ driveFiles, priceLists }) => {
   };
 
   const [isSending, setIsSending] = useState(false);
-
   const handleSendEmail = async () => {
     if (!emailForm.to) return alert('Please enter recipient email.');
     setIsSending(true);
@@ -101,6 +100,20 @@ const EmailerView = ({ driveFiles, priceLists }) => {
 
       if (result.success) {
         alert('Success! Email sent via Resend.');
+        
+        // Save to History via callback
+        if (onEmailSent) {
+          onEmailSent({
+            id: Date.now().toString(),
+            to: emailForm.to,
+            subject: emailForm.subject,
+            body: emailForm.body,
+            sentAt: new Date().toISOString(),
+            attachments: filesToAttach.map(f => f.fileName),
+            status: 'success'
+          });
+        }
+
         setEmailForm(prev => ({ ...prev, selectedDriveFiles: [] }));
       } else {
         alert(`Resend Error: ${result.message}`);

@@ -79,6 +79,20 @@ export const saveHistoryItem = async (item) => {
 };
 
 /**
+ * Saves an email history record to the 'emailHistory' collection.
+ */
+export const saveEmailHistoryItem = async (item) => {
+  try {
+    const docRef = doc(db, 'emailHistory', item.id);
+    await setDoc(docRef, item);
+    return true;
+  } catch (err) {
+    console.error('Firestore Save Error (Email History):', err);
+    return false;
+  }
+};
+
+/**
  * Loads all data from Firestore collections.
  */
 export const loadDatabase = async () => {
@@ -113,6 +127,11 @@ export const loadDatabase = async () => {
       }
     });
 
+    // Load Email History
+    const emailHistoryQuery = query(collection(db, 'emailHistory'), orderBy('sentAt', 'desc'), limit(50));
+    const emailHistorySnap = await getDocs(emailHistoryQuery);
+    const emailHistory = emailHistorySnap.docs.map(doc => doc.data());
+
     // Load Price Lists
     const plSnap = await getDocs(collection(db, 'priceLists'));
     const priceLists = plSnap.docs.map(doc => doc.data());
@@ -139,6 +158,7 @@ export const loadDatabase = async () => {
       companyData,
       templates,
       history,
+      emailHistory,
       priceLists,
       driveFiles: { srr, vendor: vendorFolders }
     };
