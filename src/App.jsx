@@ -2595,31 +2595,6 @@ function App() {
       )}
       {/* PREVIEW MODAL */}
       {previewingItem && (
-        <div className="fixed inset-0 z-[2000] flex flex-col bg-white overflow-hidden animate-in fade-in duration-300">
-          <header className="px-8 py-4 bg-[var(--apple-gray-1)] border-b border-[var(--apple-gray-2)] flex items-center justify-between">
-            <div className="flex items-center gap-6">
-              <button 
-                onClick={() => setPreviewingItem(null)}
-                className="flex items-center gap-2 px-4 py-2 bg-emerald-50 text-[var(--emerald)] rounded-xl border border-emerald-200 hover:bg-emerald-100 active:scale-[0.95] transition-all font-bold text-[14px]"
-              >
-                <ChevronLeft size={20} /> Back
-              </button>
-              
-              <div className="h-8 w-px bg-[var(--apple-gray-3)] hidden md:block"></div>
-
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 bg-[var(--emerald)] rounded-xl flex items-center justify-center text-white hidden sm:flex">
-                  <Eye size={20} />
-                </div>
-                <div>
-                  <h3 className="text-[17px] font-bold truncate max-w-[150px] md:max-w-none">{previewingItem.hospital}</h3>
-                  <p className="text-[11px] text-[var(--apple-gray-5)] uppercase font-bold tracking-wider">Ref: {previewingItem.ref}</p>
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <button 
-                onClick={() => {
         <div className="fixed inset-0 z-[6000] flex flex-col bg-[var(--apple-gray-2)] animate-in slide-in-from-bottom duration-500">
           <header className="flex-none flex items-center justify-between px-4 md:px-12 py-4 md:py-6 bg-white/80 backdrop-blur-md border-b border-[var(--apple-gray-3)] sticky top-0 z-10">
             <div>
