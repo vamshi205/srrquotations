@@ -12,7 +12,7 @@ const HistoryView = ({ quotationHistory, searchQuery, setSearchQuery, isGenerati
 
   return (
     <div className="h-full overflow-y-auto px-8 py-12 md:px-16 md:py-16">
-      <div className="max-w-5xl mx-auto">
+      <div className="max-w-6xl mx-auto">
         <div className="flex flex-col md:flex-row md:items-end justify-between mb-12 gap-6">
           <div>
             <h1 className="apple-title-1 mb-2">History</h1>
@@ -69,16 +69,18 @@ const HistoryView = ({ quotationHistory, searchQuery, setSearchQuery, isGenerati
                           <button 
                             onClick={() => setRegeneratingItem(item)}
                             disabled={isGenerating || regeneratingItem}
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-[var(--apple-gray-2)] rounded-lg text-[12px] font-semibold text-[var(--emerald)] hover:border-[var(--emerald)] transition-colors disabled:opacity-50"
+                            className="w-9 h-9 flex items-center justify-center bg-white border border-[var(--apple-gray-2)] rounded-full text-[var(--emerald)] hover:border-[var(--emerald)] hover:bg-[var(--emerald-light)] transition-all disabled:opacity-50 shadow-sm"
+                            title="Download PDF"
                           >
-                            <Download size={13} /> Download
+                            <Download size={16} />
                           </button>
                           <button 
                             onClick={() => setRegeneratingItem({ ...item, _shareMode: true })}
                             disabled={isGenerating || regeneratingItem}
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-[var(--apple-gray-2)] rounded-lg text-[12px] font-semibold text-[var(--coral)] hover:border-[var(--coral)] transition-colors disabled:opacity-50"
+                            className="w-9 h-9 flex items-center justify-center bg-white border border-[var(--apple-gray-2)] rounded-full text-[var(--coral)] hover:border-[var(--coral)] hover:bg-red-50 transition-all disabled:opacity-50 shadow-sm"
+                            title="Share/Email"
                           >
-                            <Share2 size={13} /> Share
+                            <Share2 size={16} />
                           </button>
                         </div>
                       </td>
