@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import QuotationTemplate from './components/QuotationTemplate';
 import LibraryCard from './components/LibraryCard';
 import jsPDF from 'jspdf';
@@ -6,16 +6,21 @@ import { toJpeg } from 'html-to-image';
 import { PDFDocument } from 'pdf-lib';
 import JSZip from 'jszip';
 import Login from './components/Login';
-import { auth, db, hasFirebaseConfig } from './firebase';
+import EmailerView from './components/EmailerView';
+import EmailHistoryView from './components/EmailHistoryView';
+import { sendEmailWithResend } from './utils/emailService';
+import { saveDatabase, loadDatabase, saveTemplate, deleteTemplate, saveHistoryItem, saveCompanyData, saveEmailHistoryItem } from './utils/databaseService';
+import { auth, db, storage, hasFirebaseConfig } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { ref, getBlob } from 'firebase/storage';
 import { doc, getDoc, setDoc, collection, getDocs, deleteDoc, query, orderBy, writeBatch } from 'firebase/firestore';
 import { validateFile } from './utils/fileValidation';
-import { uploadFile, deleteFile } from './utils/storageService';
-import EmailerView from './components/EmailerView';
-import { 
-  Download, 
-  Plus, 
-  FileText, 
+import { uploadFile, deleteFile, saveFileMetadata, deleteFileMetadata } from './utils/storageService';
+
+import {
+  Download,
+  Plus,
+  FileText,
   Settings,
   ChevronLeft,
   Database,
@@ -27,12 +32,12 @@ import {
   UploadCloud,
   LayoutDashboard,
   ShieldCheck,
+  Search,
   Eye,
   FilePlus2,
-  Building2,
+
   FileUp,
   Save,
-  Search,
   Share2,
   HardDrive,
   FolderOpen,
@@ -40,154 +45,55 @@ import {
   Award,
   FileCheck,
   Mail,
-  CheckSquare
+  CheckSquare,
+  Menu
 } from 'lucide-react';
 
 function App() {
-  const [view, setView] = useState('library'); 
+  const [view, setView] = useState('library');
   const [user, setUser] = useState(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [authError, setAuthError] = useState('');
   const [syncStatus, setSyncStatus] = useState('saved');
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
+  const [previewPdfUrl, setPreviewPdfUrl] = useState(null);
+  const [previewingItem, setPreviewingItem] = useState(null);
+  const [previewPriceListUrl, setPreviewPriceListUrl] = useState(null);
+  const [regeneratingItem, setRegeneratingItem] = useState(null);
+  const [alertModal, setAlertModal] = useState(null); // { type, title, message, onConfirm, onCancel, confirmText, cancelText, showInput, onInput }
+  const [isDataLoading, setIsDataLoading] = useState(false);
 
-  useEffect(() => {
-    if (!hasFirebaseConfig) {
-      setIsAuthLoading(false);
-      return;
-    }
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      if (currentUser) {
-        const allowedEmailsStr = import.meta.env.VITE_ALLOWED_EMAILS || '';
-        const allowedEmails = allowedEmailsStr.split(',').map(e => e.trim().toLowerCase()).filter(e => e);
-        
-        if (allowedEmails.length > 0 && !allowedEmails.includes(currentUser.email.toLowerCase())) {
-          await signOut(auth);
-          setAuthError('Your email address is not authorized to access this application.');
-          setUser(null);
-          setIsAuthLoading(false);
-          return;
-        }
-
-        setUser(currentUser);
-        setAuthError('');
-        try {
-          // 1. Fetch Basic Settings & Templates
-          const docRef = doc(db, 'users', currentUser.uid);
-          const docSnap = await getDoc(docRef);
-          if (docSnap.exists()) {
-            const data = docSnap.data();
-            if (data.companyData) setCompanyData(typeof data.companyData === 'string' ? JSON.parse(data.companyData) : data.companyData);
-            if (data.templates) setTemplates(typeof data.templates === 'string' ? JSON.parse(data.templates) : data.templates);
-          }
-
-          // 2. Fetch Attachments (Sub-collection) - Filter out old Firebase Storage files
-          const attsSnap = await getDocs(collection(db, 'users', currentUser.uid, 'attachments'));
-          const attsList = attsSnap.docs
-            .map(d => d.data())
-            .filter(d => !d.data || !d.data.includes('firebasestorage'));
-          setAttachments(attsList);
-
-          // 3. Fetch Quotation History (Sub-collection)
-          const historySnap = await getDocs(query(collection(db, 'users', currentUser.uid, 'history'), orderBy('id', 'desc')));
-          const historyList = historySnap.docs.map(d => d.data());
-          setQuotationHistory(historyList);
-
-          // 4. Fetch Drive Files (SRR) - Filter out old Firebase Storage files
-          const srrSnap = await getDocs(collection(db, 'users', currentUser.uid, 'drive_srr'));
-          const srrList = srrSnap.docs
-            .map(d => d.data())
-            .filter(d => !d.data || !d.data.includes('firebasestorage'));
-
-          // 5. Fetch Drive Folders & Files (Vendor)
-          const foldersSnap = await getDocs(collection(db, 'users', currentUser.uid, 'drive_folders'));
-          const foldersList = foldersSnap.docs.map(d => d.data());
-          const vFilesSnap = await getDocs(collection(db, 'users', currentUser.uid, 'drive_vendor_files'));
-          const vFilesList = vFilesSnap.docs
-            .map(d => d.data())
-            .filter(d => !d.data || !d.data.includes('firebasestorage'));
-
-          const fullFolders = foldersList.map(folder => ({
-            ...folder,
-            files: vFilesList.filter(f => f.folderId === folder.id)
-          }));
-
-          setDriveFiles({ srr: srrList, vendor: fullFolders });
-
-        } catch (e) {
-          console.error("Firestore loading error:", e);
-        }
-      } else {
-        setUser(null);
-      }
-      setIsAuthLoading(false);
-    });
-    return () => unsubscribe();
-  }, []);
-  
-  const getTodayFormatted = () => {
-    const d = new Date();
-    return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
+  const showAlert = (title, message, type = 'success') => {
+    setAlertModal({ type, title, message });
   };
 
-  const getNextRefNumber = (history) => {
-    const year = new Date().getFullYear();
-    const prefix = `SRR/${year}/`;
-    let maxNum = 0;
-    (history || []).forEach(item => {
-      if (item.ref && item.ref.startsWith(prefix)) {
-        const num = parseInt(item.ref.replace(prefix, ''), 10);
-        if (!isNaN(num) && num > maxNum) maxNum = num;
-      }
-    });
-    return `${prefix}${String(maxNum + 1).padStart(3, '0')}`;
+  const showConfirm = (title, message, onConfirm, onCancel = null, type = 'confirm', confirmText = 'Confirm', cancelText = 'Cancel') => {
+    setAlertModal({ type, title, message, onConfirm, onCancel, confirmText, cancelText });
   };
 
-  const getFileData = async (dataOrUrl) => {
-    if (!dataOrUrl || dataOrUrl.includes('firebasestorage')) return null;
-    try {
-      if (dataOrUrl.startsWith('http')) {
-        const response = await fetch(dataOrUrl);
-        if (!response.ok) throw new Error('Network response was not ok');
-        const arrayBuffer = await response.arrayBuffer();
-        return new Uint8Array(arrayBuffer);
-      }
-      // Handle legacy base64 data
-      if (dataOrUrl.includes('base64,')) {
-        const base64 = dataOrUrl.split(',')[1];
-        const binaryString = window.atob(base64);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
-        }
-        return bytes;
-      }
-      return dataOrUrl;
-    } catch (err) {
-      console.error('Error fetching file data:', err);
-      return null;
-    }
+  const showPrompt = (title, message, onInput, type = 'prompt', confirmText = 'Submit', cancelText = 'Cancel') => {
+    setAlertModal({ type, title, message, onInput, showInput: true, confirmText, cancelText });
   };
 
   const [formData, setFormData] = useState({
     hospitalName: '',
     address: '',
-    date: getTodayFormatted(),
+    subject: '',
+    date: new Date().toLocaleDateString('en-GB'),
     referenceNumber: '',
-    subject: 'Quotation for Orthopedic Implants & instruments',
-    discount: '40%',
+    priceListId: '',
     payment: '30 days',
     gst: '5%',
-    validity: '31/03/2027',
+    validity: '',
+    warranty: '',
     make: '',
     delivery: '',
-    attachmentLabel: '',
-    selectedTemplateId: ''
+    selectedTemplateId: '',
+    lineSpacing: 'compact'
   });
 
   const [draftContent, setDraftContent] = useState([]);
-  const [draftRequiresAttachment, setDraftRequiresAttachment] = useState(false);
   const [showPreview, setShowPreview] = useState(true);
 
   // Persistent Storage
@@ -202,33 +108,14 @@ function App() {
     };
   });
 
-  const [attachments, setAttachments] = useState(() => {
-    const saved = localStorage.getItem('srr_attachments');
+  const [priceLists, setPriceLists] = useState(() => {
+    const saved = localStorage.getItem('srr_price_lists');
     const parsed = saved ? JSON.parse(saved) : [];
-    return parsed.filter(a => !a.data || !a.data.includes('firebasestorage'));
+    // CRITICAL: Filter out any legacy Google Drive links or truncated data
+    return parsed.filter(a => a.data && a.data.startsWith('http') && !a.data.includes('drive.google.com') && !a.data.includes('googleusercontent'));
   });
 
-  const [templates, setTemplates] = useState(() => {
-    const saved = localStorage.getItem('srr_templates');
-    return saved ? JSON.parse(saved) : [
-      {
-        id: 'default',
-        name: 'Standard Implants',
-        description: 'Standard quotation for surgical implants.',
-        requiresAttachment: true,
-        subject: 'Quotation for Orthopedic Implants & instruments',
-        defaultMake: '',
-        defaultDelivery: 'Immediate',
-        defaultDiscount: '40%',
-        defaultGst: '5%',
-        defaultPayment: '30 days',
-        defaultValidity: '31/03/2027',
-        content: [
-          { type: 'text', value: 'With reference to the subject cited above we are herewith submitting our lowest quotation for the enclosed Orthopedic Implants & instruments under the following terms& conditions. Please find the same.' }
-        ]
-      }
-    ];
-  });
+  const [templates, setTemplates] = useState([]);
 
   const [quotationHistory, setQuotationHistory] = useState(() => {
     const saved = localStorage.getItem('srr_history');
@@ -238,15 +125,220 @@ function App() {
   const [driveFiles, setDriveFiles] = useState(() => {
     const saved = localStorage.getItem('srr_drive');
     const parsed = saved ? JSON.parse(saved) : { srr: [], vendor: [] };
-    // Filter SRR files
-    const srr = (parsed.srr || []).filter(f => !f.data || !f.data.includes('firebasestorage'));
+    // Only filter out legacy TRUNCATED data, keep firebasestorage URLs
+    // CRITICAL: Filter out legacy Google Drive links
+    const srr = (parsed.srr || []).filter(f => f.data && f.data.startsWith('http') && !f.data.includes('drive.google.com'));
     // Filter Vendor files
     const vendor = (parsed.vendor || []).map(folder => ({
       ...folder,
-      files: (folder.files || []).filter(f => !f.data || !f.data.includes('firebasestorage'))
+      files: (folder.files || []).filter(f => f.data && f.data.startsWith('http') && !f.data.includes('drive.google.com'))
     }));
     return { srr, vendor };
   });
+
+  const [pdfCache, setPdfCache] = useState({}); // Legacy, will use Ref for speed
+  const pdfCacheRef = useRef({}); // { fileId/url: Uint8Array }
+  const [isDesignerMaximized, setIsDesignerMaximized] = useState(false);
+  const [isDraftingMaximized, setIsDraftingMaximized] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
+  const [isManagementActive, setIsManagementActive] = useState(false);
+  const ADMIN_PASSWORD = "2025";
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 1024);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    if (!hasFirebaseConfig) {
+      setIsAuthLoading(false);
+      return;
+    }
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (currentUser) {
+        setUser(currentUser);
+        await refreshData(currentUser);
+      } else {
+        setUser(currentUser);
+      }
+      setIsAuthLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    setPreviewingItem(null);
+    setPreviewPriceListUrl(null);
+    setShowEmailComposer(false);
+  }, [view]);
+
+  useEffect(() => {
+    if (previewingItem?.formData?.priceListId) {
+      const pl = priceLists.find(p => p.id === previewingItem.formData.priceListId);
+      if (pl) {
+        getFileData(pl.data, pl.fileId).then(bytes => {
+          if (bytes) {
+            const blob = new Blob([bytes], { type: 'application/pdf' });
+            setPreviewPriceListUrl(URL.createObjectURL(blob));
+          }
+        });
+      }
+    } else {
+      setPreviewPriceListUrl(null);
+    }
+  }, [previewingItem, priceLists]);
+
+  const refreshData = async (currentUser = user) => {
+    if (!currentUser) return;
+    setSyncStatus('syncing');
+    setIsDataLoading(true);
+    try {
+      const data = await loadDatabase();
+      if (data) {
+        if (data.companyData) setCompanyData(data.companyData);
+        
+        // 1. Templates: Always trust the backend.
+        if (data.templates && data.templates.length > 0) {
+          setTemplates(data.templates);
+        } else if (currentUser) {
+          // If Firestore is empty, seed it with a professional default template
+          const defaultTemplate = {
+            id: 'default-' + Date.now(),
+            name: 'Standard Implants',
+            description: 'Standard quotation for surgical implants.',
+            subject: 'Quotation for Orthopedic Implants & instruments',
+            defaultMake: '',
+            defaultDelivery: 'Immediate',
+            defaultDiscount: '',
+            defaultGst: '5%',
+            defaultPayment: '30 days',
+            defaultValidity: '',
+            defaultWarranty: '',
+            content: [
+              { type: 'text', value: 'With reference to the subject cited above we are herewith submitting our lowest quotation for the enclosed Orthopedic Implants & instruments under the following terms& conditions. Please find the same.' }
+            ]
+          };
+          console.log("Seeding Firestore with default template...");
+          await saveTemplate(defaultTemplate);
+          setTemplates([defaultTemplate]);
+        }
+
+        if (data.history) setQuotationHistory(data.history);
+        if (data.emailHistory) setEmailHistory(data.emailHistory);
+        if (data.driveFiles) setDriveFiles(data.driveFiles);
+        if (data.priceLists) setPriceLists(data.priceLists);
+      }
+      setSyncStatus('saved');
+    } catch (e) {
+      console.error("Refresh error:", e);
+      setSyncStatus('error');
+    } finally {
+      setIsDataLoading(false);
+    }
+  };
+
+  const getTodayFormatted = () => {
+    const d = new Date();
+    return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
+  };
+
+  const getNextRefNumber = (history) => {
+    const prefix = `SRR/QUOT/`;
+    let maxNum = 0;
+    (history || []).forEach(item => {
+      if (item.ref && item.ref.startsWith(prefix)) {
+        const num = parseInt(item.ref.replace(prefix, ''), 10);
+        if (!isNaN(num) && num > maxNum) maxNum = num;
+      }
+    });
+    return `${prefix}${String(maxNum + 1).padStart(6, '0')}`;
+  };
+
+  const getFileData = async (dataOrUrl, storagePath = null) => {
+    if (!dataOrUrl) return null;
+    
+    // 1. Try to determine the best storage path
+    let bestPath = storagePath;
+    
+    // If path looks like just a filename (no slash), try to extract it from the URL
+    if (typeof dataOrUrl === 'string' && dataOrUrl.includes('firebasestorage') && (!bestPath || !bestPath.includes('/'))) {
+      try {
+        // Extract the part between /o/ and ?
+        const match = dataOrUrl.match(/\/o\/([^?]+)/);
+        if (match && match[1]) {
+          bestPath = decodeURIComponent(match[1]);
+        }
+      } catch (e) {
+        console.warn("Could not parse storage path from URL:", e);
+      }
+    }
+
+    const cacheKey = bestPath || dataOrUrl;
+    
+    // 2. Check cache first
+    if (pdfCacheRef.current[cacheKey]) {
+      return pdfCacheRef.current[cacheKey];
+    }
+    
+    try {
+      // 3. If we have a storage path, use the SDK (Best for CORS)
+      if (bestPath) {
+        const fileRef = ref(storage, bestPath);
+        const blob = await getBlob(fileRef);
+        const arrayBuffer = await blob.arrayBuffer();
+        const binary = new Uint8Array(arrayBuffer);
+        pdfCacheRef.current[cacheKey] = binary;
+        return binary;
+      }
+
+      // 4. Fallback for direct URLs
+      if (typeof dataOrUrl === 'string' && dataOrUrl.startsWith('http')) {
+        const response = await fetch(dataOrUrl);
+        if (!response.ok) throw new Error('Network response was not ok');
+        const arrayBuffer = await response.arrayBuffer();
+        const binary = new Uint8Array(arrayBuffer);
+        pdfCacheRef.current[cacheKey] = binary;
+        return binary;
+      }
+      return dataOrUrl;
+    } catch (err) {
+      if (err.name === 'FirebaseError' && err.code === 'storage/unauthorized') {
+        console.error('CORS/Security Block: Please run the gsutil command in the CORS_FIX_GUIDE.md file to enable file downloads.');
+      } else {
+        console.error('File retrieval error:', err);
+      }
+      // Final fallback: just return the URL if fetch/SDK both failed (might work in some contexts)
+      return dataOrUrl;
+    }
+  };
+
+
+
+  const [emailHistory, setEmailHistory] = useState([]);
+  
+  // Background Pre-fetching for Speed
+  useEffect(() => {
+    const prefetch = async () => {
+      const allFiles = [
+        ...priceLists,
+        ...(driveFiles.srr || []),
+        ...((driveFiles.vendor || []).flatMap(f => f.files || []))
+      ];
+      
+      for (const file of allFiles) {
+        if (file.data && file.data.startsWith('http')) {
+          const cacheKey = file.storagePath || file.data;
+          if (!pdfCacheRef.current[cacheKey]) {
+            // Fetch silently in background
+            getFileData(file.data, file.storagePath);
+          }
+        }
+      }
+    };
+    if (user) prefetch();
+  }, [priceLists, driveFiles, user]);
 
   // Set initial ref number from history
   const refInitialized = React.useRef(false);
@@ -265,50 +357,61 @@ function App() {
       setUploadProgress(0);
     }
     try {
-      // Upload file to Google Drive if a file object is provided
       if (fileObject && !isDelete) {
         const validation = validateFile(fileObject);
         if (!validation.isValid) throw new Error(validation.error);
-        
-        // uploadFile now returns { url, fileId, success }
-        const result = await uploadFile(fileObject, '', (p) => {
+
+        const result = await uploadFile(fileObject, colName, (p) => {
           setUploadProgress(p);
           if (onProgress) onProgress(p);
         });
 
-        if (!result || (!result.success && !result.url)) {
-          throw new Error("Failed to upload to Google Drive");
+        if (!result || !result.success) {
+          throw new Error("Failed to upload to Firebase Storage");
         }
 
         item.data = result.url || '';
         item.fileId = result.fileId || '';
-        item.storagePath = result.fileId || ''; 
+        item.storagePath = result.path || '';
       }
 
-      const itemRef = doc(db, 'users', user.uid, colName, item.id);
-      if (isDelete) {
-        await deleteDoc(itemRef);
-        // Delete from Google Drive if it's a Drive file
-        if (item.fileId) {
-          try { 
-            await deleteFile(item.fileId); 
-          } catch (e) { 
-            console.warn('Google Drive deletion failed:', e); 
-          }
+      if (isDelete && (item.storagePath || item.fileId)) {
+        try {
+          await deleteFile(item.storagePath || item.fileId);
+        } catch (e) {
+          console.warn('Firebase Storage deletion failed:', e);
         }
-      } else {
-        await setDoc(itemRef, item);
       }
+
+      // Save metadata to Firestore
+      // Standardize collection names to match databaseService.js
+      let collectionName = colName;
+      if (colName === 'drive_srr' || colName === 'drive_vendor_files') {
+        collectionName = 'driveFiles';
+      } else if (colName === 'price_lists') {
+        collectionName = 'priceLists';
+      } else if (colName === 'drive_folders') {
+        collectionName = 'driveFolders';
+      }
+      
+      if (isDelete) {
+        await deleteFileMetadata(collectionName, item.id);
+      } else {
+        // Prepare item for Firestore (ensure no binary data)
+        const metadata = { ...item, type: colName };
+        await saveFileMetadata(collectionName, metadata);
+      }
+      
       setSyncStatus('saved');
       if (fileObject && !isDelete) {
         setTimeout(() => setIsUploading(false), 800);
       }
       return true;
     } catch (err) {
-      console.error(`Sync error (${colName}):`, err);
+      console.error(`Sync error:`, err);
       setSyncStatus('error');
       setIsUploading(false);
-      alert(`Sync failed: ${err.message || 'Check your internet connection.'}`);
+      showAlert('Sync Failed', err.message || 'Check your internet connection.', 'error');
       return false;
     }
   };
@@ -316,7 +419,7 @@ function App() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [regeneratingItem, setRegeneratingItem] = useState(null);
+  const [templateSearchQuery, setTemplateSearchQuery] = useState('');
   const [openVendorFolder, setOpenVendorFolder] = useState(null);
   const [showEmailComposer, setShowEmailComposer] = useState(false);
   const [emailForm, setEmailForm] = useState({
@@ -328,18 +431,11 @@ function App() {
   const [isSendingEmail, setIsSendingEmail] = useState(false);
 
   const handleGlobalSendEmail = async () => {
-    if (!emailForm.to) return alert('Please enter recipient email.');
-    setIsSendingEmail(true);
-    const scriptUrl = import.meta.env.VITE_GMAIL_SCRIPT_URL;
-    const token = import.meta.env.VITE_GMAIL_TOKEN;
-
-    if (!scriptUrl) {
-      const { to, subject, body } = emailForm;
-      const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(to)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-      window.open(gmailUrl, '_blank');
-      setIsSendingEmail(false);
+    if (!emailForm.to) {
+      showAlert('Recipient Missing', 'Please enter a valid recipient email address.', 'error');
       return;
     }
+    setIsSendingEmail(true);
 
     const filesToAttach = (emailForm.selectedDriveFiles || []).map(f => ({
       fileName: f.fileName || f.label || 'Document.pdf',
@@ -347,35 +443,67 @@ function App() {
     }));
 
     try {
-      await fetch(scriptUrl, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          token: token,
+      const result = await sendEmailWithResend({
+        to: emailForm.to,
+        subject: emailForm.subject,
+        body: emailForm.body,
+        files: filesToAttach
+      });
+
+      if (result.success) {
+        // Save to History
+        const historyItem = {
+          id: Date.now().toString(),
           to: emailForm.to,
           subject: emailForm.subject,
           body: emailForm.body,
-          files: filesToAttach
-        })
-      });
-      alert('Email sent successfully via srrorthoplus999@gmail.com!');
-      setShowEmailComposer(false);
+          sentAt: new Date().toISOString(),
+          attachments: filesToAttach.map(f => f.fileName),
+          status: 'success'
+        };
+        setEmailHistory(prev => [historyItem, ...prev]);
+        await saveEmailHistoryItem(historyItem);
+        
+        // Find and mark the quotation in history as emailed if applicable
+        const generatedFile = (emailForm.selectedDriveFiles || []).find(f => f.isGenerated);
+        if (generatedFile) {
+          setQuotationHistory(prev => prev.map(h => {
+            if (`Quotation_${h.hospital}.pdf` === generatedFile.fileName || h.ref === formData.referenceNumber) {
+              const updated = { 
+                ...h, 
+                isEmailed: true,
+                lastEmailedAt: new Date().toISOString(),
+                lastEmailedTo: emailForm.to
+              };
+              saveHistoryItem(updated); // Persist status to Firestore
+              return updated;
+            }
+            return h;
+          }));
+        }
+
+        setShowEmailComposer(false);
+        setView('history');
+        showAlert('Email Sent', `Quotation has been successfully sent to ${emailForm.to} and recorded in history.`, 'success');
+      } else {
+        showAlert('Dispatch Failed', result.message || 'Could not send email.', 'error');
+      }
     } catch (err) {
       console.error('Email error:', err);
-      alert('Connection issue. Falling back to manual Gmail.');
-      const { to, subject, body } = emailForm;
-      const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(to)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-      window.open(gmailUrl, '_blank');
+      showAlert('Error', err.message || 'An unexpected error occurred during dispatch.', 'error');
     } finally {
       setIsSendingEmail(false);
     }
   };
 
   const confirmDelete = (callback) => {
-    const pw = prompt('Enter admin password to delete:');
-    if (pw === 'srrortho') { callback(); }
-    else if (pw !== null) { alert('Incorrect password.'); }
+    showPrompt('Admin Required', 'Enter admin password to perform this action:', (pw) => {
+      if (pw === 'srrortho' || pw === '2025') {
+        callback();
+      } else {
+        showAlert('Access Denied', 'Incorrect admin password.', 'error');
+      }
+    });
   };
 
   const downloadFolderAsZip = async (folder) => {
@@ -397,26 +525,31 @@ function App() {
   const updateEmailBody = (templateId, selectedFiles = []) => {
     const template = templates.find(t => t.id === templateId);
     const templateName = template?.name || 'Quotation';
-    
+
     let baseMessage = `Dear Sir/Madam,\n\nPlease find the attached Quotation for ${templateName} for your kind reference.`;
-    
+
     if (selectedFiles.length > 0) {
-      const srrFiles = selectedFiles.filter(f => !f.folderId);
-      const vendorFiles = selectedFiles.filter(f => f.folderId);
+      // Filter out the main generated quotation from the additional documents list
+      const additionalFiles = selectedFiles.filter(f => !f.isGenerated);
+      
+      if (additionalFiles.length > 0) {
+        const srrFiles = additionalFiles.filter(f => !f.folderId);
+        const vendorFiles = additionalFiles.filter(f => f.folderId);
 
-      baseMessage += `\n\nI have also attached the requested documents:`;
+        baseMessage += `\n\nI have also attached the requested documents:`;
 
-      if (srrFiles.length > 0) {
-        baseMessage += `\n\nSRR Certificates:\n` + srrFiles.map((f, i) => `${i + 1}. ${f.label || f.fileName}`).join('\n');
-      }
+        if (srrFiles.length > 0) {
+          baseMessage += `\n\nSRR Certificates:\n` + srrFiles.map((f, i) => `${i + 1}. ${f.label || f.fileName}`).join('\n');
+        }
 
-      if (vendorFiles.length > 0) {
-        baseMessage += `\n\nManufacturer Certificates:\n` + vendorFiles.map((f, i) => `${i + 1}. ${f.label || f.fileName}`).join('\n');
+        if (vendorFiles.length > 0) {
+          baseMessage += `\n\nManufacturer Certificates:\n` + vendorFiles.map((f, i) => `${i + 1}. ${f.label || f.fileName}`).join('\n');
+        }
       }
     }
-    
+
     baseMessage += `\n\nWe look forward to your positive response.`;
-    
+
     setEmailForm(prev => ({
       ...prev,
       body: baseMessage + getSignature()
@@ -440,6 +573,28 @@ function App() {
     }
   }, [emailForm.selectedDriveFiles]);
 
+  // Preview PDF for Price List
+  useEffect(() => {
+    if (!formData.priceListId) {
+      setPreviewPdfUrl(null);
+      return;
+    }
+    const fetchPreview = async () => {
+      const selected = priceLists.find(pl => pl.id === formData.priceListId);
+      if (selected && (selected.data || selected.fileId)) {
+        const bytes = await getFileData(selected.data, selected.fileId);
+        if (bytes) {
+          const blob = new Blob([bytes], { type: 'application/pdf' });
+          const url = URL.createObjectURL(blob);
+          setPreviewPdfUrl(url);
+        }
+      }
+    };
+    fetchPreview();
+    return () => { if (previewPdfUrl) URL.revokeObjectURL(previewPdfUrl); };
+  }, [formData.priceListId, priceLists]); // Removed pdfCache dependency
+
+
   useEffect(() => {
     if (!regeneratingItem) return;
     const generateHistoryPDF = async () => {
@@ -449,76 +604,95 @@ function App() {
         const dataUrl = await toJpeg(element, { quality: 0.95, backgroundColor: '#ffffff', pixelRatio: 2 });
         const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
         pdf.addImage(dataUrl, 'JPEG', 0, 0, 210, 297);
-        const coverArrayBuffer = pdf.output('arraybuffer');
-        
-        let finalPdfBytes;
-        const attachmentRef = regeneratingItem.formData.attachmentLabel || regeneratingItem.formData.make;
-        const selectedAttachment = regeneratingItem.requiresAttachment ? attachments.find(a => a.label === attachmentRef) : null;
-        if (selectedAttachment) {
-          if (!selectedAttachment.data || typeof selectedAttachment.data !== 'string') {
-            alert('The brand PDF attachment in history is corrupted (likely from a previous session). Please re-upload it in the Library.');
-            setIsGenerating(false);
-            setRegeneratingItem(null);
-            return;
+        let finalPdfBytes = pdf.output('arraybuffer');
+
+        // MERGE PRICE LIST IF IT WAS SELECTED IN HISTORY
+        if (regeneratingItem.formData?.priceListId) {
+          const selectedPriceList = priceLists.find(pl => pl.id === regeneratingItem.formData.priceListId);
+          if (selectedPriceList && (selectedPriceList.data || selectedPriceList.fileId)) {
+            try {
+              const priceListBytes = await getFileData(selectedPriceList.data, selectedPriceList.fileId);
+              if (priceListBytes) {
+                const mainPdfDoc = await PDFDocument.load(finalPdfBytes);
+                const priceListPdfDoc = await PDFDocument.load(priceListBytes);
+                const mergedPdfDoc = await PDFDocument.create();
+                
+                const mainPages = await mergedPdfDoc.copyPages(mainPdfDoc, mainPdfDoc.getPageIndices());
+                mainPages.forEach(p => mergedPdfDoc.addPage(p));
+                
+                const priceListPages = await mergedPdfDoc.copyPages(priceListPdfDoc, priceListPdfDoc.getPageIndices());
+                priceListPages.forEach(p => mergedPdfDoc.addPage(p));
+                
+                finalPdfBytes = await mergedPdfDoc.save();
+              }
+            } catch (err) {
+              console.error("Historical PDF Merge failed:", err);
+            }
           }
-          const mergedPdf = await PDFDocument.create();
-          const coverDoc = await PDFDocument.load(coverArrayBuffer);
-          const [coverPage] = await mergedPdf.copyPages(coverDoc, [0]);
-          mergedPdf.addPage(coverPage);
-          
-          const fileData = await getFileData(selectedAttachment.data);
-          const base64Data = fileData.includes('base64,') ? fileData.split(',')[1] : fileData;
-          const attachmentDoc = await PDFDocument.load(base64Data);
-          // A4 dimensions in points (595.28 x 841.89)
-          const A4_WIDTH = 595.28;
-          const A4_HEIGHT = 841.89;
-          const attachmentPages = attachmentDoc.getPages();
-          for (const page of attachmentPages) {
-            const embeddedPage = await mergedPdf.embedPage(page);
-            const origW = embeddedPage.width;
-            const origH = embeddedPage.height;
-            const scaleX = A4_WIDTH / origW;
-            const scaleY = A4_HEIGHT / origH;
-            const scale = Math.min(scaleX, scaleY);
-            const scaledW = origW * scale;
-            const scaledH = origH * scale;
-            const newPage = mergedPdf.addPage([A4_WIDTH, A4_HEIGHT]);
-            newPage.drawPage(embeddedPage, {
-              x: (A4_WIDTH - scaledW) / 2,
-              y: (A4_HEIGHT - scaledH) / 2,
-              width: scaledW,
-              height: scaledH,
-            });
-          }
-          finalPdfBytes = await mergedPdf.save();
-        } else {
-          finalPdfBytes = coverArrayBuffer;
         }
 
         const blob = new Blob([finalPdfBytes], { type: 'application/pdf' });
         const fileName = `Quotation_${regeneratingItem.formData.hospitalName}.pdf`;
+        const blobUrl = URL.createObjectURL(blob);
 
-        if (regeneratingItem._shareMode && navigator.share && navigator.canShare) {
-          const file = new File([blob], fileName, { type: 'application/pdf' });
-          if (navigator.canShare({ files: [file] })) {
-            try {
-              await navigator.share({
-                title: `Quotation - ${regeneratingItem.formData.hospitalName}`,
-                text: `Quotation ${regeneratingItem.formData.referenceNumber} for ${regeneratingItem.formData.hospitalName}`,
-                files: [file]
-              });
-            } catch (shareErr) {
-              if (shareErr.name !== 'AbortError') console.error('Share failed:', shareErr);
-            }
-          } else {
-            // Fallback: download
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement('a'); link.href = url; link.download = fileName; link.click();
-          }
-        } else {
-          const url = URL.createObjectURL(blob);
-          const link = document.createElement('a'); link.href = url; link.download = fileName; link.click();
+        if (regeneratingItem._viewMode) {
+          window.open(blobUrl, '_blank');
+          setRegeneratingItem(null);
+          setIsGenerating(false);
+          return;
         }
+
+        if (regeneratingItem._shareMode) {
+          // If native share is available and user is likely on mobile, try it first
+          if (navigator.share && navigator.canShare) {
+            const file = new File([blob], fileName, { type: 'application/pdf' });
+            if (navigator.canShare({ files: [file] })) {
+              try {
+                await navigator.share({
+                  title: `Quotation - ${regeneratingItem.formData.hospitalName}`,
+                  text: `Quotation ${regeneratingItem.formData.referenceNumber} for ${regeneratingItem.formData.hospitalName}`,
+                  files: [file]
+                });
+                setIsGenerating(false);
+                setRegeneratingItem(null);
+                return;
+              } catch (shareErr) {
+                if (shareErr.name !== 'AbortError') console.error('Share failed:', shareErr);
+              }
+            }
+          }
+          // Fallback if share fails or is not available: open download
+          const link = document.createElement('a');
+          link.href = blobUrl;
+          link.download = fileName;
+          link.click();
+        } else if (regeneratingItem._emailMode) {
+          // Prepare Email Composer from History
+          setFormData(regeneratingItem.formData);
+          setDraftContent(regeneratingItem.content || []);
+          setEmailForm(prev => ({
+            ...prev,
+            subject: `Quotation: ${regeneratingItem.formData.referenceNumber} - ${regeneratingItem.formData.hospitalName}`,
+            selectedDriveFiles: [
+              ...prev.selectedDriveFiles.filter(f => !f.isGenerated),
+              {
+                id: 'history-' + Date.now(),
+                fileName: fileName,
+                data: blobUrl,
+                isGenerated: true
+              }
+            ]
+          }));
+          setShowEmailComposer(true);
+        } else {
+          const link = document.createElement('a');
+          link.href = blobUrl;
+          link.download = fileName;
+          link.click();
+        }
+        
+        // Close preview modal after action is triggered
+        setPreviewingItem(null);
       } catch (e) {
         console.error(e);
       } finally {
@@ -526,37 +700,50 @@ function App() {
         setRegeneratingItem(null);
       }
     };
-    
-    setTimeout(generateHistoryPDF, 150);
-  }, [regeneratingItem, attachments]);
 
-  // Sync metadata to Firestore & LocalStorage (Truncated data for Quota)
-  useEffect(() => { 
-    localStorage.setItem('srr_company_data', JSON.stringify(companyData)); 
-    if (user) setDoc(doc(db, 'users', user.uid), { companyData }, { merge: true }).catch(console.error);
+    setTimeout(generateHistoryPDF, 150);
+  }, [regeneratingItem]);
+
+  // Global Sync to Firebase (Granular saves)
+  useEffect(() => {
+    if (!user) return;
+    const saveToFirebase = async () => {
+      setSyncStatus('syncing');
+      const success = await saveCompanyData(companyData);
+      setSyncStatus(success ? 'saved' : 'error');
+    };
+    const timer = setTimeout(saveToFirebase, 2000);
+    return () => clearTimeout(timer);
   }, [companyData, user]);
 
-  useEffect(() => { 
-    localStorage.setItem('srr_attachments', JSON.stringify(attachments.map(a => ({ ...a, data: 'TRUNCATED_FOR_QUOTA' })))); 
-  }, [attachments]);
+  // Template Save Logic moved to the button handler for immediate persistence
+  // History Save Logic moved to generatePDF for immediate persistence
 
-  useEffect(() => { 
-    localStorage.setItem('srr_templates', JSON.stringify(templates)); 
-    if (user) setDoc(doc(db, 'users', user.uid), { templates }, { merge: true }).catch(console.error);
-  }, [templates, user]);
+  // Local Storage backups (Truncated)
+  useEffect(() => {
+    localStorage.setItem('srr_company_data', JSON.stringify(companyData));
+  }, [companyData]);
 
-  useEffect(() => { 
-    localStorage.setItem('srr_history', JSON.stringify(quotationHistory.slice(0, 10))); // Only last 10 in localStorage
+  useEffect(() => {
+    localStorage.setItem('srr_price_lists', JSON.stringify(priceLists.map(a => ({ ...a, data: 'TRUNCATED_FOR_QUOTA' }))));
+  }, [priceLists]);
+
+  useEffect(() => {
+    localStorage.setItem('srr_templates', JSON.stringify(templates));
+  }, [templates]);
+
+  useEffect(() => {
+    localStorage.setItem('srr_history', JSON.stringify(quotationHistory.slice(0, 10)));
   }, [quotationHistory]);
 
-  useEffect(() => { 
+  useEffect(() => {
     localStorage.setItem('srr_drive', JSON.stringify({
       srr: (driveFiles.srr || []).map(f => ({ ...f, data: 'TRUNCATED_FOR_QUOTA' })),
       vendor: (driveFiles.vendor || []).map(folder => ({
         ...folder,
         files: (folder.files || []).map(f => ({ ...f, data: 'TRUNCATED_FOR_QUOTA' }))
       }))
-    })); 
+    }));
   }, [driveFiles]);
 
   const handleInputChange = (e) => {
@@ -565,7 +752,7 @@ function App() {
   };
 
   const useTemplate = (template) => {
-    setFormData({ 
+    setFormData({
       hospitalName: '',
       address: '',
       date: getTodayFormatted(),
@@ -574,54 +761,80 @@ function App() {
       subject: template.subject || 'Quotation for Orthopedic Implants & instruments',
       make: template.defaultMake || '',
       delivery: template.defaultDelivery || '',
-      discount: template.defaultDiscount || '40%',
+      discount: template.defaultDiscount || '',
       gst: template.defaultGst || '5%',
       payment: template.defaultPayment || '30 days',
-      validity: template.defaultValidity || '31/03/2027',
-      attachmentLabel: ''
+      validity: template.defaultValidity || '',
+      warranty: template.defaultWarranty || '',
+      lineSpacing: template.defaultSpacing || 'compact'
     });
-    setDraftContent(JSON.parse(JSON.stringify(template.content))); 
-    setDraftRequiresAttachment(template.requiresAttachment || false);
+    setDraftContent(JSON.parse(JSON.stringify(template.content)));
     setView('drafting');
   };
 
-  const handleFileUpload = (e) => {
-    const file = e.target.files[0];
-    const label = prompt('Enter Brand Name (e.g. Zimmer, Stryker):');
-    if (file && label) {
-      const newAttachment = { id: Date.now().toString(), label, fileName: file.name };
-      syncItem('attachments', newAttachment, false, file).then(success => {
-        if (success) setAttachments(prev => [...prev, newAttachment]);
-      });
-    }
-    e.target.value = '';
+  const editHistoryItem = (item) => {
+    setFormData(JSON.parse(JSON.stringify(item.formData)));
+    setDraftContent(JSON.parse(JSON.stringify(item.content)));
+    setView('drafting');
   };
 
-  const deleteAttachment = async (att) => {
-    confirmDelete(async () => {
-      setAttachments(attachments.filter(a => a.id !== att.id));
-      await syncItem('attachments', att, true);
-    });
+  const handleDuplicateTemplate = async (template) => {
+    setSyncStatus('syncing');
+    const newTemplate = {
+      ...JSON.parse(JSON.stringify(template)),
+      id: Date.now().toString(),
+      name: `${template.name} (Copy)`
+    };
+    
+    const success = await saveTemplate(newTemplate);
+    if (success) {
+      setTemplates(prev => [newTemplate, ...prev]);
+      setSyncStatus('saved');
+    } else {
+      setSyncStatus('error');
+      alert('Failed to duplicate template to cloud.');
+    }
+  };
+
+  const handleTogglePin = async (id) => {
+    const updated = templates.map(t => t.id === id ? { ...t, isPinned: !t.isPinned } : t);
+    setTemplates(updated);
+    const target = updated.find(t => t.id === id);
+    if (target) {
+      await saveTemplate(target);
+    }
   };
 
   const handleDriveUpload = (e, colName, folderId = null) => {
     const files = Array.from(e.target.files);
     files.forEach(async (file) => {
-      const label = colName === 'drive_srr' ? prompt(`Enter document name for ${file.name}:`) : null;
-      if (colName === 'drive_srr' && !label) return;
-      const newFile = {
-        id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-        label: label || file.name,
-        fileName: file.name,
-        type: file.type,
-        folderId: folderId,
-        uploadedAt: new Date().toLocaleDateString('en-GB')
-      };
-      const success = await syncItem(colName, newFile, false, file);
-      if (success) {
-        if (colName === 'drive_srr') {
-          setDriveFiles(prev => ({ ...prev, srr: [...(prev.srr || []), newFile] }));
-        } else {
+      if (colName === 'drive_srr') {
+        showPrompt('Document Name', `Enter a name for: ${file.name}`, async (label) => {
+          if (!label) return;
+          const newFile = {
+            id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+            label: label,
+            fileName: file.name,
+            type: file.type,
+            folderId: folderId,
+            uploadedAt: new Date().toLocaleDateString('en-GB')
+          };
+          const success = await syncItem(colName, newFile, false, file);
+          if (success) {
+            setDriveFiles(prev => ({ ...prev, srr: [...(prev.srr || []), newFile] }));
+          }
+        });
+      } else {
+        const newFile = {
+          id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+          label: file.name,
+          fileName: file.name,
+          type: file.type,
+          folderId: folderId,
+          uploadedAt: new Date().toLocaleDateString('en-GB')
+        };
+        const success = await syncItem(colName, newFile, false, file);
+        if (success) {
           setDriveFiles(prev => ({
             ...prev,
             vendor: prev.vendor.map(f => f.id === folderId ? { ...f, files: [...(f.files || []), newFile] } : f)
@@ -648,13 +861,7 @@ function App() {
     });
   };
 
-  const handleCreateFolder = async () => {
-    const name = prompt('Enter vendor/folder name:');
-    if (!name) return;
-    const newFolder = { id: Date.now().toString(), name, files: [] };
-    const success = await syncItem('drive_folders', newFolder);
-    if (success) setDriveFiles(prev => ({ ...prev, vendor: [...prev.vendor, newFolder] }));
-  };
+
 
   const handleDeleteFolder = (folder) => {
     confirmDelete(async () => {
@@ -674,90 +881,135 @@ function App() {
       const dataUrl = await toJpeg(element, { quality: 0.95, backgroundColor: '#ffffff', pixelRatio: 2 });
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       pdf.addImage(dataUrl, 'JPEG', 0, 0, 210, 297);
-      const coverArrayBuffer = pdf.output('arraybuffer');
-      let finalPdfBytes;
-      const attachmentRef = (formData.attachmentLabel || formData.make || '').toLowerCase().trim();
-      const selectedAttachment = draftRequiresAttachment ? attachments.find(a => (a.label || '').toLowerCase().trim() === attachmentRef) : null;
-      
-      if (selectedAttachment) {
-        const attachmentData = await getFileData(selectedAttachment.data);
-        if (!attachmentData) {
-          alert(`Failed to load the attachment for "${selectedAttachment.label}". Please check your internet or re-upload the document.`);
-          setIsGenerating(false);
-          return;
-        }
+      let finalPdfBytes = pdf.output('arraybuffer');
 
-        try {
-          const mergedPdf = await PDFDocument.create();
-          const coverDoc = await PDFDocument.load(coverArrayBuffer);
-          const [coverPage] = await mergedPdf.copyPages(coverDoc, [0]);
-          mergedPdf.addPage(coverPage);
-          
-          const attachmentDoc = await PDFDocument.load(attachmentData);
-          const A4_WIDTH = 595.28;
-          const A4_HEIGHT = 841.89;
-          const attachmentPages = attachmentDoc.getPages();
-          
-          for (const page of attachmentPages) {
-            const embeddedPage = await mergedPdf.embedPage(page);
-            const { width, height } = embeddedPage;
-            const scale = Math.min(A4_WIDTH / width, A4_HEIGHT / height);
-            const scaledW = width * scale;
-            const scaledH = height * scale;
-            
-            const newPage = mergedPdf.addPage([A4_WIDTH, A4_HEIGHT]);
-            newPage.drawPage(embeddedPage, {
-              x: (A4_WIDTH - scaledW) / 2,
-              y: (A4_HEIGHT - scaledH) / 2,
-              width: scaledW,
-              height: scaledH,
-            });
+      // MERGE PRICE LIST IF SELECTED
+      if (formData.priceListId) {
+        const selectedPriceList = priceLists.find(pl => pl.id === formData.priceListId);
+        if (selectedPriceList && (selectedPriceList.data || selectedPriceList.fileId)) {
+          try {
+            const priceListBytes = await getFileData(selectedPriceList.data, selectedPriceList.fileId);
+            if (priceListBytes) {
+              const mainPdfDoc = await PDFDocument.load(finalPdfBytes);
+              const priceListPdfDoc = await PDFDocument.load(priceListBytes);
+              const mergedPdfDoc = await PDFDocument.create();
+              
+              const mainPages = await mergedPdfDoc.copyPages(mainPdfDoc, mainPdfDoc.getPageIndices());
+              mainPages.forEach(p => mergedPdfDoc.addPage(p));
+              
+              const priceListPages = await mergedPdfDoc.copyPages(priceListPdfDoc, priceListPdfDoc.getPageIndices());
+              priceListPages.forEach(p => mergedPdfDoc.addPage(p));
+              
+              finalPdfBytes = await mergedPdfDoc.save();
+            } else {
+              throw new Error("Could not retrieve Price List from Firebase Storage.");
+            }
+          } catch (err) {
+            console.error("PDF Merge failed:", err);
+            alert("Warning: Price List merge failed. The document was generated without the attachment. Error: " + err.message);
           }
-          finalPdfBytes = await mergedPdf.save();
-        } catch (mergeErr) {
-          console.error('Merge error:', mergeErr);
-          alert('Could not merge the brand attachment. Sending quotation only.');
-          finalPdfBytes = coverArrayBuffer;
         }
-      } else {
-        if (draftRequiresAttachment && attachmentRef) {
-          console.warn(`No attachment found matching: ${attachmentRef}`);
-        }
-        finalPdfBytes = coverArrayBuffer;
-      }
-      
-      // Check ref number uniqueness
-      const isDuplicateRef = quotationHistory.some(h => h.ref === formData.referenceNumber);
-      if (isDuplicateRef) {
-        alert(`Reference number ${formData.referenceNumber} already exists. Please use a unique reference number.`);
-        setIsGenerating(false);
-        return;
       }
 
+      // Handle History (Save or Update)
+      const existingHistoryItem = quotationHistory.find(h => h.ref === formData.referenceNumber);
+      
       const historyItem = {
-        id: Date.now().toString(),
+        id: existingHistoryItem ? existingHistoryItem.id : Date.now().toString(),
         hospital: formData.hospitalName,
         date: formData.date,
         ref: formData.referenceNumber,
         templateName: templates.find(t => t.id === formData.selectedTemplateId)?.name || 'Custom',
         formData: JSON.parse(JSON.stringify(formData)),
-        draftContent: JSON.parse(JSON.stringify(draftContent)),
-        requiresAttachment: draftRequiresAttachment
+        content: JSON.parse(JSON.stringify(draftContent))
       };
-      setQuotationHistory([historyItem, ...quotationHistory]);
-      await syncItem('history', historyItem);
+
+      if (existingHistoryItem) {
+        setQuotationHistory(prev => prev.map(h => h.id === existingHistoryItem.id ? historyItem : h));
+      } else {
+        setQuotationHistory(prev => [historyItem, ...prev]);
+      }
+      
+      await saveHistoryItem(historyItem);
 
       const blob = new Blob([finalPdfBytes], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
-      const link = document.createElement('a'); 
-      link.href = url; 
-      link.download = `Quotation_${formData.hospitalName}.pdf`; 
-      link.click();
-    } catch (e) { console.error(e); } finally { setIsGenerating(false); }
+      return { blob, blobUrl: url, fileName: `Quotation_${formData.hospitalName}.pdf` };
+    } catch (e) { 
+      console.error(e); 
+      alert("Error generating PDF: " + e.message);
+      return null;
+    } finally { 
+      setIsGenerating(false); 
+    }
+  };
+
+  const handleSubmitQuotation = async () => {
+    if (!formData.hospitalName.trim() || !formData.address.trim()) {
+      showAlert('Required Fields', 'Please enter Hospital Name and Hospital Address.', 'error');
+      return;
+    }
+
+    setIsGenerating(true);
+    
+    // Allow UI to render the overlay before heavy PDF processing
+    setTimeout(async () => {
+      try {
+        const result = await generatePDF();
+        if (!result) {
+          setIsGenerating(false);
+          return;
+        }
+
+        const { blobUrl, fileName } = result;
+
+        showConfirm(
+          "Quotation Saved", 
+          "Quotation saved successfully! Do you want to send it via Email now?",
+          () => {
+            // Setup Email Composer
+            setEmailForm(prev => ({
+              ...prev,
+              subject: formData.subject,
+              selectedDriveFiles: [
+                ...prev.selectedDriveFiles.filter(f => !f.isGenerated),
+                {
+                  id: 'draft-' + Date.now(),
+                  fileName: fileName,
+                  data: blobUrl,
+                  isGenerated: true
+                }
+              ]
+            }));
+            setShowEmailComposer(true);
+          },
+          () => {
+            // Download and go to history
+            const link = document.createElement('a');
+            link.href = blobUrl;
+            link.download = fileName;
+            link.click();
+            
+            setView('history');
+            setTimeout(() => {
+              showAlert('Saved to History', `Quotation ${formData.referenceNumber} has been safely archived.`, 'success');
+            }, 500);
+          },
+          'confirm',
+          'Yes, Email Now',
+          'No, Just Download'
+        );
+      } catch (err) {
+        console.error(err);
+        showAlert('Error', 'An unexpected error occurred during generation.', 'error');
+      } finally {
+        setIsGenerating(false);
+      }
+    }, 100);
   };
 
   const NavItem = ({ id, label }) => (
-    <span 
+    <span
       onClick={() => setView(id)}
       className={`apple-nav-link ${view === id ? 'active' : ''}`}
     >
@@ -793,38 +1045,101 @@ function App() {
 
   return (
     <div className="flex flex-col h-screen text-[var(--apple-black)] font-sans overflow-hidden bg-[var(--apple-bg)]">
-      
+
       {/* ─────────────────────────────────────────
           APPLE NAV BAR (TOP)
           ───────────────────────────────────────── */}
-      <nav className="apple-nav">
-        <div className="flex items-center gap-2 mr-8">
-          <div className="w-8 h-8 bg-[var(--coral)] rounded-lg flex items-center justify-center">
+      <nav className="apple-nav px-4 md:px-6">
+        <div className="flex items-center gap-2 mr-auto lg:mr-8">
+          <div className="w-8 h-8 bg-[var(--coral)] rounded-lg flex items-center justify-center shrink-0">
             <FileUp className="text-white w-4 h-4" />
           </div>
-          <span className="font-bold text-lg tracking-tight">SRR Quotation Maker</span>
+          <span className="font-bold text-base md:text-lg tracking-tight truncate">SRR Ortho Plus</span>
         </div>
-        <div className="flex gap-4">
+        
+        {/* Desktop Nav */}
+        <div className="hidden lg:flex gap-1 xl:gap-4">
           <NavItem id="library" label="Library" />
           <NavItem id="history" label="History" />
           <NavItem id="drive" label="Drive" />
           <NavItem id="emailer" label="Emailer" />
-          <NavItem id="admin" label="Brands" />
+          <NavItem id="emailHistory" label="Email History" />
+          <NavItem id="pricelists" label="Price List" />
           <NavItem id="settings" label="Settings" />
         </div>
-        <div className="ml-auto flex items-center gap-4">
-          <span className="text-[13px] font-medium text-[var(--apple-gray-5)] hidden sm:block">{user.email}</span>
-          <button onClick={handleLogout} className="text-[13px] font-medium text-red-500 hover:text-red-600 transition-colors">
+
+        {/* Mobile Nav Toggle */}
+        <button 
+          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+          className="lg:hidden p-2 text-[var(--apple-gray-6)] hover:bg-[var(--apple-gray-1)] rounded-xl"
+        >
+          {isMobileMenuOpen ? <Plus className="rotate-45" size={24} /> : <Menu size={24} />}
+        </button>
+
+        <div className="ml-4 lg:ml-auto flex items-center gap-3 md:gap-4">
+          <button 
+            onClick={() => {
+              if (isManagementActive) {
+                setIsManagementActive(false);
+              } else {
+                showPrompt('Admin Access', 'Enter Admin Password to enable management tools:', (pass) => {
+                  if (pass === ADMIN_PASSWORD) {
+                    setIsManagementActive(true);
+                    showAlert('Access Granted', 'Management tools are now active.', 'success');
+                  } else if (pass !== null) {
+                    showAlert('Access Denied', 'The password you entered is incorrect.', 'error');
+                  }
+                });
+              }
+            }}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[13px] font-bold transition-all ${
+              isManagementActive 
+                ? 'bg-[var(--emerald-light)] text-[var(--emerald)] border border-[var(--emerald)]' 
+                : 'bg-[var(--apple-gray-1)] text-[var(--apple-gray-5)] border border-transparent hover:border-[var(--apple-gray-3)]'
+            }`}
+          >
+            {isManagementActive ? <ShieldCheck size={16} /> : <LayoutDashboard size={16} />}
+            <span className="hidden sm:inline">{isManagementActive ? 'Admin Active' : 'Admin'}</span>
+          </button>
+          
+          <span className="text-[13px] font-medium text-[var(--apple-gray-5)] hidden xl:block">{user.email}</span>
+          <button onClick={handleLogout} className="text-[13px] font-medium text-red-500 hover:text-red-600 transition-colors hidden sm:block">
             Sign Out
           </button>
         </div>
       </nav>
 
+      {/* Mobile Menu Overlay */}
+      {isMobileMenuOpen && (
+        <div className="fixed inset-0 z-[2000] bg-white lg:hidden flex flex-col p-6 animate-in slide-in-from-top duration-300">
+          <div className="flex justify-between items-center mb-10">
+            <span className="font-bold text-xl">Menu</span>
+            <button onClick={() => setIsMobileMenuOpen(false)}><Plus className="rotate-45" size={32} /></button>
+          </div>
+          <div className="flex flex-col gap-2">
+            {['library', 'history', 'drive', 'emailer', 'emailHistory', 'pricelists', 'settings'].map(id => (
+              <button
+                key={id}
+                onClick={() => { setView(id); setIsMobileMenuOpen(false); }}
+                className={`text-left p-4 rounded-2xl text-lg font-semibold uppercase tracking-wide transition-all ${
+                  view === id ? 'bg-[var(--apple-gray-1)] text-[var(--emerald)]' : 'text-[var(--apple-gray-5)]'
+                }`}
+              >
+                {id}
+              </button>
+            ))}
+            <button onClick={handleLogout} className="text-left p-4 rounded-2xl text-lg font-semibold text-red-500 uppercase tracking-wide mt-4 border-t border-[var(--apple-gray-2)] pt-8">
+              Sign Out
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ─────────────────────────────────────────
           MAIN CONTENT AREA
           ───────────────────────────────────────── */}
       <main className="flex-1 overflow-hidden mt-[var(--nav-height)]">
-        
+
         {/* VIEW: LIBRARY */}
         {view === 'library' && (
           <div className="h-full overflow-y-auto px-8 py-12 md:px-16 md:py-16">
@@ -834,51 +1149,89 @@ function App() {
                   <h1 className="apple-title-1">Templates</h1>
                   <p className="apple-subtitle">Select a template to generate a quotation, or create a new one.</p>
                 </div>
-                <button 
-                  onClick={() => {
-                    setEditingTemplate({
-                      id: Date.now().toString(),
-                      name: 'New Template',
-                      description: '',
-                      requiresAttachment: false,
-                      subject: '',
-                      defaultMake: '',
-                      defaultDelivery: '',
-                      defaultDiscount: '',
-                      defaultGst: '',
-                      defaultPayment: '',
-                      defaultValidity: '',
-                      content: []
-                    });
-                    setView('builder');
-                  }} 
-                  className="btn-primary"
-                >
-                  <Plus size={18} /> New Template
-                </button>
+                {isManagementActive && (
+                  <button
+                    onClick={() => {
+                      setEditingTemplate({
+                        id: Date.now().toString(),
+                        name: 'New Template',
+                        description: '',
+                        requiresPriceList: false,
+                        subject: '',
+                        defaultMake: '',
+                        defaultDelivery: '',
+                        defaultDiscount: '',
+                        defaultGst: '',
+                        defaultPayment: '',
+                        defaultValidity: '',
+                        defaultWarranty: '',
+                        content: []
+                      });
+                      setView('builder');
+                    }}
+                    className="btn-primary"
+                  >
+                    <Plus size={18} /> New Template
+                  </button>
+                )}
               </header>
 
+              <div className="relative mb-8 max-w-md">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--apple-gray-4)] w-4 h-4" />
+                <input
+                  type="text"
+                  placeholder="Search templates..."
+                  value={templateSearchQuery}
+                  onChange={(e) => setTemplateSearchQuery(e.target.value)}
+                  className="apple-input !pl-10 !py-2.5"
+                />
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {templates.map(t => (
-                  <LibraryCard 
-                    key={t.id} 
-                    template={t} 
-                    onUse={useTemplate} 
-                    onEdit={(t) => { setEditingTemplate(JSON.parse(JSON.stringify(t))); setView('builder'); }} 
-                    onDelete={async (id) => {
-                      confirmDelete(async () => {
-                        const item = templates.find(temp => temp.id === id);
-                        setTemplates(templates.filter(temp => temp.id !== id));
-                        // Add sync logic if needed, currently only local/company doc sync happens on state change
-                      });
-                    }} 
-                  />
-                ))}
-                {templates.length === 0 && (
-                  <div className="col-span-full py-20 flex flex-col items-center justify-center border border-dashed border-[var(--apple-gray-3)] rounded-3xl">
-                    <Database size={48} className="text-[var(--apple-gray-4)] mb-4" />
-                    <p className="text-[17px] font-medium text-[var(--apple-gray-5)]">No templates found.</p>
-                  </div>
+                {isDataLoading ? (
+                  Array(6).fill(0).map((_, i) => (
+                    <div key={i} className="apple-card p-6 h-[200px] animate-pulse bg-[var(--apple-gray-1)] border-transparent">
+                      <div className="w-12 h-12 bg-[var(--apple-gray-2)] rounded-2xl mb-6"></div>
+                      <div className="h-6 bg-[var(--apple-gray-2)] rounded-lg w-3/4 mb-3"></div>
+                      <div className="h-4 bg-[var(--apple-gray-2)] rounded-lg w-1/2"></div>
+                    </div>
+                  ))
+                ) : (
+                  <>
+                    {templates
+                      .filter(t => 
+                        t.name.toLowerCase().includes(templateSearchQuery.toLowerCase()) || 
+                        (t.description || '').toLowerCase().includes(templateSearchQuery.toLowerCase())
+                      )
+                      .sort((a, b) => {
+                        if (a.isPinned && !b.isPinned) return -1;
+                        if (!a.isPinned && b.isPinned) return 1;
+                        return a.name.localeCompare(b.name);
+                      })
+                      .map(t => (
+                        <LibraryCard
+                          key={t.id}
+                          template={t}
+                          showAdminTools={isManagementActive}
+                          onUse={useTemplate}
+                          onEdit={(t) => { setEditingTemplate(JSON.parse(JSON.stringify(t))); setView('builder'); }}
+                          onDuplicate={handleDuplicateTemplate}
+                          onTogglePin={handleTogglePin}
+                          onDelete={async (id) => {
+                            confirmDelete(async () => {
+                              await deleteTemplate(id);
+                              setTemplates(templates.filter(temp => temp.id !== id));
+                            });
+                          }}
+                        />
+                      ))}
+                    {templates.length === 0 && (
+                      <div className="col-span-full py-20 flex flex-col items-center justify-center border border-dashed border-[var(--apple-gray-3)] rounded-3xl">
+                        <Database size={48} className="text-[var(--apple-gray-4)] mb-4" />
+                        <p className="text-[17px] font-medium text-[var(--apple-gray-5)]">No templates found.</p>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>
@@ -887,9 +1240,9 @@ function App() {
 
         {/* VIEW: BUILDER (Template Designer) */}
         {view === 'builder' && (
-          <div className="flex h-full overflow-hidden">
+          <div className="flex flex-col lg:flex-row h-full overflow-hidden">
             {/* Left Properties Panel */}
-            <div className={`${showPreview ? 'w-[450px]' : 'flex-1'} bg-white border-r border-[var(--apple-gray-2)] flex flex-col overflow-y-auto transition-all duration-300`}>
+            <div className={`${isDesignerMaximized ? 'w-0 overflow-hidden opacity-0 p-0' : (showPreview ? 'w-full lg:w-[450px]' : 'flex-1')} bg-white border-r border-[var(--apple-gray-2)] flex flex-col overflow-y-auto transition-all duration-300`}>
               <div className="p-8 pb-4">
                 <div className="flex justify-between items-center mb-8">
                   <button
@@ -898,15 +1251,24 @@ function App() {
                   >
                     <ChevronLeft size={16} /> Library
                   </button>
-                  <button 
-                    onClick={() => setShowPreview(!showPreview)} 
-                    className="px-3 py-1.5 border border-[var(--apple-gray-3)] rounded-lg text-[11px] font-semibold text-[var(--apple-gray-6)] hover:bg-[var(--apple-gray-1)] transition-colors"
-                  >
-                    {showPreview ? 'Hide Canvas' : 'Show Canvas'}
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setShowPreview(!showPreview)}
+                      className="px-3 py-1.5 border border-[var(--apple-gray-3)] rounded-lg text-[11px] font-semibold text-[var(--apple-gray-6)] hover:bg-[var(--apple-gray-1)] transition-colors"
+                    >
+                      {showPreview ? 'Hide Canvas' : 'Show Canvas'}
+                    </button>
+                    <button
+                      onClick={() => setIsDesignerMaximized(!isDesignerMaximized)}
+                      className="px-3 py-1.5 border border-[var(--apple-gray-3)] rounded-lg text-[11px] font-semibold text-[var(--apple-gray-6)] hover:bg-[var(--apple-gray-1)] transition-colors"
+                      title={isDesignerMaximized ? "Restore Sidebar" : "Maximize Table"}
+                    >
+                      {isDesignerMaximized ? 'Minimize' : 'Maximize'}
+                    </button>
+                  </div>
                 </div>
                 <h2 className="text-[28px] font-bold tracking-tight leading-tight mb-8">Designer</h2>
-                
+
                 <div className="space-y-6">
                   <div>
                     <label className="apple-label">Template Name</label>
@@ -937,11 +1299,29 @@ function App() {
                       className="apple-input"
                     />
                   </div>
-                  
+
+                  <div className="flex items-center justify-between p-4 bg-[var(--apple-gray-1)] rounded-2xl border border-[var(--apple-gray-2)]">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${editingTemplate?.requiresPriceList ? 'bg-emerald-100 text-emerald-600' : 'bg-white text-[var(--apple-gray-4)]'}`}>
+                        <FileText size={20} />
+                      </div>
+                      <div>
+                        <p className="text-[14px] font-bold text-[var(--apple-black)]">Price List Needed</p>
+                        <p className="text-[11px] text-[var(--apple-gray-5)] font-medium">Require selecting a price list when drafting</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setEditingTemplate({ ...editingTemplate, requiresPriceList: !editingTemplate?.requiresPriceList })}
+                      className={`w-12 h-6 rounded-full transition-all duration-300 relative ${editingTemplate?.requiresPriceList ? 'bg-emerald-500' : 'bg-[var(--apple-gray-3)]'}`}
+                    >
+                      <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all duration-300 ${editingTemplate?.requiresPriceList ? 'left-7' : 'left-1'}`} />
+                    </button>
+                  </div>
+
                   <div className="pt-6 border-t border-[var(--apple-gray-2)]">
                     <label className="apple-label mb-4">Default Terms</label>
                     <div className="grid grid-cols-2 gap-4">
-                      {['Make', 'Delivery', 'Discount', 'GST', 'Payment', 'Validity'].map(term => {
+                      {['Make', 'Delivery', 'Discount', 'GST', 'Payment', 'Validity', 'Warranty'].map(term => {
                         const key = `default${term}`;
                         return (
                           <div key={term}>
@@ -959,13 +1339,22 @@ function App() {
                     </div>
                   </div>
 
-                  <div className="pt-6 border-t border-[var(--apple-gray-2)] flex items-center justify-between">
-                    <label className="text-[15px] font-medium">Requires Attachment?</label>
-                    <button
-                      onClick={() => setEditingTemplate({ ...editingTemplate, requiresAttachment: !editingTemplate?.requiresAttachment })}
-                      className={`apple-toggle ${editingTemplate?.requiresAttachment ? 'on' : ''}`}
-                    />
+                  <div className="pt-6 border-t border-[var(--apple-gray-2)]">
+                    <label className="apple-label mb-4">Default Spacing</label>
+                    <div className="flex gap-2">
+                      {['compact', 'standard', 'relaxed'].map(s => (
+                        <button
+                          key={s}
+                          onClick={() => setEditingTemplate({ ...editingTemplate, defaultSpacing: s })}
+                          className={`flex-1 py-2 text-[12px] font-bold border transition-all rounded-xl capitalize ${ (editingTemplate?.defaultSpacing === s || (!editingTemplate?.defaultSpacing && s === 'compact')) ? 'bg-[var(--apple-black)] text-white border-[var(--apple-black)]' : 'bg-white text-[var(--apple-gray-5)] border-[var(--apple-gray-2)] hover:border-[var(--apple-gray-4)]'}`}
+                        >
+                          {s}
+                        </button>
+                      ))}
+                    </div>
                   </div>
+
+
 
                   <div className="pt-6 border-t border-[var(--apple-gray-2)]">
                     <label className="apple-label mb-4">Add Section</label>
@@ -978,7 +1367,7 @@ function App() {
                         <span className="text-[11px]">TEXT</span>
                       </button>
                       <button
-                        onClick={() => setEditingTemplate({ ...editingTemplate, content: [...(editingTemplate?.content || []), { type: 'table', headers: ['S.No', 'Item', 'Qty', 'Rate', 'Amount'], rows: [['1', '', '1', '', '']] }] })}
+                        onClick={() => setEditingTemplate({ ...editingTemplate, content: [...(editingTemplate?.content || []), { type: 'table', headers: ['S.No', 'Item', 'HSN Code', 'Qty', 'Rate', 'Amount'], rows: [['1', '', '', '1', '', '']] }] })}
                         className="btn-outline flex-col !gap-2 !py-4"
                       >
                         <TableIcon size={18} />
@@ -989,178 +1378,252 @@ function App() {
                 </div>
               </div>
 
-              <div className="p-8 mt-auto pt-4 bg-white border-t border-[var(--apple-gray-2)] sticky bottom-0">
+              <div className="p-8 mt-auto pt-4 bg-white border-t border-[var(--apple-gray-2)] sticky bottom-0 flex flex-col gap-3">
+                <div className="flex justify-between items-center px-1">
+                  <span className="text-[11px] font-bold text-[var(--apple-gray-5)] uppercase tracking-wider">Storage Status</span>
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${syncStatus === 'syncing' ? 'bg-amber-400 animate-pulse' : syncStatus === 'error' ? 'bg-red-500' : 'bg-emerald-500'}`} />
+                    <span className="text-[12px] font-medium text-[var(--apple-gray-6)]">
+                      {syncStatus === 'syncing' ? 'Saving to Cloud...' : syncStatus === 'error' ? 'Sync Error' : 'All Changes Saved'}
+                    </span>
+                  </div>
+                </div>
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     if (!editingTemplate) return;
+                    setSyncStatus('syncing');
+                    
+                    // Prepare the update
                     const updated = templates.some(t => t.id === editingTemplate.id)
                       ? templates.map(t => t.id === editingTemplate.id ? editingTemplate : t)
                       : [...templates, editingTemplate];
-                    setTemplates(updated);
-                    setEditingTemplate(null);
-                    setView('library');
+                    
+                    try {
+                      const success = await saveTemplate(editingTemplate);
+                      if (success) {
+                        // 1. Update local state
+                        setTemplates(updated);
+                        // 2. Clear editor
+                        setSyncStatus('saved');
+                        setEditingTemplate(null);
+                        setView('library');
+                      } else {
+                        throw new Error("Firestore rejection");
+                      }
+                    } catch (err) {
+                      setSyncStatus('error');
+                      alert('Cloud Save Failed! Your changes are saved locally but not in the cloud. Check your internet.');
+                      // Still update local state so they don't lose work
+                      setTemplates(updated);
+                      setEditingTemplate(null);
+                      setView('library');
+                    }
                   }}
-                  className="btn-primary w-full"
+                  className="btn-primary w-full py-4"
                 >
-                  <Save size={18} /> Save Template
+                  <Save size={18} /> Save & Close
                 </button>
               </div>
             </div>
 
             {/* Right Canvas */}
             {showPreview && (
-              <div className="flex-1 bg-[var(--apple-bg)] overflow-y-auto p-12">
-                <div className="max-w-3xl mx-auto space-y-8">
-                {(editingTemplate?.content || []).length === 0 && (
-                  <div className="text-center py-32 opacity-40">
-                    <Database size={48} className="mx-auto mb-4" />
-                    <p className="font-semibold tracking-tight text-lg">No sections yet</p>
-                  </div>
+              <div className="flex-1 bg-[var(--apple-bg)] overflow-y-auto p-4 md:p-12 relative">
+                {isDesignerMaximized && (
+                  <button 
+                    onClick={() => setIsDesignerMaximized(false)}
+                    className="fixed top-8 left-8 z-50 bg-white border border-[var(--apple-gray-3)] rounded-full px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-[var(--emerald)] shadow-lg hover:bg-[var(--apple-gray-1)] transition-all flex items-center gap-2"
+                  >
+                    <ChevronLeft size={14} /> Restore Sidebar
+                  </button>
                 )}
-
-                {(editingTemplate?.content || []).map((block, idx) => (
-                  <div key={idx} className="apple-card p-8 relative group">
-                    <button
-                      onClick={() => {
-                        const nc = [...editingTemplate.content]; nc.splice(idx, 1);
-                        setEditingTemplate({ ...editingTemplate, content: nc });
-                      }}
-                      className="absolute -top-3 -right-3 w-8 h-8 bg-white border border-[var(--apple-gray-2)] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 hover:text-red-500 shadow-sm transition-all"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-
-                    <div className="flex items-center gap-3 mb-6">
-                      <span className="badge-gray">SECTION {idx + 1}</span>
-                      <span className="text-[13px] font-medium text-[var(--apple-gray-5)]">
-                        {block.type === 'text' ? 'Text Block' : 'Table Block'}
-                      </span>
+                <div className={`${isDesignerMaximized ? 'max-w-none px-4' : 'max-w-6xl'} mx-auto space-y-8 transition-all duration-300`}>
+                  {(editingTemplate?.content || []).length === 0 && (
+                    <div className="text-center py-32 opacity-40">
+                      <Database size={48} className="mx-auto mb-4" />
+                      <p className="font-semibold tracking-tight text-lg">No sections yet</p>
                     </div>
+                  )}
 
-                    {block.type === 'text' ? (
-                      <textarea
-                        value={block.value}
-                        onChange={e => {
-                          const nc = [...editingTemplate.content]; nc[idx].value = e.target.value;
+                  {(editingTemplate?.content || []).map((block, idx) => (
+                    <div key={idx} className="apple-card p-8 relative group">
+                      <button
+                        onClick={() => {
+                          const nc = [...editingTemplate.content]; nc.splice(idx, 1);
                           setEditingTemplate({ ...editingTemplate, content: nc });
                         }}
-                        className="apple-input min-h-[140px]"
-                        placeholder="Type paragraph content..."
-                      />
-                    ) : (
-                      <div className="border border-[var(--apple-gray-2)] rounded-xl overflow-hidden shadow-sm bg-white">
-                        <table className="w-full border-collapse">
-                          <thead className="bg-[var(--apple-gray-1)] border-b border-[var(--apple-gray-2)]">
-                            <tr>
-                              {block.headers.map((h, hi) => (
-                                <th key={hi} className="p-3 border-r border-[var(--apple-gray-2)] last:border-none relative group">
-                                  <input
-                                    value={h}
-                                    onChange={e => {
-                                      const nc = [...editingTemplate.content]; nc[idx].headers[hi] = e.target.value;
-                                      setEditingTemplate({ ...editingTemplate, content: nc });
-                                    }}
-                                    className="w-full bg-transparent outline-none font-semibold text-center text-[11px] uppercase tracking-wider text-[var(--apple-gray-6)]"
-                                  />
-                                  <button
-                                    onClick={() => {
-                                      if (block.headers.length <= 1) return;
-                                      const nc = [...editingTemplate.content];
-                                      nc[idx].headers.splice(hi, 1);
-                                      nc[idx].rows.forEach(r => r.splice(hi, 1));
-                                      setEditingTemplate({ ...editingTemplate, content: nc });
-                                    }}
-                                    className="absolute -top-2 -right-2 w-5 h-5 bg-white border border-[var(--apple-gray-2)] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 hover:text-red-500 shadow-sm transition-all z-10"
-                                    title="Delete Column"
-                                  >
-                                    <Trash2 size={10} />
-                                  </button>
-                                </th>
-                              ))}
-                              <th className="w-8 bg-[var(--apple-gray-1)]"></th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {block.rows.map((row, ri) => (
-                              <tr key={ri} className="border-b border-[var(--apple-gray-2)] last:border-none hover:bg-[var(--apple-gray-1)] transition-colors">
-                                {row.map((cell, ci) => (
-                                  <td key={ci} className="p-0 border-r border-[var(--apple-gray-2)] last:border-none">
-                                    <input
-                                      value={cell}
-                                      onChange={e => {
-                                        const nc = [...editingTemplate.content]; 
-                                        nc[idx].rows[ri][ci] = e.target.value;
-                                        
-                                        const headers = nc[idx].headers.map(h => h.toLowerCase());
-                                        const qtyIdx = headers.findIndex(h => h === 'qty' || h === 'quantity');
-                                        const rateIdx = headers.findIndex(h => h === 'rate' || h === 'mrp' || h === 'price');
-                                        const amountIdx = headers.findIndex(h => h === 'amount' || h === 'total');
-                                        
-                                        if (qtyIdx !== -1 && rateIdx !== -1 && amountIdx !== -1 && (ci === qtyIdx || ci === rateIdx)) {
-                                            const qty = parseFloat(nc[idx].rows[ri][qtyIdx]) || 0;
-                                            const rate = parseFloat(nc[idx].rows[ri][rateIdx]) || 0;
-                                            nc[idx].rows[ri][amountIdx] = (qty * rate).toFixed(2).replace(/\.00$/, '');
-                                        }
+                        className="absolute -top-3 -right-3 w-8 h-8 bg-white border border-[var(--apple-gray-2)] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 hover:text-red-500 shadow-sm transition-all"
+                      >
+                        <Trash2 size={14} />
+                      </button>
 
+                      <div className="flex items-center justify-between mb-6">
+                        <div className="flex items-center gap-3">
+                          <span className="badge-gray">SECTION {idx + 1}</span>
+                          <span className="text-[13px] font-medium text-[var(--apple-gray-5)]">
+                            {block.type === 'text' ? 'Text Block' : 'Table Block'}
+                          </span>
+                        </div>
+                        {block.type === 'table' && (
+                          <button
+                            onClick={() => setIsDesignerMaximized(!isDesignerMaximized)}
+                            className="flex items-center gap-2 px-3 py-1.5 bg-[var(--apple-gray-1)] hover:bg-[var(--apple-gray-2)] rounded-lg text-[11px] font-bold text-[var(--apple-gray-6)] transition-all"
+                          >
+                            <LayoutDashboard size={14} />
+                            {isDesignerMaximized ? 'Minimize View' : 'Maximize Table'}
+                          </button>
+                        )}
+                      </div>
+
+                      {block.type === 'text' ? (
+                        <textarea
+                          value={block.value}
+                          onChange={e => {
+                            const nc = [...editingTemplate.content];
+                            nc[idx] = { ...nc[idx], value: e.target.value };
+                            setEditingTemplate({ ...editingTemplate, content: nc });
+                          }}
+                          className="apple-input min-h-[140px]"
+                          placeholder="Type paragraph content..."
+                        />
+                      ) : (
+                        <div className="border border-[var(--apple-gray-2)] rounded-xl overflow-x-auto shadow-sm bg-white">
+                          <table className="w-full border-collapse">
+                            <thead className="bg-[var(--apple-gray-1)] border-b border-[var(--apple-gray-2)]">
+                              <tr>
+                                {block.headers.map((h, hi) => (
+                                  <th key={hi} className="p-3 border-r border-[var(--apple-gray-2)] last:border-none relative group">
+                                    <input
+                                      value={h}
+                                      onChange={e => {
+                                        const nc = [...editingTemplate.content];
+                                        const newHeaders = [...nc[idx].headers];
+                                        newHeaders[hi] = e.target.value;
+                                        nc[idx] = { ...nc[idx], headers: newHeaders };
                                         setEditingTemplate({ ...editingTemplate, content: nc });
                                       }}
-                                      className="w-full py-2.5 px-3 bg-transparent outline-none text-center text-[13px] hover:bg-black/5 focus:bg-white focus:ring-1 focus:ring-[var(--emerald)] transition-all"
+                                      className="w-full bg-transparent outline-none font-semibold text-center text-[11px] uppercase tracking-wider text-[var(--apple-gray-6)]"
                                     />
-                                  </td>
+                                    <button
+                                      onClick={() => {
+                                        if (block.headers.length <= 1) return;
+                                        const nc = [...editingTemplate.content];
+                                        nc[idx].headers.splice(hi, 1);
+                                        nc[idx].rows.forEach(r => r.splice(hi, 1));
+                                        setEditingTemplate({ ...editingTemplate, content: nc });
+                                      }}
+                                      className="absolute -top-2 -right-2 w-5 h-5 bg-white border border-[var(--apple-gray-2)] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 hover:text-red-500 shadow-sm transition-all z-10"
+                                      title="Delete Column"
+                                    >
+                                      <Trash2 size={10} />
+                                    </button>
+                                  </th>
                                 ))}
-                                <td className="p-0 text-center w-8">
-                                  <button
-                                    onClick={() => {
-                                      const nc = [...editingTemplate.content]; nc[idx].rows.splice(ri, 1);
-                                      setEditingTemplate({ ...editingTemplate, content: nc });
-                                    }}
-                                    className="w-full h-full flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 hover:bg-red-50 py-2.5 transition-colors"
-                                    title="Delete Row"
-                                  >
-                                    <Trash2 size={14} />
-                                  </button>
-                                </td>
+                                <th className="w-8 bg-[var(--apple-gray-1)]"></th>
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                        <div className="flex border-t border-[var(--apple-gray-2)]">
-                          <button
-                            onClick={() => {
-                              const nc = [...editingTemplate.content]; nc[idx].rows.push(Array(block.headers.length).fill(''));
-                              setEditingTemplate({ ...editingTemplate, content: nc });
-                            }}
-                            className="flex-1 py-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--emerald)] hover:bg-[var(--emerald-light)] transition-colors border-r border-[var(--apple-gray-2)]"
-                          >
-                            + Add Row
-                          </button>
-                          <button
-                            onClick={() => {
-                              const nc = [...editingTemplate.content]; 
-                              nc[idx].headers.push('NEW COL');
-                              nc[idx].rows.forEach(row => row.push(''));
-                              setEditingTemplate({ ...editingTemplate, content: nc });
-                            }}
-                            className="flex-1 py-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--coral)] hover:bg-red-50 transition-colors"
-                          >
-                            + Add Col
-                          </button>
+                            </thead>
+                            <tbody>
+                              {block.rows.map((row, ri) => (
+                                <tr key={ri} className="border-b border-[var(--apple-gray-2)] last:border-none hover:bg-[var(--apple-gray-1)] transition-colors">
+                                  {row.map((cell, ci) => (
+                                    <td key={ci} className="p-0 border-r border-[var(--apple-gray-2)] last:border-none">
+                                      {block.headers[ci]?.toLowerCase().includes('item') || block.headers[ci]?.toLowerCase().includes('desc') || block.headers[ci]?.toLowerCase().includes('hsn') ? (
+                                        <textarea
+                                          value={cell}
+                                          rows={cell.toString().split('\n').length || 1}
+                                          onChange={e => {
+                                            const nc = [...editingTemplate.content];
+                                            const newRows = nc[idx].rows.map(r => [...r]);
+                                            newRows[ri][ci] = e.target.value;
+                                            nc[idx] = { ...nc[idx], rows: newRows };
+                                            setEditingTemplate({ ...editingTemplate, content: nc });
+                                          }}
+                                          className={`w-full py-2.5 px-3 bg-transparent outline-none ${block.headers[ci]?.toLowerCase().includes('hsn') ? 'text-center' : 'text-left'} text-[13px] hover:bg-black/5 focus:bg-white focus:ring-1 focus:ring-[var(--emerald)] transition-all resize-none overflow-hidden`}
+                                          placeholder={block.headers[ci]?.toLowerCase().includes('hsn') ? "HSN..." : "Enter set details..."}
+                                        />
+                                      ) : (
+                                        <input
+                                          value={cell}
+                                          onChange={e => {
+                                            const nc = [...editingTemplate.content];
+                                            const newRows = nc[idx].rows.map(r => [...r]);
+                                            newRows[ri][ci] = e.target.value;
+                                            
+                                            const headers = nc[idx].headers.map(h => h.toLowerCase());
+                                            const qtyIdx = headers.findIndex(h => h === 'qty' || h === 'quantity');
+                                            const rateIdx = headers.findIndex(h => h === 'rate' || h === 'mrp' || h === 'price');
+                                            const amountIdx = headers.findIndex(h => h === 'amount' || h === 'total');
+
+                                            if (qtyIdx !== -1 && rateIdx !== -1 && amountIdx !== -1 && (ci === qtyIdx || ci === rateIdx)) {
+                                              const qty = parseFloat(newRows[ri][qtyIdx]) || 0;
+                                              const rate = parseFloat(newRows[ri][rateIdx]) || 0;
+                                              newRows[ri][amountIdx] = (qty * rate).toFixed(2);
+                                            }
+
+                                            nc[idx] = { ...nc[idx], rows: newRows };
+                                            setEditingTemplate({ ...editingTemplate, content: nc });
+                                          }}
+                                            className={`w-full py-2.5 px-3 bg-transparent outline-none ${((block.headers[ci] || '').toLowerCase().includes('amount') || (block.headers[ci] || '').toLowerCase().includes('rate') || (block.headers[ci] || '').toLowerCase().includes('price') || (block.headers[ci] || '').toLowerCase().includes('qty')) ? 'text-right' : 'text-center'} text-[13px] hover:bg-black/5 focus:bg-white focus:ring-1 focus:ring-[var(--emerald)] transition-all`}
+                                          />
+                                        )}
+                                      </td>
+                                  ))}
+                                  <td className="p-0 text-center w-8">
+                                    <button
+                                      onClick={() => {
+                                        const nc = [...editingTemplate.content]; nc[idx].rows.splice(ri, 1);
+                                        setEditingTemplate({ ...editingTemplate, content: nc });
+                                      }}
+                                      className="w-full h-full flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 hover:bg-red-50 py-2.5 transition-colors"
+                                      title="Delete Row"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                          <div className="flex border-t border-[var(--apple-gray-2)]">
+                            <button
+                              onClick={() => {
+                                const nc = [...editingTemplate.content];
+                                const newRows = [...nc[idx].rows, Array(block.headers.length).fill('')];
+                                nc[idx] = { ...nc[idx], rows: newRows };
+                                setEditingTemplate({ ...editingTemplate, content: nc });
+                              }}
+                              className="flex-1 py-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--emerald)] hover:bg-[var(--emerald-light)] transition-colors border-r border-[var(--apple-gray-2)]"
+                            >
+                              + Add Row
+                            </button>
+                            <button
+                              onClick={() => {
+                                const nc = [...editingTemplate.content];
+                                const newHeaders = [...nc[idx].headers, 'NEW COL'];
+                                const newRows = nc[idx].rows.map(row => [...row, '']);
+                                nc[idx] = { ...nc[idx], headers: newHeaders, rows: newRows };
+                                setEditingTemplate({ ...editingTemplate, content: nc });
+                              }}
+                              className="flex-1 py-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--coral)] hover:bg-red-50 transition-colors"
+                            >
+                              + Add Col
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
             )}
           </div>
         )}
 
         {/* VIEW: DRAFTING */}
         {view === 'drafting' && (
-          <div className="flex h-full overflow-hidden">
+          <div className="flex flex-col lg:flex-row h-full overflow-hidden">
             {/* Left Input Form */}
-            <div className={`${showPreview ? 'w-[450px]' : 'flex-1'} bg-white border-r border-[var(--apple-gray-2)] flex flex-col overflow-y-auto transition-all duration-300`}>
+            <div className={`${isDraftingMaximized ? 'flex-1' : (showPreview ? 'w-full lg:w-[450px]' : 'flex-1')} bg-white border-r border-[var(--apple-gray-2)] flex flex-col overflow-y-auto transition-all duration-500 ${showEmailComposer ? 'blur-md opacity-30 pointer-events-none' : ''}`}>
               <div className="p-8 pb-4">
                 <div className="flex justify-between items-center mb-8">
                   <button
@@ -1169,12 +1632,21 @@ function App() {
                   >
                     <ChevronLeft size={16} /> Library
                   </button>
-                  <button 
-                    onClick={() => setShowPreview(!showPreview)} 
-                    className="px-3 py-1.5 border border-[var(--apple-gray-3)] rounded-lg text-[11px] font-semibold text-[var(--apple-gray-6)] hover:bg-[var(--apple-gray-1)] transition-colors"
-                  >
-                    {showPreview ? 'Hide Preview' : 'Show Preview'}
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setShowPreview(!showPreview)}
+                      className="px-3 py-1.5 border border-[var(--apple-gray-3)] rounded-lg text-[11px] font-semibold text-[var(--apple-gray-6)] hover:bg-[var(--apple-gray-1)] transition-colors"
+                    >
+                      {showPreview ? 'Hide Preview' : 'Show Preview'}
+                    </button>
+                    <button
+                      onClick={() => setIsDraftingMaximized(!isDraftingMaximized)}
+                      className="px-3 py-1.5 border border-[var(--apple-gray-3)] rounded-lg text-[11px] font-semibold text-[var(--apple-gray-6)] hover:bg-[var(--apple-gray-1)] transition-colors"
+                      title={isDraftingMaximized ? "Restore Sidebar" : "Maximize Table"}
+                    >
+                      {isDraftingMaximized ? 'Minimize' : 'Maximize'}
+                    </button>
+                  </div>
                 </div>
                 <h2 className="text-[28px] font-bold tracking-tight leading-tight mb-8">Draft Quotation</h2>
 
@@ -1200,12 +1672,49 @@ function App() {
                       </div>
                       <div>
                         <span className="text-[11px] font-semibold text-[var(--apple-gray-5)] uppercase block mb-1">Ref No.</span>
-                        <input type="text" name="referenceNumber" value={formData.referenceNumber} onChange={handleInputChange} className="apple-input !px-3" />
+                        <input type="text" name="referenceNumber" value={formData.referenceNumber} readOnly className="apple-input !px-3 bg-[var(--apple-gray-1)] cursor-not-allowed opacity-70" title="Reference number is automatically generated" />
                       </div>
                     </div>
                     <div>
                       <span className="text-[11px] font-semibold text-[var(--apple-gray-5)] uppercase block mb-1">Subject</span>
                       <textarea name="subject" value={formData.subject} onChange={handleInputChange} rows="2" className="apple-input" />
+                    </div>
+
+                    {templates.find(t => t.id === formData.selectedTemplateId)?.requiresPriceList && (
+                      <div>
+                        <span className="text-[11px] font-semibold text-[var(--apple-gray-5)] uppercase block mb-1">Attached Price List</span>
+                        <select 
+                          name="priceListId" 
+                          value={formData.priceListId || ''} 
+                          onChange={handleInputChange}
+                          className="apple-input cursor-pointer bg-[var(--apple-gray-1)]"
+                        >
+                          <option value="">-- Select Price List --</option>
+                          {priceLists.map(pl => (
+                            <option key={pl.id} value={pl.id}>{pl.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Layout Controls */}
+                  <div className="space-y-4 pt-4">
+                    <h3 className="apple-label border-b border-[var(--apple-gray-2)] pb-2">Layout & Spacing</h3>
+                    <div className="flex gap-2">
+                      {['compact', 'standard', 'relaxed'].map(s => (
+                        <button
+                          key={s}
+                          onClick={() => setFormData({ ...formData, lineSpacing: s })}
+                          className={`flex-1 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all border ${
+                            formData.lineSpacing === s 
+                              ? 'bg-[var(--emerald)] text-white border-[var(--emerald)]' 
+                              : 'bg-white text-[var(--apple-gray-5)] border-[var(--apple-gray-2)] hover:bg-[var(--apple-gray-1)]'
+                          }`}
+                        >
+                          {s}
+                        </button>
+                      ))}
                     </div>
                   </div>
 
@@ -1214,11 +1723,22 @@ function App() {
                     <h3 className="apple-label border-b border-[var(--apple-gray-2)] pb-2">Content Blocks</h3>
                     {draftContent.map((block, idx) => (
                       <div key={idx} className="bg-[var(--apple-gray-1)] p-4 rounded-xl border border-[var(--apple-gray-2)]">
-                        <div className="flex items-center gap-2 mb-3">
-                          <span className="w-5 h-5 rounded flex items-center justify-center bg-[var(--coral)] text-white text-[10px] font-bold">{idx + 1}</span>
-                          <span className="text-[11px] font-bold text-[var(--apple-gray-5)] uppercase tracking-wider">
-                            {block.type === 'text' ? 'Text' : 'Table'}
-                          </span>
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            <span className="w-5 h-5 rounded flex items-center justify-center bg-[var(--coral)] text-white text-[10px] font-bold">{idx + 1}</span>
+                            <span className="text-[11px] font-bold text-[var(--apple-gray-5)] uppercase tracking-wider">
+                              {block.type === 'text' ? 'Text' : 'Table'}
+                            </span>
+                          </div>
+                          {block.type === 'table' && (
+                            <button
+                              onClick={() => setIsDraftingMaximized(!isDraftingMaximized)}
+                              className="flex items-center gap-2 px-3 py-1 bg-white hover:bg-[var(--apple-gray-1)] border border-[var(--apple-gray-2)] rounded-lg text-[10px] font-bold text-[var(--apple-gray-5)] transition-all"
+                            >
+                              <LayoutDashboard size={12} />
+                              {isDraftingMaximized ? 'MINIMIZE' : 'MAXIMIZE'}
+                            </button>
+                          )}
                         </div>
                         {block.type === 'text' ? (
                           <textarea
@@ -1237,7 +1757,7 @@ function App() {
                                 <tr>
                                   {block.headers.map((h, hi) => (
                                     <th key={hi} className="p-3 border-r border-[var(--apple-gray-2)] last:border-none relative group">
-                                      <input 
+                                      <input
                                         value={h}
                                         onChange={e => {
                                           const nc = [...draftContent]; nc[idx].headers[hi] = e.target.value;
@@ -1248,7 +1768,7 @@ function App() {
                                       />
                                       <button
                                         onClick={() => {
-                                          if(block.headers.length <= 1) return;
+                                          if (block.headers.length <= 1) return;
                                           const nc = [...draftContent];
                                           nc[idx].headers.splice(hi, 1);
                                           nc[idx].rows.forEach(r => r.splice(hi, 1));
@@ -1269,33 +1789,53 @@ function App() {
                                   <tr key={ri} className="border-b border-[var(--apple-gray-2)] last:border-none hover:bg-[var(--apple-gray-1)] transition-colors">
                                     {row.map((cell, ci) => (
                                       <td key={ci} className="p-0 border-r border-[var(--apple-gray-2)] last:border-none">
-                                        <input
-                                          value={cell}
-                                          onChange={e => {
-                                            const nc = [...draftContent]; 
-                                            nc[idx].rows[ri][ci] = e.target.value;
-                                            
-                                            const headers = nc[idx].headers.map(h => h.toLowerCase());
-                                            const qtyIdx = headers.findIndex(h => h === 'qty' || h === 'quantity');
-                                            const rateIdx = headers.findIndex(h => h === 'rate' || h === 'mrp' || h === 'price');
-                                            const amountIdx = headers.findIndex(h => h === 'amount' || h === 'total');
-                                            
-                                            if (qtyIdx !== -1 && rateIdx !== -1 && amountIdx !== -1 && (ci === qtyIdx || ci === rateIdx)) {
-                                                const qty = parseFloat(nc[idx].rows[ri][qtyIdx]) || 0;
-                                                const rate = parseFloat(nc[idx].rows[ri][rateIdx]) || 0;
-                                                nc[idx].rows[ri][amountIdx] = (qty * rate).toFixed(2).replace(/\.00$/, '');
-                                            }
+                                        {block.headers[ci]?.toLowerCase().includes('item') || block.headers[ci]?.toLowerCase().includes('desc') || block.headers[ci]?.toLowerCase().includes('hsn') ? (
+                                          <textarea
+                                            value={cell}
+                                            rows={cell.toString().split('\n').length || 1}
+                                            onChange={e => {
+                                              const nc = [...draftContent];
+                                              const newRows = nc[idx].rows.map(r => [...r]);
+                                              newRows[ri][ci] = e.target.value;
+                                              nc[idx] = { ...nc[idx], rows: newRows };
+                                              setDraftContent(nc);
+                                            }}
+                                            className={`w-full py-2.5 px-3 bg-transparent outline-none ${block.headers[ci]?.toLowerCase().includes('hsn') ? 'text-center' : 'text-left'} text-[13px] hover:bg-black/5 focus:bg-white focus:ring-1 focus:ring-[var(--emerald)] transition-all resize-none overflow-hidden`}
+                                            placeholder={block.headers[ci]?.toLowerCase().includes('hsn') ? "HSN..." : "Enter set details..."}
+                                          />
+                                        ) : (
+                                          <input
+                                            value={cell}
+                                            onChange={e => {
+                                              const nc = [...draftContent];
+                                              const newRows = nc[idx].rows.map(r => [...r]);
+                                              newRows[ri][ci] = e.target.value;
 
-                                            setDraftContent(nc);
-                                          }}
-                                          className="w-full py-2.5 px-3 bg-transparent outline-none text-center text-[13px] hover:bg-black/5 focus:bg-white focus:ring-1 focus:ring-[var(--emerald)] transition-all"
-                                        />
+                                              const headers = nc[idx].headers.map(h => h.toLowerCase());
+                                              const qtyIdx = headers.findIndex(h => h === 'qty' || h === 'quantity');
+                                              const rateIdx = headers.findIndex(h => h === 'rate' || h === 'mrp' || h === 'price');
+                                              const amountIdx = headers.findIndex(h => h === 'amount' || h === 'total');
+
+                                              if (qtyIdx !== -1 && rateIdx !== -1 && amountIdx !== -1 && (ci === qtyIdx || ci === rateIdx)) {
+                                                const qty = parseFloat(newRows[ri][qtyIdx]) || 0;
+                                                const rate = parseFloat(newRows[ri][rateIdx]) || 0;
+                                                newRows[ri][amountIdx] = (qty * rate).toFixed(2);
+                                              }
+
+                                              nc[idx] = { ...nc[idx], rows: newRows };
+                                              setDraftContent(nc);
+                                            }}
+                                            className={`w-full py-2.5 px-3 bg-transparent outline-none ${((block.headers[ci] || '').toLowerCase().includes('amount') || (block.headers[ci] || '').toLowerCase().includes('rate') || (block.headers[ci] || '').toLowerCase().includes('price') || (block.headers[ci] || '').toLowerCase().includes('qty')) ? 'text-right' : 'text-center'} text-[13px] hover:bg-black/5 focus:bg-white focus:ring-1 focus:ring-[var(--emerald)] transition-all`}
+                                          />
+                                        )}
                                       </td>
                                     ))}
                                     <td className="p-0 text-center w-8">
                                       <button
                                         onClick={() => {
-                                          const nc = [...draftContent]; nc[idx].rows.splice(ri, 1);
+                                          const nc = [...draftContent];
+                                          const newRows = nc[idx].rows.filter((_, i) => i !== ri);
+                                          nc[idx] = { ...nc[idx], rows: newRows };
                                           setDraftContent(nc);
                                         }}
                                         className="w-full h-full flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 hover:bg-red-50 py-2.5 transition-colors"
@@ -1311,7 +1851,9 @@ function App() {
                             <div className="flex border-t border-[var(--apple-gray-2)]">
                               <button
                                 onClick={() => {
-                                  const nc = [...draftContent]; nc[idx].rows.push(Array(block.headers.length).fill(''));
+                                  const nc = [...draftContent];
+                                  const newRows = [...nc[idx].rows, Array(block.headers.length).fill('')];
+                                  nc[idx] = { ...nc[idx], rows: newRows };
                                   setDraftContent(nc);
                                 }}
                                 className="flex-1 py-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--emerald)] hover:bg-[var(--emerald-light)] transition-colors border-r border-[var(--apple-gray-2)]"
@@ -1320,7 +1862,7 @@ function App() {
                               </button>
                               <button
                                 onClick={() => {
-                                  const nc = [...draftContent]; 
+                                  const nc = [...draftContent];
                                   nc[idx].headers.push('New Col');
                                   nc[idx].rows.forEach(row => row.push(''));
                                   setDraftContent(nc);
@@ -1340,241 +1882,80 @@ function App() {
                   <div className="space-y-4 pt-4">
                     <h3 className="apple-label border-b border-[var(--apple-gray-2)] pb-2">Terms & Conditions</h3>
                     <div className="grid grid-cols-2 gap-4">
-                      {['make', 'delivery', 'discount', 'gst', 'payment', 'validity'].map(term => (
+                      {['make', 'delivery', 'discount', 'gst', 'payment', 'validity', 'warranty'].map(term => (
                         <div key={term}>
                           <span className="text-[11px] font-semibold text-[var(--apple-gray-5)] uppercase block mb-1">{term}</span>
-                          <input 
+                          <input
                             type="text"
-                            name={term} 
-                            value={formData[term]} 
-                            onChange={handleInputChange} 
+                            name={term}
+                            value={formData[term]}
+                            onChange={handleInputChange}
                             placeholder={term === 'validity' ? 'DD/MM/YYYY' : ''}
-                            className="apple-input !px-3" 
+                            className="apple-input !px-3"
                           />
                         </div>
                       ))}
                     </div>
                   </div>
 
-                  {/* Brand Attachment */}
-                  {draftRequiresAttachment && (
-                    <div className="space-y-4 pt-4">
-                      <h3 className="apple-label border-b border-[var(--apple-gray-2)] pb-2">Brand PDF Attachment</h3>
-                      <select 
-                        name="attachmentLabel" 
-                        value={formData.attachmentLabel || ''} 
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setFormData(prev => ({
-                            ...prev,
-                            attachmentLabel: val,
-                            make: prev.make === '' || prev.make === prev.attachmentLabel ? val : prev.make
-                          }));
-                        }} 
-                        className="apple-input cursor-pointer"
-                      >
-                        <option value="">-- Select Brand --</option>
-                        {attachments.map(att => (
-                          <option key={att.id} value={att.label}>{att.label}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
+
 
                 </div>
               </div>
 
               <div className="p-8 mt-auto pt-4 bg-white border-t border-[var(--apple-gray-2)] sticky bottom-0 flex gap-3">
-                <button onClick={generatePDF} disabled={isGenerating} className="btn-primary flex-1">
-                  {isGenerating ? 'Processing...' : <><Download size={18} /> Generate PDF</>}
-                </button>
                 <button 
-                  onClick={() => {
-                    if (!formData.hospitalName.trim() || !formData.address.trim()) {
-                      alert('Please enter Hospital Name and Hospital Address to enable email composition.');
-                      return;
-                    }
-                    setShowEmailComposer(!showEmailComposer);
-                  }} 
-                  className={`btn-outline !py-3 !px-4 ${showEmailComposer ? 'bg-[var(--apple-gray-1)]' : ''} ${(!formData.hospitalName.trim() || !formData.address.trim()) ? 'opacity-40 grayscale pointer-events-auto cursor-not-allowed' : ''}`}
-                  title={(!formData.hospitalName.trim() || !formData.address.trim()) ? "Enter Hospital Name & Address to enable email" : "Compose Email"}
+                  onClick={handleSubmitQuotation} 
+                  disabled={isGenerating} 
+                  className="btn-primary flex-1"
                 >
-                  <Mail size={18} className={showEmailComposer ? 'text-[var(--emerald)]' : ''} />
+                  {isGenerating ? 'Processing...' : (
+                    <div className="flex items-center justify-center gap-2">
+                      <ShieldCheck size={18} />
+                      Finish & Save Quotation
+                    </div>
+                  )}
                 </button>
               </div>
             </div>
 
-            {/* Right Live Preview Area OR Email Composer */}
-            {showPreview && (
-              <div className="flex-1 bg-[var(--apple-gray-2)] overflow-y-auto p-12 relative">
-                {showEmailComposer ? (
-                  /* ── EMAIL COMPOSER OVERLAY ── */
-                  <div className="max-w-2xl mx-auto bg-white shadow-2xl overflow-hidden border border-[var(--apple-gray-3)] flex flex-col h-[calc(100vh-160px)]">
-                    <div className="bg-[var(--apple-gray-1)] px-8 py-6 border-b border-[var(--apple-gray-2)] flex justify-between items-center">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-[var(--accent)] flex items-center justify-center">
-                          <Mail className="text-white" size={20} />
-                        </div>
-                        <div>
-                          <h3 className="text-[17px] font-bold">Compose Email</h3>
-                          <p className="text-[11px] text-[var(--apple-gray-5)] uppercase font-bold tracking-wider">New Message</p>
-                        </div>
-                      </div>
-                      <button onClick={() => setShowEmailComposer(false)} className="text-[var(--apple-gray-5)] hover:text-[var(--apple-black)] transition-colors">
-                        <Plus className="rotate-45" size={24} />
-                      </button>
-                    </div>
-
-                    <div className="flex-1 overflow-y-auto p-8 space-y-6">
-                      {/* Recipient */}
-                      <div className="flex items-center gap-4 border border-[var(--apple-gray-3)] px-4 py-3 bg-white focus-within:border-[var(--accent)] focus-within:ring-1 focus-within:ring-[var(--accent)] transition-all">
-                        <span className="text-[13px] font-bold text-[var(--apple-gray-5)] w-10 uppercase tracking-wider">To</span>
-                        <input 
-                          type="email" 
-                          value={emailForm.to} 
-                          onChange={(e) => setEmailForm({...emailForm, to: e.target.value})}
-                          placeholder="hospital-representative@email.com" 
-                          className="flex-1 bg-transparent no-internal-border text-[15px] placeholder:text-[var(--apple-gray-4)]" 
-                        />
-                      </div>
-
-                      {/* Subject */}
-                      <div className="flex items-center gap-4 border border-[var(--apple-gray-3)] px-4 py-3 bg-white focus-within:border-[var(--accent)] focus-within:ring-1 focus-within:ring-[var(--accent)] transition-all">
-                        <span className="text-[13px] font-bold text-[var(--apple-gray-5)] w-10 uppercase tracking-wider">Sub</span>
-                        <input 
-                          type="text" 
-                          value={emailForm.subject} 
-                          onChange={(e) => setEmailForm({...emailForm, subject: e.target.value})}
-                          className="flex-1 bg-transparent no-internal-border text-[15px] font-semibold" 
-                        />
-                      </div>
-
-                      {/* Attachment Badge (Generated PDF) */}
-                      <div className="flex items-center flex-wrap gap-2">
-                        <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 border border-[var(--accent)] rounded-none text-[12px] font-bold text-[var(--accent)]">
-                          <FileText size={14} />
-                          Quotation_{formData.hospitalName || 'Draft'}.pdf
-                        </div>
-                        {emailForm.selectedDriveFiles.map(file => (
-                          <div key={file.id} className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-none text-[12px] font-bold text-amber-700">
-                            <FileCheck size={14} />
-                            {file.label || file.fileName}
-                            <button onClick={() => setEmailForm(prev => ({ ...prev, selectedDriveFiles: prev.selectedDriveFiles.filter(f => f.id !== file.id) }))}>
-                              <Plus className="rotate-45" size={14} />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-
-                      {/* Body */}
-                      <div className="border border-[var(--apple-gray-3)] p-4 bg-white focus-within:border-[var(--accent)] focus-within:ring-1 focus-within:ring-[var(--accent)] transition-all">
-                        <textarea 
-                          value={emailForm.body} 
-                          onChange={(e) => setEmailForm({...emailForm, body: e.target.value})}
-                          placeholder="Type your message here..."
-                          className="w-full min-h-[300px] bg-transparent no-internal-border text-[15px] leading-relaxed resize-none" 
-                        />
-                      </div>
-
-                      {/* Drive Attachments Picker */}
-                      <div className="pt-6 border-t border-[var(--apple-gray-2)]">
-                        <h4 className="text-[13px] font-bold text-[var(--apple-gray-5)] uppercase tracking-wider mb-4">Attach Documents from Drive</h4>
-                        <div className="space-y-4">
-                          {/* SRR Files */}
-                          <div>
-                            <p className="text-[11px] font-bold text-[var(--emerald)] mb-2 uppercase">SRR Certificates</p>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                              {(driveFiles.srr || []).map(file => (
-                                <button
-                                  key={file.id}
-                                  onClick={() => {
-                                    const exists = emailForm.selectedDriveFiles.find(f => f.id === file.id);
-                                    if (exists) {
-                                      setEmailForm(prev => ({ ...prev, selectedDriveFiles: prev.selectedDriveFiles.filter(f => f.id !== file.id) }));
-                                    } else {
-                                      setEmailForm(prev => ({ ...prev, selectedDriveFiles: [...prev.selectedDriveFiles, file] }));
-                                    }
-                                  }}
-                                  className={`flex items-center gap-2 p-2 border text-left transition-all rounded-none ${emailForm.selectedDriveFiles.find(f => f.id === file.id) ? 'bg-emerald-50 border-[var(--accent)]' : 'bg-white border-[var(--apple-gray-2)] hover:bg-[var(--apple-gray-1)]'}`}
-                                >
-                                  <div className={`w-4 h-4 border flex items-center justify-center rounded-none ${emailForm.selectedDriveFiles.find(f => f.id === file.id) ? 'bg-[var(--accent)] border-[var(--accent)]' : 'border-[var(--apple-gray-3)]'}`}>
-                                    {emailForm.selectedDriveFiles.find(f => f.id === file.id) && <CheckSquare size={10} className="text-white" />}
-                                  </div>
-                                  <span className="text-[12px] font-medium truncate">{file.label}</span>
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                          
-                          {/* Vendor Folders */}
-                          {(driveFiles.vendor || []).map(folder => (
-                            <div key={folder.id}>
-                              <p className="text-[11px] font-bold text-amber-600 mb-2 uppercase">{folder.name} Documents</p>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                {(folder.files || []).map(file => (
-                                  <button
-                                    key={file.id}
-                                    onClick={() => {
-                                      const exists = emailForm.selectedDriveFiles.find(f => f.id === file.id);
-                                      if (exists) {
-                                        setEmailForm(prev => ({ ...prev, selectedDriveFiles: prev.selectedDriveFiles.filter(f => f.id !== file.id) }));
-                                      } else {
-                                        setEmailForm(prev => ({ ...prev, selectedDriveFiles: [...prev.selectedDriveFiles, file] }));
-                                      }
-                                    }}
-                                    className={`flex items-center gap-2 p-2 border text-left transition-all rounded-none ${emailForm.selectedDriveFiles.find(f => f.id === file.id) ? 'bg-amber-50 border-amber-400' : 'bg-white border-[var(--apple-gray-2)] hover:bg-[var(--apple-gray-1)]'}`}
-                                  >
-                                    <div className={`w-4 h-4 border flex items-center justify-center rounded-none ${emailForm.selectedDriveFiles.find(f => f.id === file.id) ? 'bg-amber-500 border-amber-500' : 'border-[var(--apple-gray-3)]'}`}>
-                                      {emailForm.selectedDriveFiles.find(f => f.id === file.id) && <CheckSquare size={10} className="text-white" />}
-                                    </div>
-                                    <span className="text-[12px] font-medium truncate">{file.fileName}</span>
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="p-8 bg-[var(--apple-gray-1)] border-t border-[var(--apple-gray-2)] flex items-center justify-between">
-                      <p className="text-[12px] text-[var(--apple-gray-5)] font-medium">Draft saved to cloud</p>
-                      <button 
-                        onClick={handleGlobalSendEmail} 
-                        disabled={isSendingEmail}
-                        className={`btn-primary !py-2.5 !px-8 ${isSendingEmail ? 'opacity-70 cursor-not-allowed' : ''}`}
-                      >
-                        {isSendingEmail ? 'Sending...' : 'Send Message'}
-                      </button>
-                    </div>
+            {/* Right Live Preview Area */}
+            {(showPreview && !isDraftingMaximized) && (
+              <div className="flex-1 bg-[var(--apple-gray-2)] overflow-y-auto p-4 md:p-12 relative">
+                <div className="flex flex-col items-center gap-8">
+                  <div className="scale-[0.85] origin-top">
+                    <QuotationTemplate id="quotation-template" data={formData} content={draftContent} company={companyData} />
                   </div>
-                ) : (
-                  /* ── ORIGINAL PDF PREVIEW ── */
-                  <div className="flex flex-col items-center gap-8">
-                    <div className="scale-[0.85] origin-top">
-                      <QuotationTemplate id="quotation-template" data={formData} content={draftContent} company={companyData} />
-                    </div>
-                    {/* Attached Brand PDF Preview */}
-                    {(() => {
-                      const attachmentRef = formData.attachmentLabel || formData.make;
-                      const selectedAtt = draftRequiresAttachment ? attachments.find(a => a.label === attachmentRef) : null;
-                      if (!selectedAtt || !selectedAtt.data) return null;
-                      return (
-                        <div className="w-full flex flex-col items-center" style={{ marginTop: '-80px' }}>
-                          <div className="flex items-center gap-2 mb-4">
-                            <span className="badge-gray">ATTACHMENT</span>
-                            <span className="text-[13px] font-medium text-[var(--apple-gray-5)]">{selectedAtt.label} — {selectedAtt.fileName}</span>
-                          </div>
-                          <embed 
-                            src={selectedAtt.data + '#toolbar=0&navpanes=0'} 
-                            type="application/pdf" 
-                            style={{ width: '178.5mm', height: '252.45mm', border: 'none', borderRadius: '4px', boxShadow: '0 4px 24px rgba(0,0,0,0.12)' }}
+
+                  {formData.priceListId && (
+                    <div className="scale-[0.85] origin-top flex flex-col gap-4">
+                      <div className="w-[210mm] min-h-[500px] bg-white shadow-2xl flex flex-col items-center justify-center border border-[var(--apple-gray-3)] relative overflow-hidden">
+                        <div className="absolute top-4 left-4 bg-[var(--emerald)] text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-widest shadow-sm z-10">
+                          Attached Price List
+                        </div>
+                        {previewPdfUrl ? (
+                          <iframe 
+                            src={previewPdfUrl + '#toolbar=0&navpanes=0&view=FitH'} 
+                            className="w-full h-[1100px] border-none" 
+                            title="Price List Preview" 
                           />
-                        </div>
-                      );
-                    })()}
-                  </div>
-                )}
+                        ) : (
+                          <div className="flex flex-col items-center gap-4 py-20 px-12 text-center">
+                            <div className="w-20 h-20 bg-[var(--apple-gray-1)] rounded-3xl flex items-center justify-center mb-4">
+                              <FileCheck size={40} className="text-[var(--emerald)] animate-pulse" />
+                            </div>
+                            <h3 className="text-[20px] font-bold text-[var(--apple-black)] tracking-tight">
+                              Loading Price List...
+                            </h3>
+                            <p className="text-[14px] text-[var(--apple-gray-5)]">
+                              Fetching the document from Google Drive.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -1583,7 +1964,7 @@ function App() {
         {/* VIEW: HISTORY */}
         {view === 'history' && (
           <div className="h-full overflow-y-auto px-8 py-12 md:px-16 md:py-16">
-            <div className="max-w-5xl mx-auto">
+            <div className="max-w-7xl mx-auto">
               <div className="flex flex-col md:flex-row md:items-end justify-between mb-12 gap-6">
                 <div>
                   <h1 className="apple-title-1 mb-2">History</h1>
@@ -1591,9 +1972,9 @@ function App() {
                 </div>
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--apple-gray-4)] w-4 h-4" />
-                  <input 
-                    type="text" 
-                    placeholder="Search hospital or ref..." 
+                  <input
+                    type="text"
+                    placeholder="Search hospital or ref..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="apple-input !pl-10 !py-2.5 w-full md:w-[280px]"
@@ -1602,8 +1983,8 @@ function App() {
               </div>
 
               {(() => {
-                const filtered = quotationHistory.filter(item => 
-                  item.hospital.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                const filtered = quotationHistory.filter(item =>
+                  item.hospital.toLowerCase().includes(searchQuery.toLowerCase()) ||
                   item.ref.toLowerCase().includes(searchQuery.toLowerCase()) ||
                   item.templateName.toLowerCase().includes(searchQuery.toLowerCase())
                 );
@@ -1614,121 +1995,189 @@ function App() {
                   </div>
                 );
                 return (
-                  <div className="apple-card overflow-hidden">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="bg-[var(--apple-gray-1)] border-b border-[var(--apple-gray-2)]">
-                          <th className="text-left py-3 px-5 text-[11px] font-bold uppercase tracking-wider text-[var(--apple-gray-5)]">Ref No.</th>
-                          <th className="text-left py-3 px-5 text-[11px] font-bold uppercase tracking-wider text-[var(--apple-gray-5)]">Hospital</th>
-                          <th className="text-left py-3 px-5 text-[11px] font-bold uppercase tracking-wider text-[var(--apple-gray-5)] hidden md:table-cell">Template</th>
-                          <th className="text-left py-3 px-5 text-[11px] font-bold uppercase tracking-wider text-[var(--apple-gray-5)]">Date</th>
-                          <th className="text-right py-3 px-5 text-[11px] font-bold uppercase tracking-wider text-[var(--apple-gray-5)]">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filtered.map((item) => (
-                          <tr key={item.id} className="border-b border-[var(--apple-gray-2)] last:border-0 hover:bg-[var(--apple-gray-1)] transition-colors">
-                            <td className="py-4 px-5">
-                              <span className="text-[13px] font-bold text-[var(--emerald)] bg-[var(--emerald-light)] px-2.5 py-1 rounded-md whitespace-nowrap">{item.ref}</span>
-                            </td>
-                            <td className="py-4 px-5">
-                              <span className="text-[15px] font-semibold text-[var(--apple-black)]">{item.hospital}</span>
-                            </td>
-                            <td className="py-4 px-5 hidden md:table-cell">
-                              <span className="text-[13px] text-[var(--apple-gray-5)] font-medium">{item.templateName}</span>
-                            </td>
-                            <td className="py-4 px-5">
-                              <span className="text-[13px] text-[var(--apple-gray-5)] font-medium">{item.date}</span>
-                            </td>
-                            <td className="py-4 px-5">
-                              <div className="flex items-center justify-end gap-2">
-                                {item.formData && (
-                                  <>
-                                    <button 
-                                      onClick={() => setRegeneratingItem(item)}
-                                      disabled={isGenerating || regeneratingItem}
-                                      className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-[var(--apple-gray-2)] rounded-lg text-[12px] font-semibold text-[var(--emerald)] hover:border-[var(--emerald)] hover:bg-[var(--emerald-light)] transition-colors disabled:opacity-50"
-                                      title="Download PDF"
-                                    >
-                                      <Download size={13} /> Download
-                                    </button>
-                                    <button 
-                                      onClick={async () => {
-                                        setRegeneratingItem({ ...item, _shareMode: true });
-                                      }}
-                                      disabled={isGenerating || regeneratingItem}
-                                      className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-[var(--apple-gray-2)] rounded-lg text-[12px] font-semibold text-[var(--coral)] hover:border-[var(--coral)] hover:bg-red-50 transition-colors disabled:opacity-50"
-                                      title="Share PDF"
-                                    >
-                                      <Share2 size={13} /> Share
-                                    </button>
-                                  </>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  <>
+                    {/* Desktop Table View */}
+                    <div className="hidden lg:block apple-card overflow-hidden">
+                      <div className="overflow-x-auto">
+                        <table className="w-full">
+                          <thead>
+                            <tr className="bg-[var(--apple-gray-1)] border-b border-[var(--apple-gray-2)]">
+                              <th className="text-left py-3 px-5 text-[11px] font-bold uppercase tracking-wider text-[var(--apple-gray-5)]">Ref No.</th>
+                              <th className="text-left py-3 px-5 text-[11px] font-bold uppercase tracking-wider text-[var(--apple-gray-5)]">Hospital</th>
+                              <th className="text-left py-3 px-5 text-[11px] font-bold uppercase tracking-wider text-[var(--apple-gray-5)]">Template</th>
+                              <th className="text-left py-3 px-5 text-[11px] font-bold uppercase tracking-wider text-[var(--apple-gray-5)]">Date</th>
+                              <th className="text-right py-3 px-5 text-[11px] font-bold uppercase tracking-wider text-[var(--apple-gray-5)]">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {filtered.map((item) => (
+                              <tr key={item.id} className="border-b border-[var(--apple-gray-2)] last:border-0 hover:bg-[var(--apple-gray-1)] transition-colors">
+                                <td className="py-4 px-5">
+                                  <span className="text-[13px] font-bold text-[var(--emerald)] bg-[var(--emerald-light)] px-2.5 py-1 rounded-md whitespace-nowrap">{(item.ref || '').replace('SRR/QUOT/', '')}</span>
+                                </td>
+                                <td className="py-4 px-5">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[15px] font-semibold text-[var(--apple-black)]">{item.hospital}</span>
+                                    {item.isEmailed && (
+                                      <div 
+                                        title={`Sent to: ${item.lastEmailedTo || 'Unknown'}\nOn: ${item.lastEmailedAt ? new Date(item.lastEmailedAt).toLocaleString() : 'Recently'}`}
+                                        className="flex items-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-600 rounded-md text-[10px] font-bold uppercase tracking-wider border border-blue-100 cursor-help"
+                                      >
+                                        <Mail size={10} /> SENT
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="py-4 px-5">
+                                  <span className="text-[13px] text-[var(--apple-gray-5)] font-medium">{item.templateName}</span>
+                                </td>
+                                <td className="py-4 px-5">
+                                  <span className="text-[13px] text-[var(--apple-gray-5)] font-medium">{item.date}</span>
+                                </td>
+                                <td className="py-4 px-5">
+                                  <div className="flex items-center justify-end gap-2">
+                                    {item.formData && (
+                                      <>
+                                        <button
+                                          onClick={() => setPreviewingItem(item)}
+                                          className="w-9 h-9 flex items-center justify-center bg-white border border-[var(--apple-gray-2)] rounded-full text-[var(--apple-gray-6)] hover:border-[var(--apple-gray-4)] hover:bg-[var(--apple-gray-1)] transition-all shadow-sm"
+                                          title="View Entire Quotation"
+                                        >
+                                          <Eye size={16} />
+                                        </button>
+                                        <button
+                                          onClick={() => setRegeneratingItem(item)}
+                                          disabled={isGenerating || regeneratingItem}
+                                          className="w-9 h-9 flex items-center justify-center bg-white border border-[var(--apple-gray-2)] rounded-full text-[var(--emerald)] hover:border-[var(--emerald)] hover:bg-[var(--emerald-light)] transition-all disabled:opacity-50 shadow-sm"
+                                          title="Download PDF"
+                                        >
+                                          <Download size={16} />
+                                        </button>
+
+                                        <button 
+                                          onClick={() => setRegeneratingItem({ ...item, _emailMode: true })}
+                                          disabled={isGenerating || regeneratingItem}
+                                          className="w-9 h-9 flex items-center justify-center bg-blue-50 border border-blue-100 rounded-full text-blue-600 hover:bg-blue-100 transition-all disabled:opacity-50 shadow-sm"
+                                          title="Email Quotation"
+                                        >
+                                          <Mail size={16} />
+                                        </button>
+                                        
+                                        {isManagementActive && (
+                                          <>
+                                            <button
+                                              onClick={() => {
+                                                setFormData(item.formData);
+                                                setDraftContent(item.content || []);
+                                                setView('drafting');
+                                              }}
+                                              className="w-9 h-9 flex items-center justify-center bg-white border border-[var(--apple-gray-2)] rounded-full text-[var(--apple-black)] hover:border-[var(--apple-gray-4)] hover:bg-[var(--apple-gray-1)] transition-all shadow-sm"
+                                              title="Edit as Draft"
+                                            >
+                                              <Edit2 size={16} />
+                                            </button>
+                                            <button
+                                              onClick={() => confirmDelete(async () => {
+                                                setQuotationHistory(prev => prev.filter(h => h.id !== item.id));
+                                                await syncItem('history', item, true);
+                                              })}
+                                              className="w-9 h-9 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 hover:bg-red-50 rounded-full transition-all"
+                                              title="Delete History Item"
+                                            >
+                                              <Trash2 size={18} />
+                                            </button>
+                                          </>
+                                        )}
+                                      </>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Mobile Card View */}
+                    <div className="lg:hidden space-y-4">
+                      {filtered.map((item) => (
+                        <div key={item.id} className="apple-card p-5 space-y-4">
+                          <div className="flex justify-between items-start">
+                            <div className="space-y-1">
+                              <p className="text-[16px] font-bold text-[var(--apple-black)] leading-tight">{item.hospital}</p>
+                              <p className="text-[12px] text-[var(--apple-gray-5)] font-medium">{item.templateName}</p>
+                            </div>
+                            <div className="flex flex-col items-end gap-2">
+                              <span className="text-[11px] font-bold text-[var(--emerald)] bg-[var(--emerald-light)] px-2 py-0.5 rounded uppercase tracking-wider">{(item.ref || '').replace('SRR/QUOT/', '')}</span>
+                              {item.isEmailed && (
+                                <div className="flex items-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-600 rounded-md text-[9px] font-bold uppercase tracking-wider border border-blue-100">
+                                  <Mail size={9} /> SENT
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between text-[13px] text-[var(--apple-gray-5)] font-medium">
+                            <span>{item.date}</span>
+                          </div>
+                          <div className="flex gap-2 pt-4 border-t border-[var(--apple-gray-2)]">
+                            <button 
+                              onClick={() => setPreviewingItem(item)}
+                              className="flex-1 flex items-center justify-center gap-2 py-3 bg-[var(--apple-gray-1)] rounded-xl text-[var(--apple-gray-6)] active:scale-[0.95] transition-all"
+                            >
+                              <Eye size={18} />
+                            </button>
+                            <button 
+                              onClick={() => setRegeneratingItem(item)}
+                              disabled={isGenerating || regeneratingItem}
+                              className="flex-1 flex items-center justify-center gap-2 py-3 bg-[var(--apple-gray-1)] rounded-xl text-[var(--emerald)] active:scale-[0.95] transition-all disabled:opacity-50"
+                            >
+                              <Download size={18} />
+                            </button>
+                            <button 
+                              onClick={() => setRegeneratingItem({ ...item, _emailMode: true })}
+                              disabled={isGenerating || regeneratingItem}
+                              className="flex-1 flex items-center justify-center gap-2 py-3 bg-blue-50 rounded-xl text-blue-600 active:scale-[0.95] transition-all disabled:opacity-50"
+                            >
+                              <Mail size={18} />
+                            </button>
+                            {isManagementActive && (
+                              <button 
+                                onClick={() => {
+                                  setFormData(item.formData);
+                                  setDraftContent(item.content || []);
+                                  setView('drafting');
+                                }}
+                                className="flex-1 flex items-center justify-center gap-2 py-3 bg-[var(--apple-gray-1)] rounded-xl text-[var(--apple-black)] active:scale-[0.95] transition-all"
+                              >
+                                <Edit2 size={18} />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
                 );
               })()}
             </div>
           </div>
         )}
 
-        {/* VIEW: ADMIN (Attachments) */}
-        {view === 'admin' && (
-          <div className="h-full overflow-y-auto px-8 py-12 md:px-16 md:py-16">
-            <div className="max-w-3xl mx-auto">
-              <h1 className="apple-title-1 mb-2">Brands</h1>
-              <p className="apple-subtitle mb-12">Manage manufacturer PDF price lists to append to quotations.</p>
-
-              <div className="apple-card p-12 text-center mb-12">
-                <div className="w-16 h-16 bg-[var(--apple-gray-1)] text-[var(--apple-black)] rounded-2xl flex items-center justify-center mx-auto mb-6">
-                  <UploadCloud size={32} />
-                </div>
-                <h2 className="text-[24px] font-semibold tracking-tight mb-2">Upload Price List</h2>
-                <p className="text-[15px] text-[var(--apple-gray-5)] mb-8">Select a PDF to map to a brand name.</p>
-                
-                <input type="file" accept=".pdf" onChange={handleFileUpload} className="hidden" id="admin-upload" />
-                <label htmlFor="admin-upload" className="btn-primary">
-                  <Plus size={18} /> Select PDF
-                </label>
-              </div>
-
-              <div>
-                <h3 className="apple-label mb-4">Linked Price Lists ({attachments.length})</h3>
-                <div className="space-y-4">
-                  {attachments.map(att => (
-                    <div key={att.id} className="apple-card p-6 flex items-center justify-between">
-                      <div className="flex items-center gap-5">
-                        <div className="w-12 h-12 bg-[var(--apple-gray-1)] rounded-full flex items-center justify-center">
-                          <Building2 size={24} className="text-[var(--apple-black)]" />
-                        </div>
-                        <div>
-                          <p className="text-[17px] font-semibold text-[var(--apple-black)]">{att.label}</p>
-                          <p className="text-[13px] text-[var(--apple-gray-5)] mt-1">{att.fileName}</p>
-                        </div>
-                      </div>
-                      <button 
-                        onClick={() => {
-                          confirmDelete(async () => {
-                            setAttachments(attachments.filter(a => a.id !== att.id));
-                            await syncItem('attachments', att, true);
-                          });
-                        }} 
-                        className="w-10 h-10 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 bg-[var(--apple-gray-1)] hover:bg-red-50 rounded-full transition-colors"
-                      >
-                        <Trash2 size={18} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
+        {/* VIEW: EMAIL HISTORY */}
+        {view === 'emailHistory' && (
+          <EmailHistoryView 
+            history={emailHistory} 
+            onDelete={async (id) => {
+              confirmDelete(async () => {
+                setEmailHistory(prev => prev.filter(h => h.id !== id));
+                await deleteFileMetadata('emailHistory', id);
+              });
+            }}
+          />
         )}
+
+
 
         {/* VIEW: DRIVE */}
         {view === 'drive' && (
@@ -1780,12 +2229,14 @@ function App() {
                           <a href={file.data} download={file.fileName} className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-[var(--emerald)] rounded-lg transition-colors" title="Download">
                             <Download size={15} />
                           </a>
-                          <button onClick={() => confirmDelete(async () => {
-                            setDriveFiles(prev => ({ ...prev, srr: prev.srr.filter(f => f.id !== file.id) }));
-                            await syncItem('drive_srr', file, true);
-                          })} className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 rounded-lg transition-colors" title="Delete">
-                            <Trash2 size={15} />
-                          </button>
+                          {isManagementActive && (
+                            <button onClick={() => confirmDelete(async () => {
+                              setDriveFiles(prev => ({ ...prev, srr: prev.srr.filter(f => f.id !== file.id) }));
+                              await syncItem('drive_srr', file, true);
+                            })} className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 rounded-lg transition-colors" title="Delete">
+                              <Trash2 size={15} />
+                            </button>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -1837,12 +2288,16 @@ function App() {
                             <button onClick={(e) => { e.stopPropagation(); downloadFolderAsZip(folder); }} className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-[var(--apple-black)] rounded-lg transition-colors" title="Download folder as ZIP">
                               <Download size={14} />
                             </button>
-                            <button onClick={(e) => { e.stopPropagation(); confirmDelete(async () => {
-                              setDriveFiles(prev => ({ ...prev, vendor: prev.vendor.filter(f => f.id !== folder.id) }));
-                              await syncItem('drive_folders', folder, true);
-                            }); }} className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 rounded-lg transition-colors" title="Delete folder">
-                              <Trash2 size={14} />
-                            </button>
+                            {isManagementActive && (
+                              <button onClick={(e) => {
+                                e.stopPropagation(); confirmDelete(async () => {
+                                  setDriveFiles(prev => ({ ...prev, vendor: prev.vendor.filter(f => f.id !== folder.id) }));
+                                  await syncItem('drive_folders', folder, true);
+                                });
+                              }} className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 rounded-lg transition-colors" title="Delete folder">
+                                <Trash2 size={14} />
+                              </button>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -1897,12 +2352,14 @@ function App() {
                                   <a href={file.data} download={file.fileName} className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-[var(--apple-black)] rounded-lg transition-colors" title="Download">
                                     <Download size={15} />
                                   </a>
-                                  <button onClick={() => confirmDelete(async () => {
-                                    setDriveFiles(prev => ({ ...prev, vendor: prev.vendor.map(f => f.id === folder.id ? { ...f, files: f.files.filter(fi => fi.id !== file.id) } : f) }));
-                                    await syncItem('drive_vendor_files', file, true);
-                                  })} className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 rounded-lg transition-colors" title="Delete">
-                                    <Trash2 size={15} />
-                                  </button>
+                                  {isManagementActive && (
+                                    <button onClick={() => confirmDelete(async () => {
+                                      setDriveFiles(prev => ({ ...prev, vendor: prev.vendor.map(f => f.id === folder.id ? { ...f, files: f.files.filter(fi => fi.id !== file.id) } : f) }));
+                                      await syncItem('drive_vendor_files', file, true);
+                                    })} className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 rounded-lg transition-colors" title="Delete">
+                                      <Trash2 size={15} />
+                                    </button>
+                                  )}
                                 </div>
                               </div>
                             ))}
@@ -1912,6 +2369,76 @@ function App() {
                     );
                   })()
                 )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* VIEW: PRICE LISTS */}
+        {view === 'pricelists' && (
+          <div className="h-full overflow-y-auto px-8 py-12 md:px-16 md:py-16">
+            <div className="max-w-6xl mx-auto">
+              <header className="flex flex-col md:flex-row md:items-end justify-between mb-12 gap-6">
+                <div>
+                  <h1 className="apple-title-1 mb-2">Price Lists</h1>
+                  <p className="apple-subtitle">Manage and access manufacturer price lists. <span className="font-semibold text-[var(--apple-black)]">{priceLists.length}</span> total</p>
+                </div>
+                <div>
+                  <input type="file" onChange={(e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    const label = prompt('Enter a name for this Price List (e.g. Stryker 2024):');
+                    if (!label) { e.target.value = ''; return; }
+                    const newItem = { id: Date.now().toString(), label, fileName: file.name, uploadedAt: new Date().toLocaleDateString('en-GB') };
+                    syncItem('price_lists', newItem, false, file).then(success => {
+                      if (success) setPriceLists(prev => [...prev, newItem]);
+                    });
+                    e.target.value = '';
+                  }} className="hidden" id="price-list-upload" />
+                  <label htmlFor="price-list-upload" className="btn-primary cursor-pointer">
+                    <Plus size={18} /> Upload List
+                  </label>
+                </div>
+              </header>
+
+              <div>
+                <div className="grid gap-3">
+                  {priceLists.map(item => (
+                    <div key={item.id} className="apple-card p-5 flex items-center justify-between hover:border-[var(--apple-gray-4)] transition-all">
+                      <div className="flex items-center gap-4">
+                        <div className="w-11 h-11 bg-[var(--apple-gray-1)] rounded-xl flex items-center justify-center">
+                          <FileText size={22} className="text-[var(--apple-black)]" />
+                        </div>
+                        <div>
+                          <p className="text-[16px] font-bold text-[var(--apple-black)] leading-tight">{item.label}</p>
+                          <p className="text-[12px] text-[var(--apple-gray-5)] mt-1">{item.fileName} • {item.uploadedAt}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <a href={item.data} download={item.fileName} className="w-9 h-9 flex items-center justify-center text-[var(--apple-gray-5)] hover:text-[var(--apple-black)] hover:bg-[var(--apple-gray-1)] rounded-lg transition-all" title="Download">
+                          <Download size={18} />
+                        </a>
+                        {isManagementActive && (
+                          <button 
+                            onClick={() => confirmDelete(async () => {
+                              setPriceLists(prev => prev.filter(p => p.id !== item.id));
+                              await syncItem('price_lists', item, true);
+                            })}
+                            className="w-9 h-9 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                            title="Delete"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  {priceLists.length === 0 && (
+                    <div className="text-center py-16 bg-white border border-dashed border-[var(--apple-gray-3)] rounded-2xl">
+                      <p className="text-[15px] text-[var(--apple-gray-4)]">No price lists uploaded yet.</p>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -1979,10 +2506,16 @@ function App() {
                   </div>
                   <div className="pt-6 border-t border-[var(--apple-gray-2)]">
                     <button
-                      onClick={() => {
-                        localStorage.setItem('srr_company_data', JSON.stringify(companyData));
-                        setDoc(doc(db, 'users', user.uid), { companyData }, { merge: true });
-                        alert('Settings saved successfully!');
+                      onClick={async () => {
+                        setSyncStatus('syncing');
+                        const success = await saveCompanyData(companyData);
+                        if (success) {
+                          setSyncStatus('saved');
+                          alert('Settings saved to Cloud successfully!');
+                        } else {
+                          setSyncStatus('error');
+                          alert('Failed to save settings to Cloud.');
+                        }
                       }}
                       className="btn-primary"
                     >
@@ -1991,13 +2524,33 @@ function App() {
                   </div>
                 </div>
               </div>
+
             </div>
           </div>
         )}
 
         {/* VIEW: EMAILER */}
         {view === 'emailer' && (
-          <EmailerView driveFiles={driveFiles} />
+          <div className="h-full relative">
+            <button
+              onClick={() => refreshData()}
+              className="absolute top-6 right-8 z-10 flex items-center gap-2 px-4 py-2 bg-white border border-[var(--apple-gray-3)] rounded-full text-[13px] font-bold text-[var(--apple-gray-6)] hover:bg-[var(--apple-gray-1)] transition-all shadow-sm"
+            >
+              <ArrowRight className={syncStatus === 'syncing' ? 'animate-spin' : ''} size={16} />
+              {syncStatus === 'syncing' ? 'Refreshing...' : 'Refresh Files'}
+            </button>
+            <EmailerView 
+              driveFiles={driveFiles} 
+              priceLists={priceLists} 
+              onEmailSent={async (item) => {
+                setEmailHistory(prev => [item, ...prev]);
+                await saveEmailHistoryItem(item);
+              }}
+              showAlert={showAlert}
+              showConfirm={showConfirm}
+              showPrompt={showPrompt}
+            />
+          </div>
         )}
       </main>
 
@@ -2017,9 +2570,9 @@ function App() {
               </div>
               <span className="text-[17px] font-bold text-[var(--emerald)]">{Math.round(uploadProgress)}%</span>
             </div>
-            
+
             <div className="w-full h-2 bg-[var(--apple-gray-2)] rounded-full overflow-hidden">
-              <div 
+              <div
                 className="h-full bg-[var(--emerald)] transition-all duration-300 ease-out"
                 style={{ width: `${uploadProgress}%` }}
               />
@@ -2037,7 +2590,437 @@ function App() {
       {/* HIDDEN REGENERATION TEMPLATE */}
       {regeneratingItem && (
         <div style={{ position: 'absolute', left: '-9999px', top: 0 }}>
-          <QuotationTemplate id="history-quotation-template" data={regeneratingItem.formData} content={regeneratingItem.draftContent} company={companyData} />
+          <QuotationTemplate id="history-quotation-template" data={regeneratingItem.formData} content={regeneratingItem.content || []} company={companyData} />
+        </div>
+      )}
+      {/* PREVIEW MODAL */}
+      {previewingItem && (
+        <div className="fixed inset-0 z-[6000] flex flex-col bg-[var(--apple-gray-2)] animate-in slide-in-from-bottom duration-500">
+          <header className="flex-none flex items-center justify-between px-4 md:px-12 py-4 md:py-6 bg-white/80 backdrop-blur-md border-b border-[var(--apple-gray-3)] sticky top-0 z-10">
+            <div>
+              <h2 className="text-[18px] md:text-[24px] font-bold text-[var(--apple-black)] tracking-tight leading-none">Quotation Preview</h2>
+              <p className="text-[11px] md:text-[13px] text-[var(--apple-gray-5)] mt-1 font-medium">{previewingItem.formData?.hospitalName} | {previewingItem.ref}</p>
+            </div>
+            <div className="flex items-center gap-2 md:gap-4">
+              <button 
+                onClick={() => setRegeneratingItem(previewingItem)}
+                className="w-10 h-10 flex items-center justify-center bg-white border border-[var(--apple-gray-3)] rounded-full text-[var(--emerald)] hover:bg-[var(--emerald-light)] transition-all"
+                title="Download PDF"
+              >
+                <Download size={20} />
+              </button>
+              <button 
+                onClick={() => setPreviewingItem(null)}
+                className="w-10 h-10 flex items-center justify-center bg-white border border-[var(--apple-gray-3)] rounded-full text-[var(--apple-gray-5)] hover:bg-[var(--apple-gray-1)] transition-all"
+              >
+                <Plus className="rotate-45" size={24} />
+              </button>
+            </div>
+          </header>
+          <main className="flex-1 overflow-auto p-2 md:p-12 bg-[var(--apple-gray-2)]">
+            <div className="min-w-fit md:max-w-5xl mx-auto flex flex-col items-center gap-12">
+              <div className="shadow-2xl bg-white p-0 md:p-4 rounded-xl overflow-hidden">
+                <QuotationTemplate 
+                  data={previewingItem.formData} 
+                  content={previewingItem.content || []} 
+                  company={companyData} 
+                />
+              </div>
+
+              {/* Price List Attachment Visual Indicator (Matching Canvas Style) */}
+              {previewingItem.formData?.priceListId && (
+                <div className="w-[210mm] min-h-[500px] bg-white shadow-2xl flex flex-col items-center justify-center border border-[var(--apple-gray-3)] relative overflow-hidden mb-12">
+                   <div className="absolute top-6 left-6 bg-[var(--emerald)] text-white text-[10px] font-bold px-4 py-1.5 rounded-full uppercase tracking-widest shadow-sm z-10">
+                      Attached Price List
+                   </div>
+                   
+                   {previewPriceListUrl ? (
+                     <iframe 
+                       src={previewPriceListUrl + '#toolbar=0&navpanes=0&view=FitH'} 
+                       className="w-full h-[1100px] border-none" 
+                       title="Price List Preview" 
+                     />
+                   ) : (
+                     <div className="flex flex-col items-center gap-4 py-20 px-12 text-center">
+                        <div className="w-20 h-20 bg-[var(--apple-gray-1)] rounded-3xl flex items-center justify-center mb-4">
+                          <FileCheck size={40} className="text-[var(--emerald)] animate-pulse" />
+                        </div>
+                        <h3 className="text-[20px] font-bold text-[var(--apple-black)] tracking-tight">
+                           {priceLists.find(pl => pl.id === previewingItem.formData.priceListId)?.label || 'Product Catalog'}
+                        </h3>
+                        <p className="text-[14px] text-[var(--apple-gray-5)] max-w-sm">
+                           Loading actual PDF preview from Google Drive...
+                        </p>
+                        <div className="mt-8 px-6 py-2.5 bg-[var(--emerald-light)] text-[var(--emerald)] text-[12px] font-bold uppercase tracking-widest border border-[var(--emerald)] rounded-xl">
+                           Ready for Dispatch
+                        </div>
+                     </div>
+                   )}
+                </div>
+              )}
+            </div>
+          </main>
+        </div>
+      )}
+      {/* GLOBAL EMAIL COMPOSER OVERLAY */}
+      {showEmailComposer && (
+        <div className="fixed inset-0 z-[2000] flex flex-col bg-white overflow-hidden animate-in slide-in-from-bottom duration-500">
+          <header className="px-8 py-4 bg-[var(--apple-gray-1)] border-b border-[var(--apple-gray-2)] flex items-center justify-between shadow-sm">
+            <div className="flex items-center gap-4">
+              <div className="w-10 h-10 bg-[var(--accent)] rounded-xl flex items-center justify-center text-white shadow-lg">
+                <Mail size={20} />
+              </div>
+              <div>
+                <h3 className="text-[17px] font-bold">Compose Email</h3>
+                <p className="text-[11px] text-[var(--apple-gray-5)] uppercase font-bold tracking-wider">New Dispatched Document</p>
+              </div>
+            </div>
+            <button 
+              onClick={() => setShowEmailComposer(false)}
+              className="w-10 h-10 flex items-center justify-center bg-white border border-[var(--apple-gray-3)] rounded-full text-[var(--apple-gray-5)] hover:bg-[var(--apple-gray-1)] transition-all"
+            >
+              <Plus className="rotate-45" size={24} />
+            </button>
+          </header>
+          
+          <main className="flex-1 overflow-y-auto bg-[var(--apple-gray-2)] p-4 md:p-12">
+            <div className="max-w-4xl mx-auto bg-white shadow-2xl rounded-2xl overflow-hidden border border-[var(--apple-gray-3)] flex flex-col lg:flex-row min-h-[700px]">
+              
+              {/* Left Form Area */}
+              <div className="flex-1 p-8 space-y-6 border-r border-[var(--apple-gray-2)]">
+                {/* Recipient */}
+                <div className="space-y-1.5">
+                  <span className="text-[11px] font-bold text-[var(--apple-gray-5)] uppercase tracking-widest ml-1">Recipient</span>
+                  <div className="flex items-center gap-4 border border-[var(--apple-gray-3)] px-4 py-3 bg-white focus-within:border-[var(--accent)] focus-within:ring-2 focus-within:ring-[var(--accent)] transition-all rounded-xl">
+                    <Mail size={16} className="text-[var(--apple-gray-4)]" />
+                    <input
+                      type="email"
+                      value={emailForm.to}
+                      onChange={(e) => setEmailForm({ ...emailForm, to: e.target.value })}
+                      placeholder="hospital-representative@email.com"
+                      className="flex-1 bg-transparent no-internal-border text-[15px] placeholder:text-[var(--apple-gray-4)]"
+                    />
+                  </div>
+                </div>
+
+                {/* Subject */}
+                <div className="space-y-1.5">
+                  <span className="text-[11px] font-bold text-[var(--apple-gray-5)] uppercase tracking-widest ml-1">Subject</span>
+                  <div className="flex items-center gap-4 border border-[var(--apple-gray-3)] px-4 py-3 bg-white focus-within:border-[var(--accent)] focus-within:ring-2 focus-within:ring-[var(--accent)] transition-all rounded-xl">
+                    <Type size={16} className="text-[var(--apple-gray-4)]" />
+                    <input
+                      type="text"
+                      value={emailForm.subject}
+                      onChange={(e) => setEmailForm({ ...emailForm, subject: e.target.value })}
+                      className="flex-1 bg-transparent no-internal-border text-[15px] font-semibold"
+                    />
+                  </div>
+                </div>
+
+                {/* Body */}
+                <div className="space-y-1.5">
+                  <span className="text-[11px] font-bold text-[var(--apple-gray-5)] uppercase tracking-widest ml-1">Message Body</span>
+                  <div className="border border-[var(--apple-gray-3)] p-6 bg-white focus-within:border-[var(--accent)] focus-within:ring-2 focus-within:ring-[var(--accent)] transition-all rounded-xl shadow-inner">
+                    <textarea
+                      value={emailForm.body}
+                      onChange={(e) => setEmailForm({ ...emailForm, body: e.target.value })}
+                      placeholder="Type your message here..."
+                      className="w-full min-h-[350px] bg-transparent no-internal-border text-[15px] leading-relaxed resize-none"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Attachments Area */}
+              <div className="w-full lg:w-[350px] bg-[var(--apple-gray-1)] p-8 flex flex-col">
+                <h4 className="text-[13px] font-bold text-[var(--apple-black)] uppercase tracking-wider mb-6 flex items-center gap-2">
+                   <FolderOpen size={16} className="text-[var(--accent)]" />
+                   Attachments
+                </h4>
+                
+                <div className="space-y-4 flex-1 overflow-y-auto pr-2">
+                  {/* Generated PDF Badge */}
+                  <div className="bg-white p-4 border border-emerald-200 rounded-xl shadow-sm relative group overflow-hidden">
+                    <div className="absolute top-0 left-0 w-1 h-full bg-[var(--emerald)]"></div>
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 bg-emerald-50 text-[var(--emerald)] flex items-center justify-center rounded-lg">
+                        <FileText size={16} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[13px] font-bold text-[var(--apple-black)] truncate">Quotation_{formData.hospitalName || 'Draft'}.pdf</p>
+                        <p className="text-[10px] text-[var(--emerald)] font-bold uppercase tracking-widest">Auto-Generated</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Manual Attachments List */}
+                  {emailForm.selectedDriveFiles.filter(f => !f.isGenerated).map(file => (
+                    <div key={file.id} className="bg-white p-4 border border-amber-200 rounded-xl shadow-sm relative group">
+                      <div className="absolute top-0 left-0 w-1 h-full bg-amber-500"></div>
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-amber-50 text-amber-600 flex items-center justify-center rounded-lg">
+                          <FileCheck size={16} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[13px] font-bold text-[var(--apple-black)] truncate">{file.label || file.fileName}</p>
+                          <p className="text-[10px] text-amber-600 font-bold uppercase tracking-widest">Drive Document</p>
+                        </div>
+                        <button 
+                          onClick={() => setEmailForm(prev => ({ ...prev, selectedDriveFiles: prev.selectedDriveFiles.filter(f => f.id !== file.id) }))}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-red-500 hover:bg-red-50 rounded-lg"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  
+                  {/* Drive Picker Shortcut */}
+                  <div className="pt-6 mt-4 border-t border-[var(--apple-gray-2)]">
+                    <p className="text-[11px] font-bold text-[var(--apple-gray-5)] uppercase tracking-widest mb-4">Add More from Drive</p>
+                    <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2">
+                       {/* SRR Section */}
+                       <div>
+                         <p className="text-[9px] font-bold text-[var(--emerald)] uppercase tracking-tighter mb-2">SRR Certificates</p>
+                         <div className="grid grid-cols-2 lg:grid-cols-1 gap-2">
+                            {(driveFiles.srr || []).map(file => (
+                               <button
+                                 key={file.id}
+                                 onClick={() => {
+                                   const exists = emailForm.selectedDriveFiles.find(f => f.id === file.id);
+                                   if (exists) {
+                                     setEmailForm(prev => ({ ...prev, selectedDriveFiles: prev.selectedDriveFiles.filter(f => f.id !== file.id) }));
+                                   } else {
+                                     setEmailForm(prev => ({ ...prev, selectedDriveFiles: [...prev.selectedDriveFiles, file] }));
+                                   }
+                                 }}
+                                 className={`flex items-center gap-2 p-2 border text-left transition-all rounded-lg ${emailForm.selectedDriveFiles.find(f => f.id === file.id) ? 'bg-emerald-50 border-[var(--accent)] shadow-sm' : 'bg-white border-[var(--apple-gray-2)] hover:bg-[var(--apple-gray-1)]'}`}
+                               >
+                                  <div className={`w-4 h-4 border flex items-center justify-center rounded ${emailForm.selectedDriveFiles.find(f => f.id === file.id) ? 'bg-[var(--accent)] border-[var(--accent)]' : 'border-[var(--apple-gray-3)]'}`}>
+                                     {emailForm.selectedDriveFiles.find(f => f.id === file.id) && <CheckSquare size={10} className="text-white" />}
+                                  </div>
+                                  <span className="text-[11px] font-semibold truncate">{file.label}</span>
+                               </button>
+                            ))}
+                         </div>
+                       </div>
+
+                       {/* Vendor Sections */}
+                       {(driveFiles.vendor || []).map(folder => (
+                         <div key={folder.id}>
+                           <p className="text-[9px] font-bold text-amber-600 uppercase tracking-tighter mb-2">{folder.name} Docs</p>
+                           <div className="grid grid-cols-2 lg:grid-cols-1 gap-2">
+                              {(folder.files || []).map(file => (
+                                 <button
+                                   key={file.id}
+                                   onClick={() => {
+                                     const exists = emailForm.selectedDriveFiles.find(f => f.id === file.id);
+                                     if (exists) {
+                                       setEmailForm(prev => ({ ...prev, selectedDriveFiles: prev.selectedDriveFiles.filter(f => f.id !== file.id) }));
+                                     } else {
+                                       setEmailForm(prev => ({ ...prev, selectedDriveFiles: [...prev.selectedDriveFiles, file] }));
+                                     }
+                                   }}
+                                   className={`flex items-center gap-2 p-2 border text-left transition-all rounded-lg ${emailForm.selectedDriveFiles.find(f => f.id === file.id) ? 'bg-amber-50 border-amber-400 shadow-sm' : 'bg-white border-[var(--apple-gray-2)] hover:bg-[var(--apple-gray-1)]'}`}
+                                 >
+                                    <div className={`w-4 h-4 border flex items-center justify-center rounded ${emailForm.selectedDriveFiles.find(f => f.id === file.id) ? 'bg-amber-500 border-amber-500' : 'border-[var(--apple-gray-3)]'}`}>
+                                       {emailForm.selectedDriveFiles.find(f => f.id === file.id) && <CheckSquare size={10} className="text-white" />}
+                                    </div>
+                                    <span className="text-[11px] font-semibold truncate">{file.fileName}</span>
+                                 </button>
+                              ))}
+                           </div>
+                         </div>
+                       ))}
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="pt-8 mt-auto">
+                  <button
+                    onClick={handleGlobalSendEmail}
+                    disabled={isSendingEmail}
+                    className="w-full btn-primary !py-4 shadow-xl hover:shadow-2xl active:scale-[0.98] transition-all"
+                  >
+                    {isSendingEmail ? 'Sending...' : 'Dispatch Email Now'}
+                  </button>
+                  <p className="text-center text-[10px] text-[var(--apple-gray-5)] mt-4 font-medium uppercase tracking-widest">Powered by Resend API</p>
+                </div>
+              </div>
+            </div>
+          </main>
+        </div>
+      )}
+      {/* GENERATING QUOTATION OVERLAY */}
+      {isGenerating && !regeneratingItem && (
+        <div className="fixed inset-0 z-[7000] flex items-center justify-center bg-black/40 backdrop-blur-md animate-in fade-in duration-700">
+          <div className="flex flex-col items-center gap-10 p-16 bg-white border-b-8 border-emerald-500 shadow-[0_40px_100px_-20px_rgba(0,0,0,0.5)] animate-in slide-in-from-top-10 duration-500">
+            <div className="relative">
+              {/* Pulsing Aura */}
+              <div className="absolute inset-0 bg-emerald-500/20 rounded-full blur-3xl animate-pulse"></div>
+              
+              {/* Technical Gear Container */}
+              <div className="relative w-32 h-32 border-4 border-[var(--apple-gray-2)] flex items-center justify-center">
+                 <div className="absolute inset-[-8px] border border-dashed border-emerald-500 animate-[spin_20s_linear_infinite]"></div>
+                 <div className="w-20 h-20 bg-emerald-500 flex items-center justify-center shadow-xl animate-pulse">
+                    <FileText className="text-white" size={40} strokeWidth={2} />
+                 </div>
+              </div>
+            </div>
+            
+            <div className="flex flex-col items-center gap-3 text-center">
+              <h3 className="text-[32px] font-black uppercase tracking-tighter text-[var(--apple-black)] leading-none mb-2" style={{ fontFamily: "'Jost', sans-serif" }}>
+                Generating
+              </h3>
+              <div className="h-1 w-20 bg-emerald-500 mb-2"></div>
+              <p className="text-[13px] text-[var(--apple-gray-5)] font-bold uppercase tracking-[0.2em] max-w-[320px]">
+                Constructing High-Fidelity PDF
+              </p>
+            </div>
+
+            {/* Industrial Progress Bar */}
+            <div className="w-[300px] h-2 bg-[var(--apple-gray-1)] overflow-hidden border border-[var(--apple-gray-2)]">
+              <div className="h-full bg-emerald-500 animate-progress-sweep"></div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* GLOBAL DISPATCHING OVERLAY */}
+      {isSendingEmail && (
+        <div className="fixed inset-0 z-[7000] flex items-center justify-center bg-black/40 backdrop-blur-md animate-in fade-in duration-700">
+          <div className="flex flex-col items-center gap-10 p-16 bg-white border-b-8 border-[var(--accent)] shadow-[0_40px_100px_-20px_rgba(0,0,0,0.5)] animate-in slide-in-from-bottom-10 duration-500">
+            <div className="relative">
+              {/* Pulsing Aura */}
+              <div className="absolute inset-0 bg-[var(--accent)]/20 rounded-full blur-3xl animate-pulse"></div>
+              
+              {/* Spinning Industrial Container */}
+              <div className="relative w-32 h-32 border-4 border-dashed border-[var(--apple-gray-3)] rounded-none flex items-center justify-center animate-[spin_10s_linear_infinite]">
+                 <div className="w-24 h-24 bg-[var(--apple-black)] flex items-center justify-center shadow-2xl animate-[reverse-spin_1s_linear_infinite]">
+                    <Mail className="text-white" size={48} strokeWidth={1.5} />
+                 </div>
+              </div>
+            </div>
+            
+            <div className="flex flex-col items-center gap-3 text-center">
+              <h3 className="text-[32px] font-black uppercase tracking-tighter text-[var(--apple-black)] leading-none mb-2" style={{ fontFamily: "'Jost', sans-serif" }}>
+                Dispatching
+              </h3>
+              <div className="h-1 w-20 bg-[var(--accent)] mb-2"></div>
+              <p className="text-[13px] text-[var(--apple-gray-5)] font-bold uppercase tracking-[0.2em] max-w-[320px]">
+                Transmitting Premium Documents
+              </p>
+            </div>
+
+            {/* Industrial Progress Bar */}
+            <div className="w-[300px] h-2 bg-[var(--apple-gray-1)] overflow-hidden border border-[var(--apple-gray-2)]">
+              <div className="h-full bg-[var(--accent)] animate-progress-sweep"></div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PREMIUM ALERT MODAL (INDUSTRIAL REDESIGN) */}
+      {alertModal && (
+        <div className="fixed inset-0 z-[5000] flex items-center justify-center p-6">
+          <div 
+            className="absolute inset-0 bg-black/60 backdrop-blur-[2px] animate-in fade-in duration-300" 
+            onClick={() => {
+              if (alertModal.onInput) return; // Prevent closing prompt on backdrop
+              const onCancel = alertModal.onCancel;
+              setAlertModal(null);
+              if (onCancel) onCancel();
+            }}
+          ></div>
+          
+          <div className="relative bg-white w-full max-w-[420px] rounded-sm shadow-[0_20px_50px_rgba(0,0,0,0.3)] border-t-4 overflow-hidden animate-in zoom-in-95 fade-in duration-200 border-[var(--apple-black)]">
+            {/* Colored Top Border based on type */}
+            <div className={`h-1.5 w-full ${
+              alertModal.type === 'success' ? 'bg-emerald-500' :
+              alertModal.type === 'error' ? 'bg-red-500' :
+              'bg-[var(--accent)]'
+            }`}></div>
+
+            <div className="p-8">
+              <div className="flex items-start gap-5 mb-8">
+                {/* Square Icon Container */}
+                <div className={`w-14 h-14 rounded-none flex items-center justify-center shrink-0 border-2 ${
+                  alertModal.type === 'success' ? 'bg-emerald-50 border-emerald-500 text-emerald-600' :
+                  alertModal.type === 'error' ? 'bg-red-50 border-red-500 text-red-600' :
+                  'bg-blue-50 border-blue-500 text-blue-600'
+                }`}>
+                  {alertModal.type === 'success' ? <FileCheck size={32} strokeWidth={2} /> :
+                   alertModal.type === 'error' ? <Plus className="rotate-45" size={32} strokeWidth={2} /> :
+                   <Mail size={32} strokeWidth={2} />}
+                </div>
+                
+                <div className="flex-1 pt-1">
+                  <h3 className="text-[28px] font-black text-[var(--apple-black)] uppercase tracking-tighter mb-1 leading-none" style={{ fontFamily: "'Jost', sans-serif" }}>
+                    {alertModal.title}
+                  </h3>
+                  <div className={`h-1.5 w-16 mb-4 ${
+                    alertModal.type === 'success' ? 'bg-emerald-500' :
+                    alertModal.type === 'error' ? 'bg-red-500' :
+                    'bg-[var(--accent)]'
+                  }`}></div>
+                  <p className="text-[16px] text-[var(--apple-gray-6)] leading-relaxed font-semibold">
+                    {alertModal.message}
+                  </p>
+                </div>
+              </div>
+
+              {alertModal.showInput && (
+                <div className="mb-8">
+                  <span className="text-[11px] font-bold text-[var(--apple-gray-5)] uppercase tracking-widest block mb-2">Security Verification</span>
+                  <input 
+                    id="modal-prompt-input"
+                    type="password"
+                    placeholder="Enter Admin Password"
+                    autoFocus
+                    className="w-full bg-[var(--apple-gray-1)] border-2 border-[var(--apple-gray-2)] focus:border-[var(--apple-black)] text-[16px] font-bold p-4 rounded-none transition-all outline-none"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        const val = e.target.value;
+                        setAlertModal(null);
+                        alertModal.onInput(val);
+                      }
+                    }}
+                  />
+                </div>
+              )}
+
+              <div className="flex flex-col gap-3">
+                <button 
+                  onClick={() => {
+                    const inputVal = document.getElementById('modal-prompt-input')?.value;
+                    const onConfirm = alertModal.onConfirm;
+                    const onInput = alertModal.onInput;
+                    setAlertModal(null);
+                    if (onInput) onInput(inputVal);
+                    if (onConfirm) onConfirm();
+                  }}
+                  className={`w-full py-4 rounded-none text-[14px] font-black uppercase tracking-widest text-white transition-all shadow-md active:translate-y-0.5 ${
+                    alertModal.type === 'error' ? 'bg-red-600 hover:bg-red-700' : 'bg-[var(--apple-black)] hover:bg-gray-800'
+                  }`}
+                >
+                  {alertModal.confirmText || 'Proceed Now'}
+                </button>
+
+                {(alertModal.onConfirm || alertModal.onInput || alertModal.onCancel) && (
+                  <button 
+                    onClick={() => {
+                      const onCancel = alertModal.onCancel;
+                      setAlertModal(null);
+                      if (onCancel) onCancel();
+                    }}
+                    className="w-full py-3.5 rounded-none text-[12px] font-bold uppercase tracking-widest text-[var(--apple-gray-5)] hover:text-[var(--apple-black)] hover:bg-[var(--apple-gray-1)] border border-transparent hover:border-[var(--apple-gray-2)] transition-all"
+                  >
+                    {alertModal.cancelText || 'Decline'}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

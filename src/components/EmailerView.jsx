@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Mail, FileText, FileCheck, CheckSquare, ChevronRight, HardDrive } from 'lucide-react';
+import { Mail, FileText, FileCheck, CheckSquare, ChevronRight, HardDrive, Plus } from 'lucide-react';
+import { sendEmailWithResend } from '../utils/emailService';
 
-const EmailerView = ({ driveFiles }) => {
+const EmailerView = ({ driveFiles, priceLists, onEmailSent, showAlert }) => {
   const [emailForm, setEmailForm] = useState({
     to: '',
     subject: 'Documents from Sri Raja Rajeshwari Ortho Plus',
@@ -20,19 +21,23 @@ const EmailerView = ({ driveFiles }) => {
       return;
     }
 
-    const srrFiles = emailForm.selectedDriveFiles.filter(f => f.isSRR);
-    const vendorFiles = emailForm.selectedDriveFiles.filter(f => !f.isSRR);
+    const srrFiles = emailForm.selectedDriveFiles.filter(f => f.isSRR && !f.isGenerated);
+    const vendorFiles = emailForm.selectedDriveFiles.filter(f => !f.isSRR && !f.isGenerated);
     
     let subject = 'Documents: ';
     if (srrFiles.length > 0 && vendorFiles.length > 0) {
       subject += `SRR & Manufacturer Documents`;
     } else if (srrFiles.length > 0) {
       subject += `SRR Documents`;
-    } else {
+    } else if (vendorFiles.length > 0) {
       subject += `Manufacturer Documents`;
+    } else if (emailForm.selectedDriveFiles.some(f => f.isGenerated)) {
+      subject = `Quotation from Sri Raja Rajeshwari Ortho Plus`;
     }
 
     let body = `Dear Sir/Madam,\n\nPlease find the attached documents for your reference:\n\n`;
+    
+    const hasAdditionalDocs = srrFiles.length > 0 || vendorFiles.length > 0;
     
     if (srrFiles.length > 0) {
       body += `SRR Documents:\n`;
@@ -48,6 +53,10 @@ const EmailerView = ({ driveFiles }) => {
         body += `${i + 1}. ${f.label || f.fileName}\n`;
       });
       body += `\n`;
+    }
+
+    if (!hasAdditionalDocs) {
+      body = `Dear Sir/Madam,\n\nPlease find the attached Quotation from Sri Raja Rajeshwari Ortho Plus for your kind reference.\n\n`;
     }
 
     body += `Thank you for your business.\n\nRegards,\nSri Raja Rajeshwari Ortho Plus`;
@@ -72,49 +81,49 @@ const EmailerView = ({ driveFiles }) => {
   };
 
   const [isSending, setIsSending] = useState(false);
-
   const handleSendEmail = async () => {
-    if (!emailForm.to) return alert('Please enter recipient email.');
-    
-    setIsSending(true);
-    const scriptUrl = import.meta.env.VITE_GMAIL_SCRIPT_URL;
-
-    if (!scriptUrl) {
-      alert('Gmail Script URL not configured in .env.local. Falling back to manual Gmail.');
-      const { to, subject, body } = emailForm;
-      const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(to)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-      window.open(gmailUrl, '_blank');
-      setIsSending(false);
+    if (!emailForm.to) {
+      showAlert('Recipient Missing', 'Please enter a valid recipient email address.', 'error');
       return;
     }
-
-    // Prepare files for attachment
-    const filesToAttach = emailForm.selectedDriveFiles.map(f => ({
+    setIsSending(true);
+    
+    const filesToAttach = (emailForm.selectedDriveFiles || []).map(f => ({
       fileName: f.fileName || f.label || 'Document.pdf',
-      url: f.data // This is the Firebase Storage download URL
+      url: f.data
     }));
 
     try {
-      const response = await fetch(scriptUrl, {
-        method: 'POST',
-        mode: 'no-cors', // Google Apps Script requires no-cors for simple redirect handling
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          token: import.meta.env.VITE_GMAIL_TOKEN,
-          to: emailForm.to,
-          subject: emailForm.subject,
-          body: emailForm.body,
-          files: filesToAttach
-        })
+      const result = await sendEmailWithResend({
+        to: emailForm.to,
+        subject: emailForm.subject,
+        body: emailForm.body,
+        files: filesToAttach
       });
 
-      // Note: with 'no-cors', we can't read the response body, 
-      // but if it doesn't throw, it usually sent successfully.
-      alert('Email sent successfully via srrorthoplus999@gmail.com!');
-      setEmailForm(prev => ({ ...prev, selectedDriveFiles: [] }));
+      if (result.success) {
+        showAlert('Email Dispatched', `Successfully sent to ${emailForm.to} via Resend.`, 'success');
+        
+        // Save to History via callback
+        if (onEmailSent) {
+          onEmailSent({
+            id: Date.now().toString(),
+            to: emailForm.to,
+            subject: emailForm.subject,
+            body: emailForm.body,
+            sentAt: new Date().toISOString(),
+            attachments: filesToAttach.map(f => f.fileName),
+            status: 'success'
+          });
+        }
+
+        setEmailForm(prev => ({ ...prev, selectedDriveFiles: [] }));
+      } else {
+        showAlert('Dispatch Error', result.message || 'The email service returned an error.', 'error');
+      }
     } catch (err) {
       console.error('Email error:', err);
-      alert('Failed to send email automatically. Please try the manual Gmail option.');
+      showAlert('Connection Error', 'Failed to transmit email. Please check your internet connection.', 'error');
     } finally {
       setIsSending(false);
     }
@@ -133,15 +142,15 @@ const EmailerView = ({ driveFiles }) => {
                   <Mail className={`${isSending ? 'animate-bounce' : ''} text-white`} size={20} />
                 </div>
                 <div>
-                  <h3 className="text-[17px] font-bold">Emailer</h3>
+                  <h3 className="text-[17px] font-bold">Resend Dispatch</h3>
                   <p className="text-[11px] text-[var(--apple-gray-5)] uppercase font-bold tracking-wider">
-                    {isSending ? 'Sending Message...' : 'Automated Dispatch'}
+                    {isSending ? 'Sending Message...' : 'Premium Email Service'}
                   </p>
                 </div>
               </div>
               <div className="text-right">
-                <p className="text-[10px] font-bold text-[var(--apple-gray-4)] uppercase tracking-widest">Sender Account</p>
-                <p className="text-[12px] font-semibold text-[var(--accent)]">srrorthoplus999@gmail.com</p>
+                <p className="text-[10px] font-bold text-[var(--apple-gray-4)] uppercase tracking-widest">Service Status</p>
+                <p className="text-[12px] font-semibold text-[var(--emerald)]">Active • High Deliverability</p>
               </div>
             </div>
 
@@ -179,6 +188,31 @@ const EmailerView = ({ driveFiles }) => {
                 />
               </div>
 
+              {/* Attachment Badges */}
+              <div className="flex items-center flex-wrap gap-2">
+                {emailForm.selectedDriveFiles.map(file => (
+                  <div 
+                    key={file.id} 
+                    className={`flex items-center gap-2 px-3 py-1.5 border text-[12px] font-bold ${file.isGenerated ? 'bg-emerald-50 border-[var(--accent)] text-[var(--accent)]' : 'bg-amber-50 border-amber-200 text-amber-700'}`}
+                  >
+                    {file.isGenerated ? <FileText size={14} /> : <FileCheck size={14} />}
+                    {file.label || file.fileName}
+                    <button 
+                      onClick={() => setEmailForm(prev => ({ 
+                        ...prev, 
+                        selectedDriveFiles: prev.selectedDriveFiles.filter(f => f.id !== file.id) 
+                      }))}
+                      className="ml-1 hover:opacity-70 transition-opacity"
+                    >
+                      <Plus className="rotate-45" size={14} />
+                    </button>
+                  </div>
+                ))}
+                {emailForm.selectedDriveFiles.length === 0 && (
+                  <p className="text-[11px] text-[var(--apple-gray-4)] font-medium">No files attached yet</p>
+                )}
+              </div>
+
               <div className="flex flex-col gap-3">
                 <button 
                   onClick={handleSendEmail} 
@@ -189,8 +223,8 @@ const EmailerView = ({ driveFiles }) => {
                 </button>
                 <p className="text-[11px] text-[var(--apple-gray-4)] text-center italic">
                   {isSending 
-                    ? 'Connecting to Google Services...' 
-                    : 'Real attachments will be fetched and sent automatically.'}
+                    ? 'Processing Attachments & Sending via Resend...' 
+                    : 'Documents are converted to Base64 for instant delivery.'}
                 </p>
               </div>
             </div>
@@ -253,6 +287,32 @@ const EmailerView = ({ driveFiles }) => {
               ))}
               {(!driveFiles.vendor || driveFiles.vendor.length === 0) && (
                 <p className="text-[13px] text-[var(--apple-gray-4)] italic p-4 border border-dashed border-[var(--apple-gray-3)] text-center">No vendor folders found</p>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <h4 className="text-[13px] font-bold text-[var(--apple-gray-5)] uppercase tracking-wider mb-4 flex items-center gap-2">
+              <FileText size={16} /> Price Lists
+            </h4>
+            <div className="space-y-2">
+              {(priceLists || []).map(file => (
+                <button
+                  key={file.id}
+                  onClick={() => toggleFile(file, false)}
+                  className={`w-full flex items-center gap-3 p-3 border text-left transition-all ${emailForm.selectedDriveFiles.find(f => f.id === file.id) ? 'bg-blue-50 border-blue-400' : 'bg-white border-[var(--apple-gray-2)] hover:bg-[var(--apple-gray-1)]'}`}
+                >
+                  <div className={`w-4 h-4 border flex items-center justify-center ${emailForm.selectedDriveFiles.find(f => f.id === file.id) ? 'bg-blue-500 border-blue-500' : 'border-[var(--apple-gray-3)]'}`}>
+                    {emailForm.selectedDriveFiles.find(f => f.id === file.id) && <CheckSquare size={10} className="text-white" />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[12px] font-semibold truncate">{file.label}</p>
+                    <span className="text-[10px] text-[var(--apple-gray-4)] uppercase">{file.fileName}</span>
+                  </div>
+                </button>
+              ))}
+              {(!priceLists || priceLists.length === 0) && (
+                <p className="text-[13px] text-[var(--apple-gray-4)] italic p-4 border border-dashed border-[var(--apple-gray-3)] text-center">No price lists found</p>
               )}
             </div>
           </div>

@@ -17,7 +17,7 @@ const LibraryView = ({ templates, useTemplate, setEditingTemplate, setView, setT
                 id: Date.now().toString(),
                 name: 'New Template',
                 description: '',
-                requiresAttachment: false,
+                requiresPriceList: false,
                 subject: '',
                 defaultMake: '',
                 defaultDelivery: '',
