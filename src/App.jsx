@@ -62,6 +62,7 @@ function App() {
   const [previewPriceListUrl, setPreviewPriceListUrl] = useState(null);
   const [regeneratingItem, setRegeneratingItem] = useState(null);
   const [alertModal, setAlertModal] = useState(null); // { type, title, message, onConfirm, onCancel, confirmText, cancelText, showInput, onInput }
+  const [isDataLoading, setIsDataLoading] = useState(false);
 
   const showAlert = (title, message, type = 'success') => {
     setAlertModal({ type, title, message });
@@ -192,6 +193,7 @@ function App() {
   const refreshData = async (currentUser = user) => {
     if (!currentUser) return;
     setSyncStatus('syncing');
+    setIsDataLoading(true);
     try {
       const data = await loadDatabase();
       if (data) {
@@ -232,6 +234,8 @@ function App() {
     } catch (e) {
       console.error("Refresh error:", e);
       setSyncStatus('error');
+    } finally {
+      setIsDataLoading(false);
     }
   };
 
@@ -1164,30 +1168,42 @@ function App() {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {templates.filter(t => 
-                  t.name.toLowerCase().includes(templateSearchQuery.toLowerCase()) || 
-                  (t.description || '').toLowerCase().includes(templateSearchQuery.toLowerCase())
-                ).map(t => (
-                  <LibraryCard
-                    key={t.id}
-                    template={t}
-                    showAdminTools={isManagementActive}
-                    onUse={useTemplate}
-                    onEdit={(t) => { setEditingTemplate(JSON.parse(JSON.stringify(t))); setView('builder'); }}
-                    onDuplicate={handleDuplicateTemplate}
-                    onDelete={async (id) => {
-                      confirmDelete(async () => {
-                        await deleteTemplate(id);
-                        setTemplates(templates.filter(temp => temp.id !== id));
-                      });
-                    }}
-                  />
-                ))}
-                {templates.length === 0 && (
-                  <div className="col-span-full py-20 flex flex-col items-center justify-center border border-dashed border-[var(--apple-gray-3)] rounded-3xl">
-                    <Database size={48} className="text-[var(--apple-gray-4)] mb-4" />
-                    <p className="text-[17px] font-medium text-[var(--apple-gray-5)]">No templates found.</p>
-                  </div>
+                {isDataLoading ? (
+                  Array(6).fill(0).map((_, i) => (
+                    <div key={i} className="apple-card p-6 h-[200px] animate-pulse bg-[var(--apple-gray-1)] border-transparent">
+                      <div className="w-12 h-12 bg-[var(--apple-gray-2)] rounded-2xl mb-6"></div>
+                      <div className="h-6 bg-[var(--apple-gray-2)] rounded-lg w-3/4 mb-3"></div>
+                      <div className="h-4 bg-[var(--apple-gray-2)] rounded-lg w-1/2"></div>
+                    </div>
+                  ))
+                ) : (
+                  <>
+                    {templates.filter(t => 
+                      t.name.toLowerCase().includes(templateSearchQuery.toLowerCase()) || 
+                      (t.description || '').toLowerCase().includes(templateSearchQuery.toLowerCase())
+                    ).map(t => (
+                      <LibraryCard
+                        key={t.id}
+                        template={t}
+                        showAdminTools={isManagementActive}
+                        onUse={useTemplate}
+                        onEdit={(t) => { setEditingTemplate(JSON.parse(JSON.stringify(t))); setView('builder'); }}
+                        onDuplicate={handleDuplicateTemplate}
+                        onDelete={async (id) => {
+                          confirmDelete(async () => {
+                            await deleteTemplate(id);
+                            setTemplates(templates.filter(temp => temp.id !== id));
+                          });
+                        }}
+                      />
+                    ))}
+                    {templates.length === 0 && (
+                      <div className="col-span-full py-20 flex flex-col items-center justify-center border border-dashed border-[var(--apple-gray-3)] rounded-3xl">
+                        <Database size={48} className="text-[var(--apple-gray-4)] mb-4" />
+                        <p className="text-[17px] font-medium text-[var(--apple-gray-5)]">No templates found.</p>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>
