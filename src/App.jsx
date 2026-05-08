@@ -772,6 +772,12 @@ function App() {
     setView('drafting');
   };
 
+  const editHistoryItem = (item) => {
+    setFormData(JSON.parse(JSON.stringify(item.formData)));
+    setDraftContent(JSON.parse(JSON.stringify(item.content)));
+    setView('drafting');
+  };
+
   const handleDuplicateTemplate = async (template) => {
     setSyncStatus('syncing');
     const newTemplate = {
@@ -1958,7 +1964,7 @@ function App() {
         {/* VIEW: HISTORY */}
         {view === 'history' && (
           <div className="h-full overflow-y-auto px-8 py-12 md:px-16 md:py-16">
-            <div className="max-w-5xl mx-auto">
+            <div className="max-w-7xl mx-auto">
               <div className="flex flex-col md:flex-row md:items-end justify-between mb-12 gap-6">
                 <div>
                   <h1 className="apple-title-1 mb-2">History</h1>
@@ -2032,30 +2038,28 @@ function App() {
                                   <>
                                     <button
                                       onClick={() => setPreviewingItem(item)}
-                                      className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-[var(--apple-gray-2)] rounded-lg text-[12px] font-semibold text-[var(--apple-gray-6)] hover:border-[var(--apple-gray-4)] transition-colors"
+                                      className="w-9 h-9 flex items-center justify-center bg-white border border-[var(--apple-gray-2)] rounded-full text-[var(--apple-gray-6)] hover:border-[var(--apple-gray-4)] hover:bg-[var(--apple-gray-1)] transition-all shadow-sm"
                                       title="View Entire Quotation"
                                     >
-                                      <Eye size={13} /> View
+                                      <Eye size={16} />
                                     </button>
                                     <button
                                       onClick={() => setRegeneratingItem(item)}
                                       disabled={isGenerating || regeneratingItem}
-                                      className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-[var(--apple-gray-2)] rounded-lg text-[12px] font-semibold text-[var(--emerald)] hover:border-[var(--emerald)] hover:bg-[var(--emerald-light)] transition-colors disabled:opacity-50"
+                                      className="w-9 h-9 flex items-center justify-center bg-white border border-[var(--apple-gray-2)] rounded-full text-[var(--emerald)] hover:border-[var(--emerald)] hover:bg-[var(--emerald-light)] transition-all disabled:opacity-50 shadow-sm"
                                       title="Download PDF"
                                     >
-                                      <Download size={13} /> Download
+                                      <Download size={16} />
                                     </button>
 
                                     <button 
                                       onClick={() => setRegeneratingItem({ ...item, _emailMode: true })}
                                       disabled={isGenerating || regeneratingItem}
-                                      className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 border border-blue-100 rounded-lg text-[12px] font-semibold text-blue-600 hover:bg-blue-100 transition-colors disabled:opacity-50"
+                                      className="w-9 h-9 flex items-center justify-center bg-blue-50 border border-blue-100 rounded-full text-blue-600 hover:bg-blue-100 transition-all disabled:opacity-50 shadow-sm"
                                       title="Email Quotation"
                                     >
-                                      <Mail size={13} /> Email
+                                      <Mail size={16} />
                                     </button>
-
-
                                     
                                     {isManagementActive && (
                                       <>
@@ -2065,20 +2069,20 @@ function App() {
                                             setDraftContent(item.content || []);
                                             setView('drafting');
                                           }}
-                                          className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-[var(--apple-gray-2)] rounded-lg text-[12px] font-semibold text-[var(--apple-black)] hover:border-[var(--apple-gray-4)] transition-colors"
+                                          className="w-9 h-9 flex items-center justify-center bg-white border border-[var(--apple-gray-2)] rounded-full text-[var(--apple-black)] hover:border-[var(--apple-gray-4)] hover:bg-[var(--apple-gray-1)] transition-all shadow-sm"
                                           title="Edit as Draft"
                                         >
-                                          <Edit2 size={13} /> Edit
+                                          <Edit2 size={16} />
                                         </button>
                                         <button
                                           onClick={() => confirmDelete(async () => {
                                             setQuotationHistory(prev => prev.filter(h => h.id !== item.id));
                                             await syncItem('history', item, true);
                                           })}
-                                          className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                          className="w-9 h-9 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 hover:bg-red-50 rounded-full transition-all"
                                           title="Delete History Item"
                                         >
-                                          <Trash2 size={16} />
+                                          <Trash2 size={18} />
                                         </button>
                                       </>
                                     )}
