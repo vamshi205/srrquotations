@@ -783,7 +783,14 @@ function App() {
     }
   };
 
-
+  const handleTogglePin = async (id) => {
+    const updated = templates.map(t => t.id === id ? { ...t, isPinned: !t.isPinned } : t);
+    setTemplates(updated);
+    const target = updated.find(t => t.id === id);
+    if (target) {
+      await saveTemplate(target);
+    }
+  };
 
   const handleDriveUpload = (e, colName, folderId = null) => {
     const files = Array.from(e.target.files);
@@ -1178,25 +1185,33 @@ function App() {
                   ))
                 ) : (
                   <>
-                    {templates.filter(t => 
-                      t.name.toLowerCase().includes(templateSearchQuery.toLowerCase()) || 
-                      (t.description || '').toLowerCase().includes(templateSearchQuery.toLowerCase())
-                    ).map(t => (
-                      <LibraryCard
-                        key={t.id}
-                        template={t}
-                        showAdminTools={isManagementActive}
-                        onUse={useTemplate}
-                        onEdit={(t) => { setEditingTemplate(JSON.parse(JSON.stringify(t))); setView('builder'); }}
-                        onDuplicate={handleDuplicateTemplate}
-                        onDelete={async (id) => {
-                          confirmDelete(async () => {
-                            await deleteTemplate(id);
-                            setTemplates(templates.filter(temp => temp.id !== id));
-                          });
-                        }}
-                      />
-                    ))}
+                    {templates
+                      .filter(t => 
+                        t.name.toLowerCase().includes(templateSearchQuery.toLowerCase()) || 
+                        (t.description || '').toLowerCase().includes(templateSearchQuery.toLowerCase())
+                      )
+                      .sort((a, b) => {
+                        if (a.isPinned && !b.isPinned) return -1;
+                        if (!a.isPinned && b.isPinned) return 1;
+                        return a.name.localeCompare(b.name);
+                      })
+                      .map(t => (
+                        <LibraryCard
+                          key={t.id}
+                          template={t}
+                          showAdminTools={isManagementActive}
+                          onUse={useTemplate}
+                          onEdit={(t) => { setEditingTemplate(JSON.parse(JSON.stringify(t))); setView('builder'); }}
+                          onDuplicate={handleDuplicateTemplate}
+                          onTogglePin={handleTogglePin}
+                          onDelete={async (id) => {
+                            confirmDelete(async () => {
+                              await deleteTemplate(id);
+                              setTemplates(templates.filter(temp => temp.id !== id));
+                            });
+                          }}
+                        />
+                      ))}
                     {templates.length === 0 && (
                       <div className="col-span-full py-20 flex flex-col items-center justify-center border border-dashed border-[var(--apple-gray-3)] rounded-3xl">
                         <Database size={48} className="text-[var(--apple-gray-4)] mb-4" />
