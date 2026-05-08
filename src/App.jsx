@@ -2459,27 +2459,6 @@ function App() {
                 </div>
               </div>
 
-              <div className="apple-card p-8 mt-8 border-2 border-red-100 bg-red-50/20">
-                <h3 className="text-[17px] font-bold text-red-600 mb-2 flex items-center gap-2">
-                  <Trash2 size={18} /> Data Management
-                </h3>
-                <p className="text-[13px] text-[var(--apple-gray-5)] mb-6">
-                  Use this to completely wipe all file records (Brands, Certificates, Vendor Docs) from the database and clear your cache.
-                </p>
-                <button
-                  onClick={async () => {
-                    showPrompt('Purge Cache', 'Type "PURGE" to confirm clearing local cache:', (val) => {
-                      if (val !== 'PURGE') return;
-                      localStorage.clear();
-                      showAlert('Cache Cleared', 'Local cache cleared successfully! The app will now reload.', 'success');
-                      setTimeout(() => window.location.reload(), 2000);
-                    });
-                  }}
-                  className="bg-red-500 hover:bg-red-600 text-white px-6 py-2.5 rounded-xl font-bold text-[14px] transition-colors flex items-center gap-2 shadow-sm"
-                >
-                  <Trash2 size={16} /> Clear Local Cache
-                </button>
-              </div>
             </div>
           </div>
         )}
