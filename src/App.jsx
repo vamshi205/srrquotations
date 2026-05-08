@@ -1519,9 +1519,10 @@ function App() {
                                             nc[idx] = { ...nc[idx], rows: newRows };
                                             setEditingTemplate({ ...editingTemplate, content: nc });
                                           }}
-                                          className={`w-full py-2.5 px-3 bg-transparent outline-none ${((block.headers[ci] || '').toLowerCase().includes('amount') || (block.headers[ci] || '').toLowerCase().includes('rate') || (block.headers[ci] || '').toLowerCase().includes('price') || (block.headers[ci] || '').toLowerCase().includes('qty')) ? 'text-right' : 'text-center'} text-[13px] hover:bg-black/5 focus:bg-white focus:ring-1 focus:ring-[var(--emerald)] transition-all`}
-                                        />
-                                    </td>
+                                            className={`w-full py-2.5 px-3 bg-transparent outline-none ${((block.headers[ci] || '').toLowerCase().includes('amount') || (block.headers[ci] || '').toLowerCase().includes('rate') || (block.headers[ci] || '').toLowerCase().includes('price') || (block.headers[ci] || '').toLowerCase().includes('qty')) ? 'text-right' : 'text-center'} text-[13px] hover:bg-black/5 focus:bg-white focus:ring-1 focus:ring-[var(--emerald)] transition-all`}
+                                          />
+                                        )}
+                                      </td>
                                   ))}
                                   <td className="p-0 text-center w-8">
                                     <button
