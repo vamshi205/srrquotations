@@ -53,7 +53,7 @@ const HistoryView = ({ quotationHistory, searchQuery, setSearchQuery, isGenerati
                   {filteredHistory.map((item) => (
                     <tr key={item.id} className="border-b border-[var(--apple-gray-2)] last:border-0 hover:bg-[var(--apple-gray-1)] transition-colors">
                       <td className="py-4 px-5">
-                        <span className="text-[13px] font-bold text-[var(--emerald)] bg-[var(--emerald-light)] px-2.5 py-1 rounded-md whitespace-nowrap">{item.ref}</span>
+                        <span className="text-[13px] font-bold text-[var(--emerald)] bg-[var(--emerald-light)] px-2.5 py-1 rounded-md whitespace-nowrap">{(item.ref || '').replace('SRR/QUOT/', '')}</span>
                       </td>
                       <td className="py-4 px-5">
                         <span className="text-[15px] font-semibold text-[var(--apple-black)]">{item.hospital}</span>
@@ -107,7 +107,7 @@ const HistoryView = ({ quotationHistory, searchQuery, setSearchQuery, isGenerati
                       <p className="text-[16px] font-bold text-[var(--apple-black)] leading-tight">{item.hospital}</p>
                       <p className="text-[12px] text-[var(--apple-gray-5)] font-medium">{item.templateName}</p>
                     </div>
-                    <span className="text-[11px] font-bold text-[var(--emerald)] bg-[var(--emerald-light)] px-2 py-0.5 rounded uppercase tracking-wider">{item.ref}</span>
+                    <span className="text-[11px] font-bold text-[var(--emerald)] bg-[var(--emerald-light)] px-2 py-0.5 rounded uppercase tracking-wider">{(item.ref || '').replace('SRR/QUOT/', '')}</span>
                   </div>
                   <div className="flex items-center justify-between text-[13px] text-[var(--apple-gray-5)] font-medium">
                     <span>{item.date}</span>

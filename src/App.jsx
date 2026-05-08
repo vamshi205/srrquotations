@@ -2011,7 +2011,7 @@ function App() {
                         {filtered.map((item) => (
                           <tr key={item.id} className="border-b border-[var(--apple-gray-2)] last:border-0 hover:bg-[var(--apple-gray-1)] transition-colors">
                             <td className="py-4 px-5">
-                              <span className="text-[13px] font-bold text-[var(--emerald)] bg-[var(--emerald-light)] px-2.5 py-1 rounded-md whitespace-nowrap">{item.ref}</span>
+                              <span className="text-[13px] font-bold text-[var(--emerald)] bg-[var(--emerald-light)] px-2.5 py-1 rounded-md whitespace-nowrap">{(item.ref || '').replace('SRR/QUOT/', '')}</span>
                             </td>
                             <td className="py-4 px-5">
                               <div className="flex items-center gap-2">
