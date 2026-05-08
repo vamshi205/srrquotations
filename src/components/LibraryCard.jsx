@@ -8,16 +8,22 @@ export default function LibraryCard({ template, onEdit, onDelete, onUse, onDupli
       <div>
         <div className="flex items-start justify-between gap-2 mb-3">
           <h3 className="text-[19px] font-semibold text-[var(--apple-black)] leading-tight tracking-tight">{template.name}</h3>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onTogglePin(template.id);
-            }}
-            className={`transition-all ${template.isPinned ? 'text-[var(--coral)]' : 'text-[var(--apple-gray-3)] hover:text-[var(--apple-gray-5)] opacity-0 group-hover:opacity-100'}`}
-            title={template.isPinned ? "Unpin template" : "Pin template"}
-          >
-            <Pin size={16} fill={template.isPinned ? "currentColor" : "none"} />
-          </button>
+          {showAdminTools ? (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onTogglePin(template.id);
+              }}
+              className={`transition-all ${template.isPinned ? 'text-[var(--coral)]' : 'text-[var(--apple-gray-3)] hover:text-[var(--apple-gray-5)] opacity-0 group-hover:opacity-100'}`}
+              title={template.isPinned ? "Unpin template" : "Pin template"}
+            >
+              <Pin size={16} fill={template.isPinned ? "currentColor" : "none"} />
+            </button>
+          ) : template.isPinned && (
+            <div className="text-[var(--coral)]" title="Pinned template">
+              <Pin size={16} fill="currentColor" />
+            </div>
+          )}
         </div>
         <p className="text-[15px] text-[var(--apple-gray-5)] leading-relaxed line-clamp-2">{template.description}</p>
       </div>
