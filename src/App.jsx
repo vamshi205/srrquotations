@@ -142,9 +142,6 @@ function App() {
     return { srr, vendor, personal, personalFolders };
   });
 
-  const [showPersonalDrive, setShowPersonalDrive] = useState(false);
-  const driveHeaderClicks = useRef(0);
-
   const [pdfCache, setPdfCache] = useState({}); // Legacy, will use Ref for speed
   const pdfCacheRef = useRef({}); // { fileId/url: Uint8Array }
   const [isDesignerMaximized, setIsDesignerMaximized] = useState(false);
@@ -397,7 +394,7 @@ function App() {
       // Save metadata to Firestore
       // Standardize collection names to match databaseService.js
       let collectionName = colName;
-      if (colName === 'drive_srr' || colName === 'drive_vendor_files' || colName === 'drive_personal') {
+      if (colName === 'drive_srr' || colName === 'drive_vendor_files' || colName === 'drive_personal' || colName === 'drive_personal_files') {
         collectionName = 'driveFiles';
       } else if (colName === 'price_lists') {
         collectionName = 'priceLists';
@@ -2225,18 +2222,7 @@ function App() {
           <div className="h-full overflow-y-auto px-8 py-12 md:px-16 md:py-16">
             <div className="max-w-4xl mx-auto">
               <header className="mb-12">
-                <h1 
-                  className="apple-title-1 mb-2 cursor-pointer select-none"
-                  onClick={() => {
-                    driveHeaderClicks.current += 1;
-                    if (driveHeaderClicks.current >= 5) {
-                      setShowPersonalDrive(!showPersonalDrive);
-                      driveHeaderClicks.current = 0;
-                    }
-                  }}
-                >
-                  Drive
-                </h1>
+                <h1 className="apple-title-1 mb-2">Drive</h1>
                 <p className="apple-subtitle">Manage your business documents and vendor files.</p>
               </header>
 
@@ -2297,7 +2283,7 @@ function App() {
               </div>
 
               {/* ── VENDOR DOCUMENTS (FOLDER BASED) ── */}
-              <div className={showPersonalDrive ? "mb-12" : ""}>
+              <div className="mb-12">
                 <div className="flex items-center justify-between gap-4 mb-4">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 bg-[var(--apple-gray-1)] rounded-xl flex items-center justify-center">
@@ -2423,9 +2409,8 @@ function App() {
                 )}
               </div>
 
-              {/* ── PERSONAL DRIVE (HIDDEN) ── */}
-              {showPersonalDrive && (
-                <div className="mt-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              {/* ── PERSONAL DRIVE ── */}
+              <div className="mt-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
                   <div className="relative overflow-hidden rounded-2xl border-2 border-indigo-500 bg-gradient-to-br from-indigo-50 via-white to-purple-50 p-6 mb-8">
                     <div className="flex items-center justify-between gap-4">
                       <div className="flex items-center gap-3">
@@ -2581,10 +2566,9 @@ function App() {
                     </>
                   )}
                 </div>
-              )}
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
         {/* VIEW: PRICE LISTS */}
         {view === 'pricelists' && (
