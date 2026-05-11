@@ -72,13 +72,17 @@ const QuotationTemplate = memo(({ id = "quotation-template", data, company, cont
       const targetWidth = 794; // 210mm in px at 96dpi
       const targetHeight = 1123; // 297mm in px at 96dpi
       
-      const availableWidth = container.clientWidth - 40;
+      const availableWidth = container.clientWidth - (window.innerWidth < 768 ? 20 : 40);
       const availableHeight = container.clientHeight - 40;
       
       const scaleW = availableWidth / targetWidth;
       const scaleH = availableHeight / targetHeight;
       
-      const newScale = Math.min(scaleW, scaleH, 1);
+      // On mobile, only scale by width so it's readable and can scroll vertically
+      // On desktop, scale to fit both dimensions
+      const isMobile = window.innerWidth < 768;
+      const newScale = isMobile ? scaleW : Math.min(scaleW, scaleH, 1);
+      
       setScale(newScale * 0.98);
     };
 

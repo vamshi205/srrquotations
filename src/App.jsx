@@ -1064,7 +1064,43 @@ function App() {
   };
 
   if (isAuthLoading) {
-    return <div className="min-h-screen bg-[var(--apple-gray-1)] flex items-center justify-center font-sans text-[var(--apple-gray-5)]">Loading...</div>;
+    return (
+      <div className="min-h-screen bg-[var(--bg)] flex items-center justify-center font-sans">
+        <div className="flex flex-col items-center gap-10 p-16 bg-white border-b-8 border-[var(--accent)] shadow-[0_40px_100px_-20px_rgba(0,0,0,0.1)] animate-in fade-in zoom-in-95 duration-1000">
+          <div className="relative">
+            {/* Pulsing Aura */}
+            <div className="absolute inset-0 bg-[var(--accent)]/10 rounded-full blur-3xl animate-pulse"></div>
+            
+            {/* Technical Gear Container */}
+            <div className="relative w-32 h-32 border-4 border-[var(--bg3)] flex items-center justify-center">
+               <div className="absolute inset-[-8px] border border-dashed border-[var(--accent)] animate-[spin_20s_linear_infinite]"></div>
+               <div className="w-20 h-20 bg-[var(--accent)] flex items-center justify-center shadow-xl">
+                  <FileUp className="text-white" size={40} strokeWidth={2} />
+               </div>
+            </div>
+          </div>
+          
+          <div className="flex flex-col items-center gap-3 text-center">
+            <h3 className="text-[32px] font-black uppercase tracking-tighter text-[var(--text)] leading-none mb-2" style={{ fontFamily: "'Jost', sans-serif" }}>
+              SRR Ortho Plus
+            </h3>
+            <div className="h-1.5 w-24 bg-[var(--accent)] mb-2"></div>
+            <p className="text-[13px] text-[var(--text3)] font-bold uppercase tracking-[0.2em]">
+              Initializing Platform
+            </p>
+          </div>
+
+          {/* Industrial Progress Bar */}
+          <div className="w-[300px] h-2 bg-[var(--bg2)] overflow-hidden border border-[var(--border)]">
+            <div className="h-full bg-[var(--accent)] animate-progress-sweep"></div>
+          </div>
+          
+          <p className="text-[11px] font-bold text-[var(--text3)] uppercase tracking-widest animate-pulse">
+            Establishing Secure Connection...
+          </p>
+        </div>
+      </div>
+    );
   }
 
   // If Firebase is configured but no user is logged in, OR if Firebase is completely missing its config (in which case Login shows the setup guide)
@@ -2411,18 +2447,18 @@ function App() {
 
               {/* ── PERSONAL DRIVE ── */}
               <div className="mt-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                  <div className="relative overflow-hidden rounded-2xl border-2 border-indigo-500 bg-gradient-to-br from-indigo-50 via-white to-purple-50 p-6 mb-8">
-                    <div className="flex items-center justify-between gap-4">
+                  <div className="relative overflow-hidden rounded-2xl border-2 border-indigo-500 bg-gradient-to-br from-indigo-50 via-white to-purple-50 p-4 md:p-6 mb-8">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
                       <div className="flex items-center gap-3">
-                        <div className="w-11 h-11 bg-indigo-600 rounded-xl flex items-center justify-center shadow-md shadow-indigo-200">
+                        <div className="w-11 h-11 bg-indigo-600 rounded-xl flex items-center justify-center shadow-md shadow-indigo-200 shrink-0">
                           <ShieldCheck size={22} className="text-white" />
                         </div>
                         <div>
-                          <h2 className="text-[20px] font-bold tracking-tight text-indigo-900">Personal Space</h2>
-                          <p className="text-[13px] text-indigo-600 font-medium">Private storage for personal documents</p>
+                          <h2 className="text-[18px] md:text-[20px] font-bold tracking-tight text-indigo-900">Personal Space</h2>
+                          <p className="text-[12px] md:text-[13px] text-indigo-600 font-medium">Private storage for personal documents</p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-3">
+                      <div className="flex flex-wrap items-center gap-3">
                         {!openPersonalFolder && (
                           <button onClick={async () => {
                             const name = prompt('Enter folder name:');
@@ -2430,7 +2466,7 @@ function App() {
                             const newFolder = { id: Date.now().toString(), name, type: 'drive_personal_folders', createdAt: new Date().toLocaleDateString('en-GB'), files: [] };
                             setDriveFiles(prev => ({ ...prev, personalFolders: [...(prev.personalFolders || []), newFolder] }));
                             await syncItem('drive_personal_folders', newFolder);
-                          }} className="btn-outline !text-indigo-600 !border-indigo-200 !bg-indigo-50/50 !py-2 !px-4 hover:!bg-indigo-100 transition-all">
+                          }} className="btn-outline !text-indigo-600 !border-indigo-200 !bg-indigo-50/50 !py-2 !px-4 hover:!bg-indigo-100 transition-all text-[13px]">
                             <Plus size={16} /> New Folder
                           </button>
                         )}
