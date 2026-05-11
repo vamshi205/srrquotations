@@ -9,13 +9,13 @@ import Login from './components/Login';
 import EmailerView from './components/EmailerView';
 import EmailHistoryView from './components/EmailHistoryView';
 import { sendEmailWithResend } from './utils/emailService';
-import { saveDatabase, loadDatabase, saveTemplate, deleteTemplate, saveHistoryItem, saveCompanyData, saveEmailHistoryItem } from './utils/databaseService';
+import { saveDatabase, loadDatabase, saveTemplate, deleteTemplate, saveHistoryItem, saveCompanyData, saveEmailHistoryItem, syncItem } from './utils/databaseService';
 import { auth, db, storage, hasFirebaseConfig } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { ref, getBlob } from 'firebase/storage';
 import { doc, getDoc, setDoc, collection, getDocs, deleteDoc, query, orderBy, writeBatch } from 'firebase/firestore';
 import { validateFile } from './utils/fileValidation';
-import { uploadFile, deleteFile, saveFileMetadata, deleteFileMetadata } from './utils/storageService';
+import { uploadFile, deleteFile, saveFileMetadata, deleteFileMetadata, getFileData, getFileMetadataFromStorage } from './utils/storageService';
 
 import {
   Download,
@@ -46,7 +46,9 @@ import {
   FileCheck,
   Mail,
   CheckSquare,
-  Menu
+  Menu,
+  RefreshCw,
+  ChevronRight
 } from 'lucide-react';
 
 function App() {
@@ -57,8 +59,10 @@ function App() {
   const [syncStatus, setSyncStatus] = useState('saved');
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
+  const [isSyncingStorage, setIsSyncingStorage] = useState(false);
   const [previewPdfUrl, setPreviewPdfUrl] = useState(null);
   const [previewingItem, setPreviewingItem] = useState(null);
+  const [previewScale, setPreviewScale] = useState(1);
   const [previewPriceListUrl, setPreviewPriceListUrl] = useState(null);
   const [regeneratingItem, setRegeneratingItem] = useState(null);
   const [alertModal, setAlertModal] = useState(null); // { type, title, message, onConfirm, onCancel, confirmText, cancelText, showInput, onInput }
@@ -177,6 +181,7 @@ function App() {
   useEffect(() => {
     setPreviewingItem(null);
     setPreviewPriceListUrl(null);
+    setPreviewScale(1);
     setShowEmailComposer(false);
   }, [view]);
 
@@ -911,6 +916,46 @@ function App() {
       }
     });
   };
+
+  const syncLegacyStorageSizes = async () => {
+    setIsSyncingStorage(true);
+    try {
+      const allFilesToSync = [
+        ...(driveFiles.srr || []).map(f => ({ ...f, col: 'drive_srr' })),
+        ...(driveFiles.personal || []).map(f => ({ ...f, col: 'drive_personal' })),
+        ...(driveFiles.vendor || []).flatMap(folder => (folder.files || []).map(f => ({ ...f, col: 'drive_vendor_files' }))),
+        ...(driveFiles.personalFolders || []).flatMap(folder => (folder.files || []).map(f => ({ ...f, col: 'drive_personal_files' })))
+      ].filter(f => !f.size && (f.storagePath || f.fileId));
+
+      if (allFilesToSync.length === 0) {
+        showAlert('Up to Date', 'All file sizes are already synchronized.', 'success');
+        setIsSyncingStorage(false);
+        return;
+      }
+
+      let successCount = 0;
+      for (const file of allFilesToSync) {
+        const path = file.storagePath || `documents/${file.fileId}`;
+        const metadata = await getFileMetadataFromStorage(path);
+        if (metadata && metadata.size) {
+          file.size = metadata.size;
+          // Update Firestore
+          await syncItem(file.col, file);
+          successCount++;
+        }
+      }
+
+      // Refresh everything
+      await refreshData();
+      showAlert('Sync Complete', `Updated ${successCount} files with correct sizes.`, 'success');
+    } catch (err) {
+      console.error(err);
+      showAlert('Sync Error', 'Failed to synchronize storage sizes.', 'error');
+    } finally {
+      setIsSyncingStorage(false);
+    }
+  };
+
 
   const generatePDF = async () => {
     if (!formData.hospitalName) return showAlert('Missing Info', 'Please enter Hospital Name.', 'error');
@@ -2268,7 +2313,17 @@ function App() {
                   {/* Storage Usage Bar */}
                   <div className="w-full md:w-72 bg-white rounded-2xl p-4 border border-[var(--apple-gray-2)] shadow-sm">
                     <div className="flex justify-between items-center mb-2">
-                      <span className="text-[11px] font-bold text-[var(--apple-gray-5)] uppercase tracking-wider">Cloud Storage</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-bold text-[var(--apple-gray-5)] uppercase tracking-wider">Cloud Storage</span>
+                        <button 
+                          onClick={syncLegacyStorageSizes}
+                          disabled={isSyncingStorage}
+                          className={`p-1 hover:bg-[var(--apple-gray-1)] rounded-md transition-all ${isSyncingStorage ? 'animate-spin text-[var(--emerald)]' : 'text-[var(--apple-gray-4)]'}`}
+                          title="Sync existing file sizes"
+                        >
+                          <RefreshCw size={12} />
+                        </button>
+                      </div>
                       <span className="text-[11px] font-bold text-[var(--apple-black)]">
                         {(() => {
                           const totalBytes = [
@@ -2896,6 +2951,31 @@ function App() {
               <p className="text-[11px] md:text-[13px] text-[var(--apple-gray-5)] mt-1 font-medium">{previewingItem.formData?.hospitalName} | {previewingItem.ref}</p>
             </div>
             <div className="flex items-center gap-2 md:gap-4">
+              {/* Zoom Controls */}
+              <div className="hidden md:flex items-center bg-white border border-[var(--apple-gray-3)] rounded-full px-2 py-1 mr-4 shadow-sm">
+                <button 
+                  onClick={() => setPreviewScale(prev => Math.max(0.5, prev - 0.1))}
+                  className="w-8 h-8 flex items-center justify-center hover:bg-[var(--apple-gray-1)] rounded-full transition-all"
+                >
+                  <Plus className="rotate-45" size={16} />
+                </button>
+                <span className="text-[11px] font-bold w-12 text-center text-[var(--apple-gray-6)]">{Math.round(previewScale * 100)}%</span>
+                <button 
+                  onClick={() => setPreviewScale(prev => Math.min(2, prev + 0.1))}
+                  className="w-8 h-8 flex items-center justify-center hover:bg-[var(--apple-gray-1)] rounded-full transition-all"
+                >
+                  <Plus size={16} />
+                </button>
+              </div>
+
+              {/* Mobile Zoom Toggle */}
+              <button 
+                onClick={() => setPreviewScale(prev => prev === 1 ? 0.5 : 1)}
+                className="md:hidden w-10 h-10 flex items-center justify-center bg-white border border-[var(--apple-gray-3)] rounded-full text-[var(--apple-black)] hover:bg-[var(--apple-gray-1)] transition-all"
+              >
+                <Search size={18} />
+              </button>
+
               <button 
                 onClick={() => setRegeneratingItem(previewingItem)}
                 className="w-10 h-10 flex items-center justify-center bg-white border border-[var(--apple-gray-3)] rounded-full text-[var(--emerald)] hover:bg-[var(--emerald-light)] transition-all"
@@ -2904,7 +2984,10 @@ function App() {
                 <Download size={20} />
               </button>
               <button 
-                onClick={() => setPreviewingItem(null)}
+                onClick={() => {
+                  setPreviewingItem(null);
+                  setPreviewScale(1);
+                }}
                 className="w-10 h-10 flex items-center justify-center bg-white border border-[var(--apple-gray-3)] rounded-full text-[var(--apple-gray-5)] hover:bg-[var(--apple-gray-1)] transition-all"
               >
                 <Plus className="rotate-45" size={24} />
@@ -2918,6 +3001,7 @@ function App() {
                   data={previewingItem.formData} 
                   content={previewingItem.content || []} 
                   company={companyData} 
+                  forceScale={previewScale}
                 />
               </div>
 

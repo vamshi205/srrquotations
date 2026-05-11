@@ -1,6 +1,6 @@
 import React, { memo } from 'react';
 
-const QuotationTemplate = memo(({ id = "quotation-template", data, company, content }) => {
+const QuotationTemplate = memo(({ id = "quotation-template", data, company, content, forceScale }) => {
   const { hospitalName, address, date, referenceNumber, discount, payment, gst, validity, warranty, make, delivery, subject, lineSpacing = 'standard' } = data;
   const { name: companyName, address: companyAddress, phone: companyPhone, email: companyEmail, website: companyWebsite } = company;
 
@@ -68,6 +68,11 @@ const QuotationTemplate = memo(({ id = "quotation-template", data, company, cont
     if (!containerRef.current || !contentRef.current) return;
     
     const updateScale = () => {
+      if (forceScale && forceScale !== 1) {
+        setScale(forceScale);
+        return;
+      }
+
       const container = containerRef.current;
       const targetWidth = 794; // 210mm in px at 96dpi
       const targetHeight = 1123; // 297mm in px at 96dpi
@@ -81,9 +86,12 @@ const QuotationTemplate = memo(({ id = "quotation-template", data, company, cont
       // On mobile, only scale by width so it's readable and can scroll vertically
       // On desktop, scale to fit both dimensions
       const isMobile = window.innerWidth < 768;
-      const newScale = isMobile ? scaleW : Math.min(scaleW, scaleH, 1);
+      let newScale = isMobile ? scaleW : Math.min(scaleW, scaleH, 1);
       
-      setScale(newScale * 0.98);
+      // If forceScale is 1, it means "Actual Size"
+      if (forceScale === 1) newScale = 1;
+
+      setScale(newScale * (forceScale === 1 ? 1 : 0.98));
     };
 
     updateScale();
