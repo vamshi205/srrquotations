@@ -3,9 +3,25 @@ import {
   ref, 
   uploadBytesResumable, 
   getDownloadURL, 
-  deleteObject 
+  deleteObject,
+  getMetadata 
 } from 'firebase/storage';
 import { doc, setDoc, deleteDoc } from 'firebase/firestore';
+
+/**
+ * Gets metadata (like size) for a file from Firebase Storage.
+ */
+export const getFileMetadataFromStorage = async (path) => {
+  try {
+    if (!path) return null;
+    const storageRef = ref(storage, path);
+    const metadata = await getMetadata(storageRef);
+    return metadata;
+  } catch (err) {
+    console.error('Metadata Fetch Error:', err);
+    return null;
+  }
+};
 
 /**
  * Uploads a file to Firebase Storage and saves its metadata to Firestore.

@@ -348,3 +348,13 @@ textarea.apple-input {
 }
 .apple-nav-link:hover { color: var(--accent); }
 .apple-nav-link.active { background: var(--bg3); color: var(--accent); font-weight: 600; }
+
+@keyframes progress-sweep {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(0); }
+  100% { transform: translateX(100%); }
+}
+
+.animate-progress-sweep {
+  animation: progress-sweep 2s ease-in-out infinite;
+}
