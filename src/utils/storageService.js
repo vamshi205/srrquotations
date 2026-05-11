@@ -4,7 +4,8 @@ import {
   uploadBytesResumable, 
   getDownloadURL, 
   deleteObject,
-  getMetadata 
+  getMetadata,
+  getBlob 
 } from 'firebase/storage';
 import { doc, setDoc, deleteDoc } from 'firebase/firestore';
 
@@ -19,6 +20,30 @@ const getFileMetadataFromStorage = async (path) => {
     return metadata;
   } catch (err) {
     console.error('Metadata Fetch Error:', err);
+    return null;
+  }
+};
+
+/**
+ * Fetches actual file data (bytes) from Firebase Storage.
+ * Required for PDF merging.
+ */
+const getFileData = async (dataUrl, fileId) => {
+  try {
+    // If it's already a base64 string (legacy), we might need to handle it
+    if (dataUrl && dataUrl.startsWith('data:')) {
+      const response = await fetch(dataUrl);
+      return await response.arrayBuffer();
+    }
+    
+    // Otherwise, it's a Firebase Storage path or URL
+    // We prefer the path for getBlob
+    const path = dataUrl && !dataUrl.startsWith('http') ? dataUrl : `documents/${fileId}`;
+    const storageRef = ref(storage, path);
+    const blob = await getBlob(storageRef);
+    return await blob.arrayBuffer();
+  } catch (err) {
+    console.error('getFileData Error:', err);
     return null;
   }
 };
@@ -105,19 +130,11 @@ const deleteFileMetadata = async (collectionName, fileId) => {
   }
 };
 
-/**
- * Legacy support for fetching data (mocked)
- */
-const getFileData = async (data, fileId) => {
-  // In Firebase Storage, we use the URL directly
-  return null;
-};
-
 export {
   getFileMetadataFromStorage,
+  getFileData,
   uploadFile,
   deleteFile,
   saveFileMetadata,
-  deleteFileMetadata,
-  getFileData
+  deleteFileMetadata
 };
