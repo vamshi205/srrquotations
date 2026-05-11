@@ -143,22 +143,30 @@ export const loadDatabase = async () => {
     // Reconstruct driveFiles structure (srr/vendor/personal)
     const srr = driveFilesData.filter(f => f.type === 'drive_srr');
     const personal = driveFilesData.filter(f => f.type === 'drive_personal');
+    
     const vendorMap = {};
-    driveFilesData.filter(f => f.type === 'drive_vendor_files').forEach(file => {
-      if (!vendorMap[file.folderId]) vendorMap[file.folderId] = [];
-      vendorMap[file.folderId].push(file);
+    const personalMap = {};
+    
+    driveFilesData.forEach(file => {
+      if (file.type === 'drive_vendor_files') {
+        if (!vendorMap[file.folderId]) vendorMap[file.folderId] = [];
+        vendorMap[file.folderId].push(file);
+      } else if (file.type === 'drive_personal_files') {
+        if (!personalMap[file.folderId]) personalMap[file.folderId] = [];
+        personalMap[file.folderId].push(file);
+      }
     });
 
     const foldersSnap = await getDocs(collection(db, 'driveFolders'));
     const allFolders = foldersSnap.docs.map(doc => doc.data());
     
     const vendorFolders = allFolders
-      .filter(f => f.type === 'drive_vendor' || !f.type) // !f.type for legacy
+      .filter(f => f.type === 'drive_folders' || !f.type) 
       .map(folder => ({ ...folder, files: vendorMap[folder.id] || [] }));
       
     const personalFolders = allFolders
       .filter(f => f.type === 'drive_personal_folders')
-      .map(folder => ({ ...folder, files: vendorMap[folder.id] || [] }));
+      .map(folder => ({ ...folder, files: personalMap[folder.id] || [] }));
 
     return {
       companyData,
