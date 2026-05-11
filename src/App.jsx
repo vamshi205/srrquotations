@@ -381,6 +381,7 @@ function App() {
         item.data = result.url || '';
         item.fileId = result.fileId || '';
         item.storagePath = result.path || '';
+        item.size = result.size || 0;
       }
 
       if (isDelete && (item.storagePath || item.fileId)) {
@@ -2258,8 +2259,69 @@ function App() {
           <div className="h-full overflow-y-auto px-8 py-12 md:px-16 md:py-16">
             <div className="max-w-4xl mx-auto">
               <header className="mb-12">
-                <h1 className="apple-title-1 mb-2">Drive</h1>
-                <p className="apple-subtitle">Manage your business documents and vendor files.</p>
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
+                  <div>
+                    <h1 className="apple-title-1 mb-2">Drive</h1>
+                    <p className="apple-subtitle">Manage your business documents and vendor files.</p>
+                  </div>
+                  
+                  {/* Storage Usage Bar */}
+                  <div className="w-full md:w-72 bg-white rounded-2xl p-4 border border-[var(--apple-gray-2)] shadow-sm">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-[11px] font-bold text-[var(--apple-gray-5)] uppercase tracking-wider">Cloud Storage</span>
+                      <span className="text-[11px] font-bold text-[var(--apple-black)]">
+                        {(() => {
+                          const totalBytes = [
+                            ...(driveFiles.srr || []),
+                            ...(driveFiles.personal || []),
+                            ...(driveFiles.vendor || []).flatMap(f => f.files || []),
+                            ...(driveFiles.personalFolders || []).flatMap(f => f.files || [])
+                          ].reduce((sum, f) => sum + (f.size || 0), 0);
+                          
+                          const formatBytes = (bytes) => {
+                            if (bytes === 0) return '0 B';
+                            const k = 1024;
+                            const sizes = ['B', 'KB', 'MB', 'GB'];
+                            const i = Math.floor(Math.log(bytes) / Math.log(k));
+                            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+                          };
+                          
+                          const limit = 5 * 1024 * 1024 * 1024; // 5GB
+                          const percent = Math.min((totalBytes / limit) * 100, 100);
+                          
+                          return `${formatBytes(totalBytes)} / 5 GB`;
+                        })()}
+                      </span>
+                    </div>
+                    <div className="h-1.5 w-full bg-[var(--apple-gray-1)] rounded-full overflow-hidden">
+                      <div 
+                        className={`h-full transition-all duration-1000 ${
+                          (() => {
+                            const totalBytes = [
+                              ...(driveFiles.srr || []),
+                              ...(driveFiles.personal || []),
+                              ...(driveFiles.vendor || []).flatMap(f => f.files || []),
+                              ...(driveFiles.personalFolders || []).flatMap(f => f.files || [])
+                            ].reduce((sum, f) => sum + (f.size || 0), 0);
+                            const limit = 5 * 1024 * 1024 * 1024;
+                            const percent = (totalBytes / limit) * 100;
+                            if (percent > 90) return 'bg-red-500';
+                            if (percent > 70) return 'bg-amber-500';
+                            return 'bg-[var(--emerald)]';
+                          })()
+                        }`}
+                        style={{ 
+                          width: `${Math.min((([
+                            ...(driveFiles.srr || []),
+                            ...(driveFiles.personal || []),
+                            ...(driveFiles.vendor || []).flatMap(f => f.files || []),
+                            ...(driveFiles.personalFolders || []).flatMap(f => f.files || [])
+                          ].reduce((sum, f) => sum + (f.size || 0), 0) / (5 * 1024 * 1024 * 1024)) * 100), 100)}%` 
+                        }}
+                      ></div>
+                    </div>
+                  </div>
+                </div>
               </header>
 
               {/* ── SRR DRIVE (HIGHLIGHTED) ── */}

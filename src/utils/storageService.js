@@ -34,7 +34,8 @@ export const uploadFile = async (file, folder = 'documents', onProgress = null) 
             success: true,
             fileId: fileId,
             path: path,
-            url: downloadURL
+            url: downloadURL,
+            size: file.size
           });
         }
       );
