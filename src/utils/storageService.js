@@ -11,7 +11,7 @@ import { doc, setDoc, deleteDoc } from 'firebase/firestore';
 /**
  * Gets metadata (like size) for a file from Firebase Storage.
  */
-export const getFileMetadataFromStorage = async (path) => {
+const getFileMetadataFromStorage = async (path) => {
   try {
     if (!path) return null;
     const storageRef = ref(storage, path);
@@ -26,7 +26,7 @@ export const getFileMetadataFromStorage = async (path) => {
 /**
  * Uploads a file to Firebase Storage and saves its metadata to Firestore.
  */
-export const uploadFile = async (file, folder = 'documents', onProgress = null) => {
+const uploadFile = async (file, folder = 'documents', onProgress = null) => {
   try {
     const fileId = Date.now().toString() + '_' + file.name;
     const path = `${folder}/${fileId}`;
@@ -65,7 +65,7 @@ export const uploadFile = async (file, folder = 'documents', onProgress = null) 
 /**
  * Deletes a file from Firebase Storage.
  */
-export const deleteFile = async (fullPath) => {
+const deleteFile = async (fullPath) => {
   try {
     if (!fullPath) return true;
     const storageRef = ref(storage, fullPath);
@@ -80,7 +80,7 @@ export const deleteFile = async (fullPath) => {
 /**
  * Saves file metadata to Firestore.
  */
-export const saveFileMetadata = async (collectionName, fileMetadata) => {
+const saveFileMetadata = async (collectionName, fileMetadata) => {
   try {
     const docRef = doc(db, collectionName, fileMetadata.id);
     await setDoc(docRef, fileMetadata);
@@ -94,7 +94,7 @@ export const saveFileMetadata = async (collectionName, fileMetadata) => {
 /**
  * Deletes file metadata from Firestore.
  */
-export const deleteFileMetadata = async (collectionName, fileId) => {
+const deleteFileMetadata = async (collectionName, fileId) => {
   try {
     const docRef = doc(db, collectionName, fileId);
     await deleteDoc(docRef);
@@ -105,8 +105,19 @@ export const deleteFileMetadata = async (collectionName, fileId) => {
   }
 };
 
-// Legacy support
-export const getFileData = async (fileId) => {
-  // In Firebase, we just use the public URL directly
+/**
+ * Legacy support for fetching data (mocked)
+ */
+const getFileData = async (data, fileId) => {
+  // In Firebase Storage, we use the URL directly
   return null;
+};
+
+export {
+  getFileMetadataFromStorage,
+  uploadFile,
+  deleteFile,
+  saveFileMetadata,
+  deleteFileMetadata,
+  getFileData
 };

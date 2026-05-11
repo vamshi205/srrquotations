@@ -186,3 +186,21 @@ export const loadDatabase = async () => {
 export const saveDatabase = async (data) => {
   return true; 
 };
+
+/**
+ * Generic sync function for drive files and folders.
+ */
+export const syncItem = async (collectionName, item, isDelete = false) => {
+  try {
+    const docRef = doc(db, collectionName, item.id);
+    if (isDelete) {
+      await deleteDoc(docRef);
+    } else {
+      await setDoc(docRef, item);
+    }
+    return true;
+  } catch (err) {
+    console.error(`Firestore Sync Error (${collectionName}):`, err);
+    return false;
+  }
+};
