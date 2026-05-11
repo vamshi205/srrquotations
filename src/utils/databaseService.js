@@ -140,8 +140,9 @@ export const loadDatabase = async () => {
     const dfSnap = await getDocs(collection(db, 'driveFiles'));
     const driveFilesData = dfSnap.docs.map(doc => doc.data());
     
-    // Reconstruct driveFiles structure (srr/vendor)
+    // Reconstruct driveFiles structure (srr/vendor/personal)
     const srr = driveFilesData.filter(f => f.type === 'drive_srr');
+    const personal = driveFilesData.filter(f => f.type === 'drive_personal');
     const vendorMap = {};
     driveFilesData.filter(f => f.type === 'drive_vendor_files').forEach(file => {
       if (!vendorMap[file.folderId]) vendorMap[file.folderId] = [];
@@ -149,10 +150,15 @@ export const loadDatabase = async () => {
     });
 
     const foldersSnap = await getDocs(collection(db, 'driveFolders'));
-    const vendorFolders = foldersSnap.docs.map(doc => {
-      const folder = doc.data();
-      return { ...folder, files: vendorMap[folder.id] || [] };
-    });
+    const allFolders = foldersSnap.docs.map(doc => doc.data());
+    
+    const vendorFolders = allFolders
+      .filter(f => f.type === 'drive_vendor' || !f.type) // !f.type for legacy
+      .map(folder => ({ ...folder, files: vendorMap[folder.id] || [] }));
+      
+    const personalFolders = allFolders
+      .filter(f => f.type === 'drive_personal_folders')
+      .map(folder => ({ ...folder, files: vendorMap[folder.id] || [] }));
 
     return {
       companyData,
@@ -160,7 +166,7 @@ export const loadDatabase = async () => {
       history,
       emailHistory,
       priceLists,
-      driveFiles: { srr, vendor: vendorFolders }
+      driveFiles: { srr, vendor: vendorFolders, personal, personalFolders }
     };
   } catch (err) {
     console.error('Firestore Load Error:', err);

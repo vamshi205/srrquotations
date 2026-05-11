@@ -124,17 +124,26 @@ function App() {
 
   const [driveFiles, setDriveFiles] = useState(() => {
     const saved = localStorage.getItem('srr_drive');
-    const parsed = saved ? JSON.parse(saved) : { srr: [], vendor: [] };
+    const parsed = saved ? JSON.parse(saved) : { srr: [], vendor: [], personal: [], personalFolders: [] };
     // Only filter out legacy TRUNCATED data, keep firebasestorage URLs
     // CRITICAL: Filter out legacy Google Drive links
     const srr = (parsed.srr || []).filter(f => f.data && f.data.startsWith('http') && !f.data.includes('drive.google.com'));
+    const personal = (parsed.personal || []).filter(f => f.data && f.data.startsWith('http') && !f.data.includes('drive.google.com'));
     // Filter Vendor files
     const vendor = (parsed.vendor || []).map(folder => ({
       ...folder,
       files: (folder.files || []).filter(f => f.data && f.data.startsWith('http') && !f.data.includes('drive.google.com'))
     }));
-    return { srr, vendor };
+    // Filter Personal folders
+    const personalFolders = (parsed.personalFolders || []).map(folder => ({
+      ...folder,
+      files: (folder.files || []).filter(f => f.data && f.data.startsWith('http') && !f.data.includes('drive.google.com'))
+    }));
+    return { srr, vendor, personal, personalFolders };
   });
+
+  const [showPersonalDrive, setShowPersonalDrive] = useState(false);
+  const driveHeaderClicks = useRef(0);
 
   const [pdfCache, setPdfCache] = useState({}); // Legacy, will use Ref for speed
   const pdfCacheRef = useRef({}); // { fileId/url: Uint8Array }
@@ -324,7 +333,9 @@ function App() {
       const allFiles = [
         ...priceLists,
         ...(driveFiles.srr || []),
-        ...((driveFiles.vendor || []).flatMap(f => f.files || []))
+        ...(driveFiles.personal || []),
+        ...((driveFiles.vendor || []).flatMap(f => f.files || [])),
+        ...((driveFiles.personalFolders || []).flatMap(f => f.files || []))
       ];
       
       for (const file of allFiles) {
@@ -386,11 +397,11 @@ function App() {
       // Save metadata to Firestore
       // Standardize collection names to match databaseService.js
       let collectionName = colName;
-      if (colName === 'drive_srr' || colName === 'drive_vendor_files') {
+      if (colName === 'drive_srr' || colName === 'drive_vendor_files' || colName === 'drive_personal') {
         collectionName = 'driveFiles';
       } else if (colName === 'price_lists') {
         collectionName = 'priceLists';
-      } else if (colName === 'drive_folders') {
+      } else if (colName === 'drive_folders' || colName === 'drive_personal_folders') {
         collectionName = 'driveFolders';
       }
       
@@ -421,6 +432,7 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [templateSearchQuery, setTemplateSearchQuery] = useState('');
   const [openVendorFolder, setOpenVendorFolder] = useState(null);
+  const [openPersonalFolder, setOpenPersonalFolder] = useState(null);
   const [showEmailComposer, setShowEmailComposer] = useState(false);
   const [emailForm, setEmailForm] = useState({
     to: '',
@@ -739,7 +751,12 @@ function App() {
   useEffect(() => {
     localStorage.setItem('srr_drive', JSON.stringify({
       srr: (driveFiles.srr || []).map(f => ({ ...f, data: 'TRUNCATED_FOR_QUOTA' })),
+      personal: (driveFiles.personal || []).map(f => ({ ...f, data: 'TRUNCATED_FOR_QUOTA' })),
       vendor: (driveFiles.vendor || []).map(folder => ({
+        ...folder,
+        files: (folder.files || []).map(f => ({ ...f, data: 'TRUNCATED_FOR_QUOTA' }))
+      })),
+      personalFolders: (driveFiles.personalFolders || []).map(folder => ({
         ...folder,
         files: (folder.files || []).map(f => ({ ...f, data: 'TRUNCATED_FOR_QUOTA' }))
       }))
@@ -808,8 +825,9 @@ function App() {
   const handleDriveUpload = (e, colName, folderId = null) => {
     const files = Array.from(e.target.files);
     files.forEach(async (file) => {
-      if (colName === 'drive_srr') {
-        showPrompt('Document Name', `Enter a name for: ${file.name}`, async (label) => {
+      if (colName === 'drive_srr' || colName === 'drive_personal') {
+        const promptMsg = colName === 'drive_personal' ? `Enter a name for PRIVATE file: ${file.name}` : `Enter a name for: ${file.name}`;
+        showPrompt('Document Name', promptMsg, async (label) => {
           if (!label) return;
           const newFile = {
             id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
@@ -821,7 +839,11 @@ function App() {
           };
           const success = await syncItem(colName, newFile, false, file);
           if (success) {
-            setDriveFiles(prev => ({ ...prev, srr: [...(prev.srr || []), newFile] }));
+            if (colName === 'drive_srr') {
+              setDriveFiles(prev => ({ ...prev, srr: [...(prev.srr || []), newFile] }));
+            } else {
+              setDriveFiles(prev => ({ ...prev, personal: [...(prev.personal || []), newFile] }));
+            }
           }
         });
       } else {
@@ -835,10 +857,17 @@ function App() {
         };
         const success = await syncItem(colName, newFile, false, file);
         if (success) {
-          setDriveFiles(prev => ({
-            ...prev,
-            vendor: prev.vendor.map(f => f.id === folderId ? { ...f, files: [...(f.files || []), newFile] } : f)
-          }));
+          if (colName === 'drive_vendor_files') {
+            setDriveFiles(prev => ({
+              ...prev,
+              vendor: prev.vendor.map(f => f.id === folderId ? { ...f, files: [...(f.files || []), newFile] } : f)
+            }));
+          } else {
+            setDriveFiles(prev => ({
+              ...prev,
+              personalFolders: (prev.personalFolders || []).map(f => f.id === folderId ? { ...f, files: [...(f.files || []), newFile] } : f)
+            }));
+          }
         }
       }
     });
@@ -851,25 +880,37 @@ function App() {
       if (success) {
         if (colName === 'drive_srr') {
           setDriveFiles(prev => ({ ...prev, srr: prev.srr.filter(f => f.id !== file.id) }));
-        } else {
+        } else if (colName === 'drive_personal') {
+          setDriveFiles(prev => ({ ...prev, personal: prev.personal.filter(f => f.id !== file.id) }));
+        } else if (colName === 'drive_vendor_files') {
           setDriveFiles(prev => ({
             ...prev,
             vendor: prev.vendor.map(folder => ({ ...folder, files: (folder.files || []).filter(f => f.id !== file.id) }))
+          }));
+        } else {
+          setDriveFiles(prev => ({
+            ...prev,
+            personalFolders: (prev.personalFolders || []).map(folder => ({ ...folder, files: (folder.files || []).filter(f => f.id !== file.id) }))
           }));
         }
       }
     });
   };
 
-
-
-  const handleDeleteFolder = (folder) => {
+  const handleDeleteFolder = (folder, colName = 'drive_folders') => {
     confirmDelete(async () => {
+      const fileType = colName === 'drive_folders' ? 'drive_vendor_files' : 'drive_personal_files';
       for (const file of (folder.files || [])) {
-        await syncItem('drive_vendor_files', file, true);
+        await syncItem(fileType, file, true);
       }
-      const success = await syncItem('drive_folders', folder, true);
-      if (success) setDriveFiles(prev => ({ ...prev, vendor: prev.vendor.filter(f => f.id !== folder.id) }));
+      const success = await syncItem(colName, folder, true);
+      if (success) {
+        if (colName === 'drive_folders') {
+          setDriveFiles(prev => ({ ...prev, vendor: prev.vendor.filter(f => f.id !== folder.id) }));
+        } else {
+          setDriveFiles(prev => ({ ...prev, personalFolders: prev.personalFolders.filter(f => f.id !== folder.id) }));
+        }
+      }
     });
   };
 
@@ -2184,7 +2225,18 @@ function App() {
           <div className="h-full overflow-y-auto px-8 py-12 md:px-16 md:py-16">
             <div className="max-w-4xl mx-auto">
               <header className="mb-12">
-                <h1 className="apple-title-1 mb-2">Drive</h1>
+                <h1 
+                  className="apple-title-1 mb-2 cursor-pointer select-none"
+                  onClick={() => {
+                    driveHeaderClicks.current += 1;
+                    if (driveHeaderClicks.current >= 5) {
+                      setShowPersonalDrive(!showPersonalDrive);
+                      driveHeaderClicks.current = 0;
+                    }
+                  }}
+                >
+                  Drive
+                </h1>
                 <p className="apple-subtitle">Manage your business documents and vendor files.</p>
               </header>
 
@@ -2245,7 +2297,7 @@ function App() {
               </div>
 
               {/* ── VENDOR DOCUMENTS (FOLDER BASED) ── */}
-              <div>
+              <div className={showPersonalDrive ? "mb-12" : ""}>
                 <div className="flex items-center justify-between gap-4 mb-4">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 bg-[var(--apple-gray-1)] rounded-xl flex items-center justify-center">
@@ -2370,6 +2422,166 @@ function App() {
                   })()
                 )}
               </div>
+
+              {/* ── PERSONAL DRIVE (HIDDEN) ── */}
+              {showPersonalDrive && (
+                <div className="mt-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                  <div className="relative overflow-hidden rounded-2xl border-2 border-indigo-500 bg-gradient-to-br from-indigo-50 via-white to-purple-50 p-6 mb-8">
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-11 h-11 bg-indigo-600 rounded-xl flex items-center justify-center shadow-md shadow-indigo-200">
+                          <ShieldCheck size={22} className="text-white" />
+                        </div>
+                        <div>
+                          <h2 className="text-[20px] font-bold tracking-tight text-indigo-900">Personal Space</h2>
+                          <p className="text-[13px] text-indigo-600 font-medium">Private storage for personal documents</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        {!openPersonalFolder && (
+                          <button onClick={async () => {
+                            const name = prompt('Enter folder name:');
+                            if (!name) return;
+                            const newFolder = { id: Date.now().toString(), name, type: 'drive_personal_folders', createdAt: new Date().toLocaleDateString('en-GB'), files: [] };
+                            setDriveFiles(prev => ({ ...prev, personalFolders: [...(prev.personalFolders || []), newFolder] }));
+                            await syncItem('drive_personal_folders', newFolder);
+                          }} className="btn-outline !text-indigo-600 !border-indigo-200 !bg-indigo-50/50 !py-2 !px-4 hover:!bg-indigo-100 transition-all">
+                            <Plus size={16} /> New Folder
+                          </button>
+                        )}
+                        <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={(e) => handleDriveUpload(e, 'drive_personal')} className="hidden" id="personal-drive-upload" />
+                        <label htmlFor="personal-drive-upload" className="btn-primary cursor-pointer !bg-indigo-600 !text-[13px] !py-2 !px-4">
+                          <Plus size={16} /> Upload Private
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Personal Folders Grid */}
+                  {!openPersonalFolder ? (
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-8">
+                      {(driveFiles.personalFolders || []).map(folder => (
+                        <div key={folder.id} className="apple-card p-5 cursor-pointer border-indigo-100 hover:border-indigo-400 transition-all group" onClick={() => setOpenPersonalFolder(folder.id)}>
+                          <div className="flex flex-col items-center text-center">
+                            <Folder size={44} className="text-indigo-400 mb-3 group-hover:scale-110 transition-transform" fill="currentColor" />
+                            <p className="text-[14px] font-semibold text-indigo-900 truncate w-full">{folder.name}</p>
+                            <p className="text-[11px] text-indigo-400 mt-1">{(folder.files || []).length} files</p>
+                          </div>
+                          <div className="flex items-center justify-center gap-1 mt-3 pt-3 border-t border-indigo-50">
+                            <button onClick={(e) => { e.stopPropagation(); downloadFolderAsZip(folder); }} className="w-8 h-8 flex items-center justify-center text-indigo-300 hover:text-indigo-600 rounded-lg transition-colors" title="Download ZIP">
+                              <Download size={14} />
+                            </button>
+                            <button onClick={(e) => {
+                              e.stopPropagation(); handleDeleteFolder(folder, 'drive_personal_folders');
+                            }} className="w-8 h-8 flex items-center justify-center text-indigo-200 hover:text-red-500 rounded-lg transition-colors" title="Delete folder">
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    /* Inside Personal Folder */
+                    (() => {
+                      const folder = (driveFiles.personalFolders || []).find(f => f.id === openPersonalFolder);
+                      if (!folder) { setOpenPersonalFolder(null); return null; }
+                      return (
+                        <div className="mb-8 animate-in fade-in slide-in-from-left-4 duration-300">
+                          <div className="flex items-center justify-between mb-4">
+                            <button onClick={() => setOpenPersonalFolder(null)} className="flex items-center gap-1 text-[13px] font-semibold text-indigo-600 hover:opacity-80">
+                              <ChevronLeft size={16} /> Back to Space
+                            </button>
+                            <div className="flex items-center gap-2">
+                              <button onClick={() => downloadFolderAsZip(folder)} className="btn-outline !text-indigo-600 !border-indigo-200 !py-1.5 !px-3">
+                                <Download size={14} /> Download All
+                              </button>
+                              <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={(e) => handleDriveUpload(e, 'drive_personal_files', folder.id)} className="hidden" id="personal-folder-upload" />
+                              <label htmlFor="personal-folder-upload" className="btn-primary cursor-pointer !bg-indigo-600 !text-[12px] !py-1.5 !px-3">
+                                <Plus size={14} /> Add Private File
+                              </label>
+                            </div>
+                          </div>
+
+                          <div className="apple-card p-5 mb-4 flex items-center gap-3 bg-indigo-50/50 border-indigo-200">
+                            <Folder size={28} className="text-indigo-400" fill="currentColor" />
+                            <div>
+                              <p className="text-[17px] font-bold text-indigo-900">{folder.name}</p>
+                              <p className="text-[12px] text-indigo-500">{(folder.files || []).length} files • Created {folder.createdAt}</p>
+                            </div>
+                          </div>
+
+                          {(folder.files || []).length === 0 ? (
+                            <div className="text-center py-10 border border-dashed border-indigo-200 rounded-xl">
+                              <p className="text-[14px] text-indigo-300">This folder is empty. Add files above.</p>
+                            </div>
+                          ) : (
+                            <div className="apple-card overflow-hidden border-indigo-100">
+                              {(folder.files || []).map(file => (
+                                <div key={file.id} className="flex items-center justify-between px-5 py-3.5 border-b border-indigo-50 last:border-0 hover:bg-indigo-50/30 transition-colors">
+                                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                                    <FileText size={18} className="text-indigo-400 flex-shrink-0" />
+                                    <div className="min-w-0">
+                                      <p className="text-[14px] font-semibold text-indigo-900 truncate">{file.fileName}</p>
+                                      <p className="text-[11px] text-indigo-400">{file.uploadedAt}</p>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-1 ml-3">
+                                    <a href={file.data} download={file.fileName} className="w-8 h-8 flex items-center justify-center text-indigo-300 hover:text-indigo-600 rounded-lg transition-colors" title="Download">
+                                      <Download size={15} />
+                                    </a>
+                                    <button onClick={() => handleDeleteDriveFile('drive_personal_files', file)} className="w-8 h-8 flex items-center justify-center text-indigo-200 hover:text-red-500 rounded-lg transition-colors" title="Delete">
+                                      <Trash2 size={15} />
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()
+                  )}
+
+                  {/* Standalone Personal Files */}
+                  {!openPersonalFolder && (
+                    <>
+                      <h3 className="text-[14px] font-bold text-indigo-900/60 uppercase tracking-widest mb-4 px-1">Independent Files</h3>
+                      {(driveFiles.personal || []).length === 0 ? (
+                        <div className="text-center py-10 border-2 border-dashed border-indigo-100 rounded-xl bg-indigo-50/10">
+                          <p className="text-[14px] text-indigo-200">No independent files</p>
+                        </div>
+                      ) : (
+                        <div className="apple-card overflow-hidden border-2 border-indigo-100">
+                          {(driveFiles.personal || []).map((file, idx) => (
+                            <div key={file.id} className="flex items-center justify-between px-5 py-3.5 border-b border-indigo-100 last:border-0 hover:bg-indigo-50/40 transition-colors">
+                              <div className="flex items-center gap-3 min-w-0 flex-1">
+                                <div className="w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center">
+                                  <FileText size={16} className="text-indigo-600" />
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-[14px] font-semibold text-indigo-900 truncate">{file.label}</p>
+                                  <p className="text-[11px] text-indigo-400 font-medium">{file.fileName} • {file.uploadedAt}</p>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1 ml-3">
+                                <a href={file.data} download={file.fileName} className="w-8 h-8 flex items-center justify-center text-indigo-300 hover:text-indigo-600 rounded-lg transition-colors" title="Download">
+                                  <Download size={15} />
+                                </a>
+                                <button onClick={() => confirmDelete(async () => {
+                                  setDriveFiles(prev => ({ ...prev, personal: prev.personal.filter(f => f.id !== file.id) }));
+                                  await syncItem('drive_personal', file, true);
+                                })} className="w-8 h-8 flex items-center justify-center text-indigo-300 hover:text-red-500 rounded-lg transition-colors" title="Delete">
+                                  <Trash2 size={15} />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         )}
