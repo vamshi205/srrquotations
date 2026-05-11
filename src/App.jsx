@@ -517,7 +517,7 @@ function App() {
   };
 
   const downloadFolderAsZip = async (folder) => {
-    if (!folder.files || folder.files.length === 0) return alert('Folder is empty.');
+    if (!folder.files || folder.files.length === 0) return showAlert('Empty Folder', 'This folder does not contain any files to download.', 'error');
     const zip = new JSZip();
     for (const file of folder.files) {
       const base64 = file.data.includes('base64,') ? file.data.split(',')[1] : file.data;
@@ -807,7 +807,7 @@ function App() {
       setSyncStatus('saved');
     } else {
       setSyncStatus('error');
-      alert('Failed to duplicate template to cloud.');
+      showAlert('Sync Error', 'Failed to duplicate template to cloud.', 'error');
     }
   };
 
@@ -913,7 +913,7 @@ function App() {
   };
 
   const generatePDF = async () => {
-    if (!formData.hospitalName) return alert('Please enter Hospital Name.');
+    if (!formData.hospitalName) return showAlert('Missing Info', 'Please enter Hospital Name.', 'error');
     setIsGenerating(true);
     try {
       const element = document.getElementById('quotation-template');
@@ -945,7 +945,7 @@ function App() {
             }
           } catch (err) {
             console.error("PDF Merge failed:", err);
-            alert("Warning: Price List merge failed. The document was generated without the attachment. Error: " + err.message);
+            showAlert('Merge Warning', 'Price List merge failed. The document was generated without the attachment. Error: ' + err.message, 'error');
           }
         }
       }
@@ -976,7 +976,7 @@ function App() {
       return { blob, blobUrl: url, fileName: `Quotation_${formData.hospitalName}.pdf` };
     } catch (e) { 
       console.error(e); 
-      alert("Error generating PDF: " + e.message);
+      showAlert('PDF Error', 'Error generating PDF: ' + e.message, 'error');
       return null;
     } finally { 
       setIsGenerating(false); 
@@ -1487,7 +1487,7 @@ function App() {
                       }
                     } catch (err) {
                       setSyncStatus('error');
-                      alert('Cloud Save Failed! Your changes are saved locally but not in the cloud. Check your internet.');
+                      showAlert('Cloud Save Failed', 'Your changes are saved locally but not in the cloud. Check your internet connection.', 'error');
                       // Still update local state so they don't lose work
                       setTemplates(updated);
                       setEditingTemplate(null);
@@ -2805,10 +2805,10 @@ function App() {
                         const success = await saveCompanyData(companyData);
                         if (success) {
                           setSyncStatus('saved');
-                          alert('Settings saved to Cloud successfully!');
+                          showAlert('Settings Updated', 'Company settings have been saved to the cloud successfully.', 'success');
                         } else {
                           setSyncStatus('error');
-                          alert('Failed to save settings to Cloud.');
+                          showAlert('Sync Failed', 'Failed to save settings to the cloud. Please try again.', 'error');
                         }
                       }}
                       className="btn-primary"
@@ -3214,50 +3214,44 @@ function App() {
         </div>
       )}
 
-      {/* PREMIUM ALERT MODAL (INDUSTRIAL REDESIGN) */}
       {alertModal && (
-        <div className="fixed inset-0 z-[5000] flex items-center justify-center p-6">
+        <div className="fixed inset-0 z-[8000] flex items-center justify-center p-6">
           <div 
-            className="absolute inset-0 bg-black/60 backdrop-blur-[2px] animate-in fade-in duration-300" 
+            className="absolute inset-0 bg-black/60 backdrop-blur-md animate-in fade-in duration-300" 
             onClick={() => {
-              if (alertModal.onInput) return; // Prevent closing prompt on backdrop
+              if (alertModal.onInput) return;
               const onCancel = alertModal.onCancel;
               setAlertModal(null);
               if (onCancel) onCancel();
             }}
           ></div>
           
-          <div className="relative bg-white w-full max-w-[420px] rounded-sm shadow-[0_20px_50px_rgba(0,0,0,0.3)] border-t-4 overflow-hidden animate-in zoom-in-95 fade-in duration-200 border-[var(--apple-black)]">
-            {/* Colored Top Border based on type */}
-            <div className={`h-1.5 w-full ${
+          <div className="relative bg-white w-full max-w-[420px] rounded-3xl shadow-[0_30px_70px_rgba(0,0,0,0.4)] border border-[var(--apple-gray-2)] overflow-hidden animate-in zoom-in-95 fade-in duration-300">
+            {/* Colored Top Accent */}
+            <div className={`h-2 w-full ${
               alertModal.type === 'success' ? 'bg-emerald-500' :
               alertModal.type === 'error' ? 'bg-red-500' :
               'bg-[var(--accent)]'
             }`}></div>
 
-            <div className="p-8">
-              <div className="flex items-start gap-5 mb-8">
-                {/* Square Icon Container */}
-                <div className={`w-14 h-14 rounded-none flex items-center justify-center shrink-0 border-2 ${
-                  alertModal.type === 'success' ? 'bg-emerald-50 border-emerald-500 text-emerald-600' :
-                  alertModal.type === 'error' ? 'bg-red-50 border-red-500 text-red-600' :
-                  'bg-blue-50 border-blue-500 text-blue-600'
+            <div className="p-8 md:p-10">
+              <div className="flex flex-col items-center text-center gap-6 mb-8">
+                {/* Rounded Icon Container */}
+                <div className={`w-20 h-20 rounded-2xl flex items-center justify-center shrink-0 shadow-lg ${
+                  alertModal.type === 'success' ? 'bg-emerald-50 text-emerald-600 shadow-emerald-100' :
+                  alertModal.type === 'error' ? 'bg-red-50 text-red-600 shadow-red-100' :
+                  'bg-[var(--apple-gray-1)] text-[var(--accent)] shadow-gray-100'
                 }`}>
-                  {alertModal.type === 'success' ? <FileCheck size={32} strokeWidth={2} /> :
-                   alertModal.type === 'error' ? <Plus className="rotate-45" size={32} strokeWidth={2} /> :
-                   <Mail size={32} strokeWidth={2} />}
+                  {alertModal.type === 'success' ? <FileCheck size={40} strokeWidth={2} /> :
+                   alertModal.type === 'error' ? <Plus className="rotate-45" size={40} strokeWidth={2} /> :
+                   <Mail size={40} strokeWidth={2} />}
                 </div>
                 
-                <div className="flex-1 pt-1">
-                  <h3 className="text-[28px] font-black text-[var(--apple-black)] uppercase tracking-tighter mb-1 leading-none" style={{ fontFamily: "'Jost', sans-serif" }}>
+                <div>
+                  <h3 className="text-[28px] font-black text-[var(--apple-black)] uppercase tracking-tighter mb-2 leading-tight" style={{ fontFamily: "'Jost', sans-serif" }}>
                     {alertModal.title}
                   </h3>
-                  <div className={`h-1.5 w-16 mb-4 ${
-                    alertModal.type === 'success' ? 'bg-emerald-500' :
-                    alertModal.type === 'error' ? 'bg-red-500' :
-                    'bg-[var(--accent)]'
-                  }`}></div>
-                  <p className="text-[16px] text-[var(--apple-gray-6)] leading-relaxed font-semibold">
+                  <p className="text-[15px] text-[var(--apple-gray-5)] leading-relaxed font-medium px-2">
                     {alertModal.message}
                   </p>
                 </div>
@@ -3265,13 +3259,13 @@ function App() {
 
               {alertModal.showInput && (
                 <div className="mb-8">
-                  <span className="text-[11px] font-bold text-[var(--apple-gray-5)] uppercase tracking-widest block mb-2">Security Verification</span>
+                  <label className="text-[11px] font-bold text-[var(--apple-gray-4)] uppercase tracking-widest block mb-2 px-1">Verification Required</label>
                   <input 
                     id="modal-prompt-input"
                     type="password"
                     placeholder="Enter Admin Password"
                     autoFocus
-                    className="w-full bg-[var(--apple-gray-1)] border-2 border-[var(--apple-gray-2)] focus:border-[var(--apple-black)] text-[16px] font-bold p-4 rounded-none transition-all outline-none"
+                    className="w-full bg-[var(--apple-gray-1)] border-2 border-[var(--apple-gray-2)] focus:border-[var(--apple-black)] text-[16px] font-bold p-4 rounded-xl transition-all outline-none text-center tracking-[0.3em]"
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
                         const val = e.target.value;
@@ -3293,11 +3287,11 @@ function App() {
                     if (onInput) onInput(inputVal);
                     if (onConfirm) onConfirm();
                   }}
-                  className={`w-full py-4 rounded-none text-[14px] font-black uppercase tracking-widest text-white transition-all shadow-md active:translate-y-0.5 ${
-                    alertModal.type === 'error' ? 'bg-red-600 hover:bg-red-700' : 'bg-[var(--apple-black)] hover:bg-gray-800'
+                  className={`btn-primary w-full !py-4 rounded-xl text-[14px] font-bold uppercase tracking-widest transition-all shadow-md active:translate-y-0.5 ${
+                    alertModal.type === 'error' ? '!bg-red-600 hover:!bg-red-700' : ''
                   }`}
                 >
-                  {alertModal.confirmText || 'Proceed Now'}
+                  {alertModal.confirmText || 'Confirm'}
                 </button>
 
                 {(alertModal.onConfirm || alertModal.onInput || alertModal.onCancel) && (
@@ -3307,9 +3301,9 @@ function App() {
                       setAlertModal(null);
                       if (onCancel) onCancel();
                     }}
-                    className="w-full py-3.5 rounded-none text-[12px] font-bold uppercase tracking-widest text-[var(--apple-gray-5)] hover:text-[var(--apple-black)] hover:bg-[var(--apple-gray-1)] border border-transparent hover:border-[var(--apple-gray-2)] transition-all"
+                    className="w-full py-3.5 rounded-xl text-[13px] font-bold uppercase tracking-widest text-[var(--apple-gray-5)] hover:text-[var(--apple-black)] hover:bg-[var(--apple-gray-1)] transition-all"
                   >
-                    {alertModal.cancelText || 'Decline'}
+                    {alertModal.cancelText || 'Cancel'}
                   </button>
                 )}
               </div>
