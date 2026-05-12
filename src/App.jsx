@@ -3243,33 +3243,24 @@ function App() {
       )}
       {/* GENERATING QUOTATION OVERLAY */}
       {isGenerating && !regeneratingItem && (
-        <div className="fixed inset-0 z-[7000] flex items-center justify-center bg-black/40 backdrop-blur-md animate-in fade-in duration-700">
-          <div className="flex flex-col items-center gap-10 p-16 bg-white border-b-8 border-emerald-500 shadow-[0_40px_100px_-20px_rgba(0,0,0,0.5)] animate-in slide-in-from-top-10 duration-500">
+        <div className="fixed inset-0 z-[7000] flex items-center justify-center bg-black/20 backdrop-blur-sm animate-in fade-in duration-500">
+          <div className="flex flex-col items-center gap-8 p-12 bg-white rounded-[32px] shadow-2xl border border-[var(--apple-gray-2)] animate-in zoom-in-95 duration-400">
             <div className="relative">
-              {/* Pulsing Aura */}
-              <div className="absolute inset-0 bg-emerald-500/20 rounded-full blur-3xl animate-pulse"></div>
-              
-              {/* Technical Gear Container */}
-              <div className="relative w-32 h-32 border-4 border-[var(--apple-gray-2)] flex items-center justify-center">
-                 <div className="absolute inset-[-8px] border border-dashed border-emerald-500 animate-[spin_20s_linear_infinite]"></div>
-                 <div className="w-20 h-20 bg-emerald-500 flex items-center justify-center shadow-xl animate-pulse">
-                    <FileText className="text-white" size={40} strokeWidth={2} />
-                 </div>
+              <div className="w-24 h-24 bg-emerald-50 text-emerald-600 rounded-3xl flex items-center justify-center shadow-inner">
+                <FileText className="animate-bounce" size={40} strokeWidth={1.5} />
               </div>
             </div>
             
-            <div className="flex flex-col items-center gap-3 text-center">
-              <h3 className="text-[32px] font-black uppercase tracking-tighter text-[var(--apple-black)] leading-none mb-2" style={{ fontFamily: "'Jost', sans-serif" }}>
-                Generating
+            <div className="flex flex-col items-center gap-2 text-center">
+              <h3 className="text-[24px] font-bold text-[var(--apple-black)] tracking-tight">
+                Generating PDF
               </h3>
-              <div className="h-1 w-20 bg-emerald-500 mb-2"></div>
-              <p className="text-[13px] text-[var(--apple-gray-5)] font-bold uppercase tracking-[0.2em] max-w-[320px]">
-                Constructing High-Fidelity PDF
+              <p className="text-[14px] text-[var(--apple-gray-5)] font-medium max-w-[280px]">
+                We're preparing your high-quality document for download.
               </p>
             </div>
 
-            {/* Industrial Progress Bar */}
-            <div className="w-[300px] h-2 bg-[var(--apple-gray-1)] overflow-hidden border border-[var(--apple-gray-2)]">
+            <div className="w-[240px] h-1.5 bg-[var(--apple-gray-1)] rounded-full overflow-hidden">
               <div className="h-full bg-emerald-500 animate-progress-sweep"></div>
             </div>
           </div>
@@ -3278,33 +3269,25 @@ function App() {
 
       {/* GLOBAL DISPATCHING OVERLAY */}
       {isSendingEmail && (
-        <div className="fixed inset-0 z-[7000] flex items-center justify-center bg-black/40 backdrop-blur-md animate-in fade-in duration-700">
-          <div className="flex flex-col items-center gap-10 p-16 bg-white border-b-8 border-[var(--accent)] shadow-[0_40px_100px_-20px_rgba(0,0,0,0.5)] animate-in slide-in-from-bottom-10 duration-500">
+        <div className="fixed inset-0 z-[7000] flex items-center justify-center bg-black/20 backdrop-blur-sm animate-in fade-in duration-500">
+          <div className="flex flex-col items-center gap-8 p-12 bg-white rounded-[32px] shadow-2xl border border-[var(--apple-gray-2)] animate-in zoom-in-95 duration-400">
             <div className="relative">
-              {/* Pulsing Aura */}
-              <div className="absolute inset-0 bg-[var(--accent)]/20 rounded-full blur-3xl animate-pulse"></div>
-              
-              {/* Spinning Industrial Container */}
-              <div className="relative w-32 h-32 border-4 border-dashed border-[var(--apple-gray-3)] rounded-none flex items-center justify-center animate-[spin_10s_linear_infinite]">
-                 <div className="w-24 h-24 bg-[var(--apple-black)] flex items-center justify-center shadow-2xl animate-[reverse-spin_1s_linear_infinite]">
-                    <Mail className="text-white" size={48} strokeWidth={1.5} />
-                 </div>
+              <div className="w-24 h-24 bg-indigo-50 text-indigo-600 rounded-3xl flex items-center justify-center shadow-inner">
+                <Mail className="animate-pulse" size={40} strokeWidth={1.5} />
               </div>
             </div>
             
-            <div className="flex flex-col items-center gap-3 text-center">
-              <h3 className="text-[32px] font-black uppercase tracking-tighter text-[var(--apple-black)] leading-none mb-2" style={{ fontFamily: "'Jost', sans-serif" }}>
-                Dispatching
+            <div className="flex flex-col items-center gap-2 text-center">
+              <h3 className="text-[24px] font-bold text-[var(--apple-black)] tracking-tight">
+                Dispatching Email
               </h3>
-              <div className="h-1 w-20 bg-[var(--accent)] mb-2"></div>
-              <p className="text-[13px] text-[var(--apple-gray-5)] font-bold uppercase tracking-[0.2em] max-w-[320px]">
-                Transmitting Premium Documents
+              <p className="text-[14px] text-[var(--apple-gray-5)] font-medium max-w-[280px]">
+                Sending your documents through our secure server.
               </p>
             </div>
 
-            {/* Industrial Progress Bar */}
-            <div className="w-[300px] h-2 bg-[var(--apple-gray-1)] overflow-hidden border border-[var(--apple-gray-2)]">
-              <div className="h-full bg-[var(--accent)] animate-progress-sweep"></div>
+            <div className="w-[240px] h-1.5 bg-[var(--apple-gray-1)] rounded-full overflow-hidden">
+              <div className="h-full bg-indigo-600 animate-progress-sweep"></div>
             </div>
           </div>
         </div>
@@ -3322,32 +3305,24 @@ function App() {
             }}
           ></div>
           
-          <div className="relative bg-white w-full max-w-[420px] rounded-3xl shadow-[0_30px_70px_rgba(0,0,0,0.4)] border border-[var(--apple-gray-2)] overflow-hidden animate-in zoom-in-95 fade-in duration-300">
-            {/* Colored Top Accent */}
-            <div className={`h-2 w-full ${
-              alertModal.type === 'success' ? 'bg-emerald-500' :
-              alertModal.type === 'error' ? 'bg-red-500' :
-              'bg-[var(--accent)]'
-            }`}></div>
-
+          <div className="relative bg-white w-full max-w-[400px] rounded-[32px] shadow-2xl border border-[var(--apple-gray-2)] overflow-hidden animate-in zoom-in-95 fade-in duration-300">
             <div className="p-8 md:p-10">
               <div className="flex flex-col items-center text-center gap-6 mb-8">
-                {/* Rounded Icon Container */}
-                <div className={`w-20 h-20 rounded-2xl flex items-center justify-center shrink-0 shadow-lg ${
-                  alertModal.type === 'success' ? 'bg-emerald-50 text-emerald-600 shadow-emerald-100' :
-                  alertModal.type === 'error' ? 'bg-red-50 text-red-600 shadow-red-100' :
-                  'bg-[var(--apple-gray-1)] text-[var(--accent)] shadow-gray-100'
+                <div className={`w-16 h-16 rounded-2xl flex items-center justify-center shrink-0 ${
+                  alertModal.type === 'success' ? 'bg-emerald-50 text-emerald-600' :
+                  alertModal.type === 'error' ? 'bg-red-50 text-red-600' :
+                  'bg-indigo-50 text-indigo-600'
                 }`}>
-                  {alertModal.type === 'success' ? <FileCheck size={40} strokeWidth={2} /> :
-                   alertModal.type === 'error' ? <Plus className="rotate-45" size={40} strokeWidth={2} /> :
-                   <Mail size={40} strokeWidth={2} />}
+                  {alertModal.type === 'success' ? <FileCheck size={32} strokeWidth={1.5} /> :
+                   alertModal.type === 'error' ? <Plus className="rotate-45" size={32} strokeWidth={1.5} /> :
+                   <Mail size={32} strokeWidth={1.5} />}
                 </div>
                 
                 <div>
-                  <h3 className="text-[28px] font-black text-[var(--apple-black)] uppercase tracking-tighter mb-2 leading-tight" style={{ fontFamily: "'Jost', sans-serif" }}>
+                  <h3 className="text-[22px] font-bold text-[var(--apple-black)] tracking-tight mb-2">
                     {alertModal.title}
                   </h3>
-                  <p className="text-[15px] text-[var(--apple-gray-5)] leading-relaxed font-medium px-2">
+                  <p className="text-[14px] text-[var(--apple-gray-5)] leading-relaxed font-medium px-2">
                     {alertModal.message}
                   </p>
                 </div>
@@ -3384,7 +3359,7 @@ function App() {
                     if (onInput) onInput(inputVal);
                     if (onConfirm) onConfirm();
                   }}
-                  className={`btn-primary w-full !py-4 rounded-xl text-[14px] font-bold uppercase tracking-widest transition-all shadow-md active:translate-y-0.5 ${
+                  className={`btn-primary w-full !py-3.5 rounded-xl text-[14px] font-bold transition-all shadow-md active:scale-95 ${
                     alertModal.type === 'error' ? '!bg-red-600 hover:!bg-red-700' : ''
                   }`}
                 >
@@ -3398,7 +3373,7 @@ function App() {
                       setAlertModal(null);
                       if (onCancel) onCancel();
                     }}
-                    className="w-full py-3.5 rounded-xl text-[13px] font-bold uppercase tracking-widest text-[var(--apple-gray-5)] hover:text-[var(--apple-black)] hover:bg-[var(--apple-gray-1)] transition-all"
+                    className="w-full py-3 rounded-xl text-[13px] font-bold text-[var(--apple-gray-5)] hover:text-[var(--apple-black)] hover:bg-[var(--apple-gray-1)] transition-all"
                   >
                     {alertModal.cancelText || 'Cancel'}
                   </button>
