@@ -329,29 +329,7 @@ function App() {
 
   const [emailHistory, setEmailHistory] = useState([]);
   
-  // Background Pre-fetching for Speed
-  useEffect(() => {
-    const prefetch = async () => {
-      const allFiles = [
-        ...priceLists,
-        ...(driveFiles.srr || []),
-        ...(driveFiles.personal || []),
-        ...((driveFiles.vendor || []).flatMap(f => f.files || [])),
-        ...((driveFiles.personalFolders || []).flatMap(f => f.files || []))
-      ];
-      
-      for (const file of allFiles) {
-        if (file.data && file.data.startsWith('http')) {
-          const cacheKey = file.storagePath || file.data;
-          if (!pdfCacheRef.current[cacheKey]) {
-            // Fetch silently in background
-            getFileData(file.data, file.storagePath);
-          }
-        }
-      }
-    };
-    if (user) prefetch();
-  }, [priceLists, driveFiles, user]);
+  // Background Pre-fetching removed to save bandwidth (Egress costs)
 
   // Set initial ref number from history
   const refInitialized = React.useRef(false);
@@ -616,7 +594,7 @@ function App() {
       setIsGenerating(true);
       try {
         const element = document.getElementById('history-quotation-template');
-        const dataUrl = await toJpeg(element, { quality: 0.95, backgroundColor: '#ffffff', pixelRatio: 2 });
+        const dataUrl = await toJpeg(element, { quality: 0.95, backgroundColor: '#ffffff', pixelRatio: 1.5 });
         const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
         pdf.addImage(dataUrl, 'JPEG', 0, 0, 210, 297);
         let finalPdfBytes = pdf.output('arraybuffer');
@@ -727,7 +705,7 @@ function App() {
       const success = await saveCompanyData(companyData);
       setSyncStatus(success ? 'saved' : 'error');
     };
-    const timer = setTimeout(saveToFirebase, 2000);
+    const timer = setTimeout(saveToFirebase, 5000);
     return () => clearTimeout(timer);
   }, [companyData, user]);
 
@@ -962,7 +940,7 @@ function App() {
     setIsGenerating(true);
     try {
       const element = document.getElementById('quotation-template');
-      const dataUrl = await toJpeg(element, { quality: 0.95, backgroundColor: '#ffffff', pixelRatio: 2 });
+      const dataUrl = await toJpeg(element, { quality: 0.95, backgroundColor: '#ffffff', pixelRatio: 1.5 });
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       pdf.addImage(dataUrl, 'JPEG', 0, 0, 210, 297);
       let finalPdfBytes = pdf.output('arraybuffer');
