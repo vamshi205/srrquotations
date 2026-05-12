@@ -21,10 +21,11 @@ const HistoryView = ({ quotationHistory, searchQuery, setSearchQuery, isGenerati
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--apple-gray-4)] w-4 h-4" />
             <input 
-              type="text" 
+              type="search" 
               placeholder="Search hospital or ref..." 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              autoComplete="off"
               className="apple-input !pl-10 !py-2.5 w-full md:w-[280px]"
             />
           </div>

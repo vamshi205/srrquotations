@@ -1034,62 +1034,72 @@ function App() {
       return;
     }
 
-    setIsGenerating(true);
-    
-    // Allow UI to render the overlay before heavy PDF processing
-    setTimeout(async () => {
-      try {
-        const result = await generatePDF();
-        if (!result) {
-          setIsGenerating(false);
-          return;
-        }
+    showConfirm(
+      "Confirm Save",
+      "Are you sure you want to save invoice?",
+      () => {
+        setIsGenerating(true);
+        
+        // Allow UI to render the overlay before heavy PDF processing
+        setTimeout(async () => {
+          try {
+            const result = await generatePDF();
+            if (!result) {
+              setIsGenerating(false);
+              return;
+            }
 
-        const { blobUrl, fileName } = result;
+            const { blobUrl, fileName } = result;
 
-        showConfirm(
-          "Quotation Saved", 
-          "Quotation saved successfully! Do you want to send it via Email now?",
-          () => {
-            // Setup Email Composer
-            setEmailForm(prev => ({
-              ...prev,
-              subject: formData.subject,
-              selectedDriveFiles: [
-                ...prev.selectedDriveFiles.filter(f => !f.isGenerated),
-                {
-                  id: 'draft-' + Date.now(),
-                  fileName: fileName,
-                  data: blobUrl,
-                  isGenerated: true
-                }
-              ]
-            }));
-            setShowEmailComposer(true);
-          },
-          () => {
-            // Download and go to history
-            const link = document.createElement('a');
-            link.href = blobUrl;
-            link.download = fileName;
-            link.click();
-            
-            setView('history');
-            setTimeout(() => {
-              showAlert('Saved to History', `Quotation ${formData.referenceNumber} has been safely archived.`, 'success');
-            }, 500);
-          },
-          'confirm',
-          'Yes, Email Now',
-          'No, Just Download'
-        );
-      } catch (err) {
-        console.error(err);
-        showAlert('Error', 'An unexpected error occurred during generation.', 'error');
-      } finally {
-        setIsGenerating(false);
-      }
-    }, 100);
+            showConfirm(
+              "Quotation Saved", 
+              "Quotation saved successfully! Do you want to send it via Email now?",
+              () => {
+                // Setup Email Composer
+                setEmailForm(prev => ({
+                  ...prev,
+                  subject: formData.subject,
+                  selectedDriveFiles: [
+                    ...prev.selectedDriveFiles.filter(f => !f.isGenerated),
+                    {
+                      id: 'draft-' + Date.now(),
+                      fileName: fileName,
+                      data: blobUrl,
+                      isGenerated: true
+                    }
+                  ]
+                }));
+                setShowEmailComposer(true);
+              },
+              () => {
+                // Download and go to history
+                const link = document.createElement('a');
+                link.href = blobUrl;
+                link.download = fileName;
+                link.click();
+                
+                setView('history');
+                setTimeout(() => {
+                  showAlert('Saved to History', `Quotation ${formData.referenceNumber} has been safely archived.`, 'success');
+                }, 500);
+              },
+              'confirm',
+              'Yes, Email Now',
+              'No, Just Download'
+            );
+          } catch (err) {
+            console.error(err);
+            showAlert('Error', 'An unexpected error occurred during generation.', 'error');
+          } finally {
+            setIsGenerating(false);
+          }
+        }, 100);
+      },
+      null,
+      'confirm',
+      'Yes',
+      'Back'
+    );
   };
 
   const NavItem = ({ id, label }) => (
@@ -1299,10 +1309,11 @@ function App() {
               <div className="relative mb-8 max-w-md">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--apple-gray-4)] w-4 h-4" />
                 <input
-                  type="text"
+                  type="search"
                   placeholder="Search templates..."
                   value={templateSearchQuery}
                   onChange={(e) => setTemplateSearchQuery(e.target.value)}
+                  autoComplete="off"
                   className="apple-input !pl-10 !py-2.5"
                 />
               </div>
@@ -2093,10 +2104,11 @@ function App() {
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--apple-gray-4)] w-4 h-4" />
                   <input
-                    type="text"
+                    type="search"
                     placeholder="Search hospital or ref..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
+                    autoComplete="off"
                     className="apple-input !pl-10 !py-2.5 w-full md:w-[280px]"
                   />
                 </div>
@@ -3348,6 +3360,7 @@ function App() {
                     id="modal-prompt-input"
                     type="password"
                     placeholder="Enter Admin Password"
+                    autoComplete="new-password"
                     autoFocus
                     className="w-full bg-[var(--apple-gray-1)] border-2 border-[var(--apple-gray-2)] focus:border-[var(--apple-black)] text-[16px] font-bold p-4 rounded-xl transition-all outline-none text-center tracking-[0.3em]"
                     onKeyDown={(e) => {
