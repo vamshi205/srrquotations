@@ -2918,30 +2918,30 @@ function App() {
       {/* UPLOAD PROGRESS OVERLAY */}
       {isUploading && (
         <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 w-full max-w-sm px-4">
-          <div className="bg-white shadow-2xl border border-[var(--apple-gray-3)] rounded-2xl p-6 flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <div className="bg-white/90 backdrop-blur-xl shadow-2xl border border-white rounded-[32px] p-6 flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-8 duration-500">
             <div className="flex justify-between items-center">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center animate-pulse">
-                  <UploadCloud size={20} className="text-[var(--emerald)]" />
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center">
+                  <UploadCloud size={24} strokeWidth={1.5} className="animate-bounce" />
                 </div>
                 <div>
-                  <h4 className="text-[15px] font-bold">Uploading Document</h4>
-                  <p className="text-[12px] text-[var(--apple-gray-5)]">Please wait while we sync to Cloud</p>
+                  <h4 className="text-[16px] font-bold text-[var(--apple-black)] tracking-tight">Syncing to Cloud</h4>
+                  <p className="text-[12px] text-[var(--apple-gray-5)] font-medium">Securing your document...</p>
                 </div>
               </div>
-              <span className="text-[17px] font-bold text-[var(--emerald)]">{Math.round(uploadProgress)}%</span>
+              <span className="text-[18px] font-black text-emerald-600 tabular-nums">{Math.round(uploadProgress)}%</span>
             </div>
 
-            <div className="w-full h-2 bg-[var(--apple-gray-2)] rounded-full overflow-hidden">
+            <div className="w-full h-1.5 bg-emerald-100/50 rounded-full overflow-hidden">
               <div
-                className="h-full bg-[var(--emerald)] transition-all duration-300 ease-out"
+                className="h-full bg-emerald-500 transition-all duration-300 ease-out shadow-[0_0_8px_rgba(16,185,129,0.3)]"
                 style={{ width: `${uploadProgress}%` }}
               />
             </div>
 
             {uploadProgress === 100 && (
-              <div className="flex items-center gap-2 text-[13px] font-bold text-[var(--emerald)] animate-in zoom-in duration-300">
-                <FileCheck size={16} /> Upload Complete!
+              <div className="flex items-center justify-center gap-2 text-[12px] font-bold text-emerald-600 animate-in zoom-in duration-300">
+                <FileCheck size={16} /> Securely Uploaded
               </div>
             )}
           </div>
