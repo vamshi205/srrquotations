@@ -3332,10 +3332,10 @@ function App() {
                 <div className="mb-8">
                   <label className="text-[11px] font-bold text-[var(--apple-gray-4)] uppercase tracking-widest block mb-2 px-1">Verification Required</label>
                   <input 
-                    id="modal-prompt-input"
+                    id="admin-verification-input"
                     type="password"
                     placeholder="Enter Admin Password"
-                    autoComplete="new-password"
+                    autoComplete="one-time-code"
                     autoFocus
                     className="w-full bg-[var(--apple-gray-1)] border-2 border-[var(--apple-gray-2)] focus:border-[var(--apple-black)] text-[16px] font-bold p-4 rounded-xl transition-all outline-none text-center tracking-[0.3em]"
                     onKeyDown={(e) => {
@@ -3352,7 +3352,7 @@ function App() {
               <div className="flex flex-col gap-3">
                 <button 
                   onClick={() => {
-                    const inputVal = document.getElementById('modal-prompt-input')?.value;
+                    const inputVal = document.getElementById('admin-verification-input')?.value;
                     const onConfirm = alertModal.onConfirm;
                     const onInput = alertModal.onInput;
                     setAlertModal(null);
