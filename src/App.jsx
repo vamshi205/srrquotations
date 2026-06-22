@@ -35,6 +35,8 @@ import {
   Search,
   Eye,
   FilePlus2,
+  Printer,
+  X,
 
   FileUp,
   Save,
@@ -62,6 +64,7 @@ function App() {
   const [isSyncingStorage, setIsSyncingStorage] = useState(false);
   const [previewPdfUrl, setPreviewPdfUrl] = useState(null);
   const [previewingItem, setPreviewingItem] = useState(null);
+  const [previewingDoc, setPreviewingDoc] = useState(null);
   const [previewScale, setPreviewScale] = useState(1);
   const [previewPriceListUrl, setPreviewPriceListUrl] = useState(null);
   const [regeneratingItem, setRegeneratingItem] = useState(null);
@@ -78,6 +81,94 @@ function App() {
 
   const showPrompt = (title, message, onInput, type = 'prompt', confirmText = 'Submit', cancelText = 'Cancel') => {
     setAlertModal({ type, title, message, onInput, showInput: true, confirmText, cancelText });
+  };
+
+  const printDocument = (docUrl, docName, docType) => {
+    if (docType && docType.startsWith('image/')) {
+      const iframe = document.createElement('iframe');
+      iframe.style.position = 'fixed';
+      iframe.style.right = '0';
+      iframe.style.bottom = '0';
+      iframe.style.width = '0';
+      iframe.style.height = '0';
+      iframe.style.border = '0';
+      document.body.appendChild(iframe);
+      
+      iframe.contentWindow.document.write(`
+        <html>
+          <head>
+            <title>${docName || 'Print Document'}</title>
+            <style>
+              body { margin: 0; display: flex; justify-content: center; align-items: center; }
+              img { max-width: 100%; max-height: 100vh; object-fit: contain; }
+            </style>
+          </head>
+          <body>
+            <img src="${docUrl}" onload="window.print();" />
+          </body>
+        </html>
+      `);
+      iframe.contentWindow.document.close();
+      
+      setTimeout(() => {
+        if (document.body.contains(iframe)) {
+          document.body.removeChild(iframe);
+        }
+      }, 5000);
+    } else {
+      const iframe = document.createElement('iframe');
+      iframe.style.position = 'fixed';
+      iframe.style.right = '0';
+      iframe.style.bottom = '0';
+      iframe.style.width = '0';
+      iframe.style.height = '0';
+      iframe.style.border = '0';
+      iframe.src = docUrl;
+      document.body.appendChild(iframe);
+      
+      iframe.onload = () => {
+        try {
+          iframe.contentWindow.focus();
+          iframe.contentWindow.print();
+        } catch (e) {
+          console.warn("Iframe print failed due to cross-origin restriction. Opening in a new tab.", e);
+          const printWindow = window.open(docUrl, '_blank');
+          if (printWindow) {
+            printWindow.focus();
+            printWindow.print();
+          }
+        }
+        setTimeout(() => {
+          if (document.body.contains(iframe)) {
+            document.body.removeChild(iframe);
+          }
+        }, 5000);
+      };
+    }
+  };
+
+  const shareDocument = async (docUrl, docName) => {
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: docName,
+          text: `Shared Document: ${docName}`,
+          url: docUrl
+        });
+        return { success: true, method: 'share' };
+      } catch (err) {
+        if (err.name === 'AbortError') return { success: true, method: 'cancelled' };
+        console.error('Web Share failed, falling back to clipboard:', err);
+      }
+    }
+    
+    try {
+      await navigator.clipboard.writeText(docUrl);
+      return { success: true, method: 'clipboard' };
+    } catch (err) {
+      console.error('Clipboard copy failed:', err);
+      return { success: false, error: err };
+    }
   };
 
   const [formData, setFormData] = useState({
@@ -2406,7 +2497,37 @@ function App() {
                             <p className="text-[11px] text-[var(--apple-gray-4)]">{file.fileName} • {file.uploadedAt}</p>
                           </div>
                         </div>
-                        <div className="flex items-center gap-1 ml-3">
+                        <div className="flex items-center gap-1 ml-3 flex-shrink-0">
+                          <button 
+                            onClick={() => setPreviewingDoc(file)}
+                            className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-[var(--emerald)] rounded-lg transition-colors"
+                            title="View Document"
+                          >
+                            <Eye size={15} />
+                          </button>
+                          <button 
+                            onClick={() => printDocument(file.data, file.label || file.fileName, file.type)}
+                            className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-[var(--emerald)] rounded-lg transition-colors"
+                            title="Print Document"
+                          >
+                            <Printer size={15} />
+                          </button>
+                          <button 
+                            onClick={async () => {
+                              const res = await shareDocument(file.data, file.label || file.fileName);
+                              if (res && res.success) {
+                                if (res.method === 'clipboard') {
+                                  showAlert('Copied to Clipboard', 'Document link has been copied to your clipboard.', 'success');
+                                }
+                              } else {
+                                showAlert('Share Failed', 'Could not copy link or share.', 'error');
+                              }
+                            }}
+                            className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-[var(--emerald)] rounded-lg transition-colors"
+                            title="Share Document"
+                          >
+                            <Share2 size={15} />
+                          </button>
                           <a href={file.data} download={file.fileName} className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-[var(--emerald)] rounded-lg transition-colors" title="Download">
                             <Download size={15} />
                           </a>
@@ -2529,7 +2650,37 @@ function App() {
                                     <p className="text-[11px] text-[var(--apple-gray-4)]">{file.uploadedAt}</p>
                                   </div>
                                 </div>
-                                <div className="flex items-center gap-1 ml-3">
+                                <div className="flex items-center gap-1 ml-3 flex-shrink-0">
+                                  <button 
+                                    onClick={() => setPreviewingDoc(file)}
+                                    className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-[var(--apple-black)] rounded-lg transition-colors"
+                                    title="View Document"
+                                  >
+                                    <Eye size={15} />
+                                  </button>
+                                  <button 
+                                    onClick={() => printDocument(file.data, file.label || file.fileName, file.type)}
+                                    className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-[var(--apple-black)] rounded-lg transition-colors"
+                                    title="Print Document"
+                                  >
+                                    <Printer size={15} />
+                                  </button>
+                                  <button 
+                                    onClick={async () => {
+                                      const res = await shareDocument(file.data, file.label || file.fileName);
+                                      if (res && res.success) {
+                                        if (res.method === 'clipboard') {
+                                          showAlert('Copied to Clipboard', 'Document link has been copied to your clipboard.', 'success');
+                                        }
+                                      } else {
+                                        showAlert('Share Failed', 'Could not copy link or share.', 'error');
+                                      }
+                                    }}
+                                    className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-[var(--apple-black)] rounded-lg transition-colors"
+                                    title="Share Document"
+                                  >
+                                    <Share2 size={15} />
+                                  </button>
                                   <a href={file.data} download={file.fileName} className="w-8 h-8 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-[var(--apple-black)] rounded-lg transition-colors" title="Download">
                                     <Download size={15} />
                                   </a>
@@ -2653,7 +2804,37 @@ function App() {
                                       <p className="text-[11px] text-indigo-400">{file.uploadedAt}</p>
                                     </div>
                                   </div>
-                                  <div className="flex items-center gap-1 ml-3">
+                                  <div className="flex items-center gap-1 ml-3 flex-shrink-0">
+                                    <button 
+                                      onClick={() => setPreviewingDoc(file)}
+                                      className="w-8 h-8 flex items-center justify-center text-indigo-300 hover:text-indigo-600 rounded-lg transition-colors"
+                                      title="View Document"
+                                    >
+                                      <Eye size={15} />
+                                    </button>
+                                    <button 
+                                      onClick={() => printDocument(file.data, file.label || file.fileName, file.type)}
+                                      className="w-8 h-8 flex items-center justify-center text-indigo-300 hover:text-indigo-600 rounded-lg transition-colors"
+                                      title="Print Document"
+                                    >
+                                      <Printer size={15} />
+                                    </button>
+                                    <button 
+                                      onClick={async () => {
+                                        const res = await shareDocument(file.data, file.label || file.fileName);
+                                        if (res && res.success) {
+                                          if (res.method === 'clipboard') {
+                                            showAlert('Copied to Clipboard', 'Document link has been copied to your clipboard.', 'success');
+                                          }
+                                        } else {
+                                          showAlert('Share Failed', 'Could not copy link or share.', 'error');
+                                        }
+                                      }}
+                                      className="w-8 h-8 flex items-center justify-center text-indigo-300 hover:text-indigo-600 rounded-lg transition-colors"
+                                      title="Share Document"
+                                    >
+                                      <Share2 size={15} />
+                                    </button>
                                     <a href={file.data} download={file.fileName} className="w-8 h-8 flex items-center justify-center text-indigo-300 hover:text-indigo-600 rounded-lg transition-colors" title="Download">
                                       <Download size={15} />
                                     </a>
@@ -2691,7 +2872,37 @@ function App() {
                                   <p className="text-[11px] text-indigo-400 font-medium">{file.fileName} • {file.uploadedAt}</p>
                                 </div>
                               </div>
-                              <div className="flex items-center gap-1 ml-3">
+                              <div className="flex items-center gap-1 ml-3 flex-shrink-0">
+                                <button 
+                                  onClick={() => setPreviewingDoc(file)}
+                                  className="w-8 h-8 flex items-center justify-center text-indigo-300 hover:text-indigo-600 rounded-lg transition-colors"
+                                  title="View Document"
+                                >
+                                  <Eye size={15} />
+                                </button>
+                                <button 
+                                  onClick={() => printDocument(file.data, file.label || file.fileName, file.type)}
+                                  className="w-8 h-8 flex items-center justify-center text-indigo-300 hover:text-indigo-600 rounded-lg transition-colors"
+                                  title="Print Document"
+                                >
+                                  <Printer size={15} />
+                                </button>
+                                <button 
+                                  onClick={async () => {
+                                    const res = await shareDocument(file.data, file.label || file.fileName);
+                                    if (res && res.success) {
+                                      if (res.method === 'clipboard') {
+                                        showAlert('Copied to Clipboard', 'Document link has been copied to your clipboard.', 'success');
+                                      }
+                                    } else {
+                                      showAlert('Share Failed', 'Could not copy link or share.', 'error');
+                                    }
+                                  }}
+                                  className="w-8 h-8 flex items-center justify-center text-indigo-300 hover:text-indigo-600 rounded-lg transition-colors"
+                                  title="Share Document"
+                                >
+                                  <Share2 size={15} />
+                                </button>
                                 <a href={file.data} download={file.fileName} className="w-8 h-8 flex items-center justify-center text-indigo-300 hover:text-indigo-600 rounded-lg transition-colors" title="Download">
                                   <Download size={15} />
                                 </a>
@@ -3268,6 +3479,85 @@ function App() {
               <div className="h-full bg-indigo-600 animate-progress-sweep"></div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* DOCUMENT VIEWER OVERLAY */}
+      {previewingDoc && (
+        <div className="fixed inset-0 z-[6500] flex flex-col bg-[var(--apple-gray-2)] animate-in fade-in duration-300">
+          <header className="flex-none flex items-center justify-between px-4 md:px-12 py-4 bg-white border-b border-[var(--apple-gray-3)] shadow-sm">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 bg-[var(--accent)] text-white rounded-xl flex items-center justify-center shadow-md shrink-0">
+                <FileText size={20} />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-[15px] font-bold text-[var(--apple-black)] truncate leading-tight">
+                  {previewingDoc.label || previewingDoc.fileName}
+                </h3>
+                <p className="text-[11px] text-[var(--apple-gray-5)] mt-0.5 font-medium truncate">
+                  {previewingDoc.uploadedAt} • {previewingDoc.fileName}
+                </p>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-2 shrink-0">
+              {/* Print Button */}
+              <button 
+                onClick={() => printDocument(previewingDoc.data, previewingDoc.label || previewingDoc.fileName, previewingDoc.type)}
+                className="w-10 h-10 flex items-center justify-center bg-white border border-[var(--apple-gray-3)] rounded-full text-[var(--apple-gray-5)] hover:text-[var(--apple-black)] hover:bg-[var(--apple-gray-1)] transition-all"
+                title="Print Document"
+              >
+                <Printer size={18} />
+              </button>
+              
+              {/* Share Button */}
+              <button 
+                onClick={async () => {
+                  const res = await shareDocument(previewingDoc.data, previewingDoc.label || previewingDoc.fileName);
+                  if (res && res.success) {
+                    if (res.method === 'clipboard') {
+                      showAlert('Copied to Clipboard', 'Document link has been copied to your clipboard.', 'success');
+                    }
+                  } else {
+                    showAlert('Share Failed', 'Could not copy link or share.', 'error');
+                  }
+                }}
+                className="w-10 h-10 flex items-center justify-center bg-white border border-[var(--apple-gray-3)] rounded-full text-[var(--apple-gray-5)] hover:text-[var(--apple-black)] hover:bg-[var(--apple-gray-1)] transition-all"
+                title="Share Document"
+              >
+                <Share2 size={18} />
+              </button>
+
+              {/* Close Button */}
+              <button 
+                onClick={() => setPreviewingDoc(null)}
+                className="w-10 h-10 flex items-center justify-center bg-white border border-[var(--apple-gray-3)] rounded-full text-[var(--apple-gray-5)] hover:text-red-500 hover:bg-red-50 transition-all"
+                title="Close Viewer"
+              >
+                <X size={20} />
+              </button>
+            </div>
+          </header>
+          
+          <main className="flex-1 bg-[var(--apple-gray-3)]/30 p-2 md:p-8 flex items-center justify-center overflow-hidden">
+            <div className="w-full h-full max-w-5xl bg-white rounded-2xl border border-[var(--apple-gray-3)] shadow-2xl overflow-hidden flex items-center justify-center animate-in zoom-in-95 duration-300">
+              {previewingDoc.type && previewingDoc.type.startsWith('image/') ? (
+                <div className="w-full h-full p-4 flex items-center justify-center bg-[var(--apple-gray-1)]">
+                  <img 
+                    src={previewingDoc.data} 
+                    alt={previewingDoc.label} 
+                    className="max-w-full max-h-full object-contain rounded-xl shadow-md border border-[var(--apple-gray-2)]"
+                  />
+                </div>
+              ) : (
+                <iframe 
+                  src={previewingDoc.data} 
+                  className="w-full h-full border-none" 
+                  title={previewingDoc.label}
+                />
+              )}
+            </div>
+          </main>
         </div>
       )}
 
