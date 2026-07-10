@@ -34,6 +34,7 @@ import {
   ShieldCheck,
   Search,
   Eye,
+  EyeOff,
   FilePlus2,
   Printer,
   X,
@@ -847,6 +848,7 @@ function App() {
       date: getTodayFormatted(),
       referenceNumber: getNextRefNumber(quotationHistory),
       selectedTemplateId: template.id,
+      priceListId: template.defaultPriceListId || '',
       subject: template.subject || 'Quotation for Orthopedic Implants & instruments',
       make: template.defaultMake || '',
       delivery: template.defaultDelivery || '',
@@ -1356,6 +1358,7 @@ function App() {
                         name: 'New Template',
                         description: '',
                         requiresPriceList: false,
+                        defaultPriceListId: '',
                         subject: '',
                         defaultMake: '',
                         defaultDelivery: '',
@@ -1511,12 +1514,39 @@ function App() {
                       </div>
                     </div>
                     <button
-                      onClick={() => setEditingTemplate({ ...editingTemplate, requiresPriceList: !editingTemplate?.requiresPriceList })}
+                      onClick={() => {
+                        const nextVal = !editingTemplate?.requiresPriceList;
+                        setEditingTemplate({
+                          ...editingTemplate,
+                          requiresPriceList: nextVal,
+                          defaultPriceListId: nextVal ? (editingTemplate?.defaultPriceListId || '') : ''
+                        });
+                      }}
                       className={`w-12 h-6 rounded-full transition-all duration-300 relative ${editingTemplate?.requiresPriceList ? 'bg-emerald-500' : 'bg-[var(--apple-gray-3)]'}`}
                     >
                       <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all duration-300 ${editingTemplate?.requiresPriceList ? 'left-7' : 'left-1'}`} />
                     </button>
                   </div>
+
+                  {editingTemplate?.requiresPriceList && (
+                    <div className="p-4 bg-[var(--apple-gray-1)] rounded-2xl border border-[var(--apple-gray-2)]">
+                      <label className="text-[11px] font-semibold text-[var(--apple-gray-5)] uppercase block mb-1">Default Price List</label>
+                      <select
+                        value={editingTemplate?.defaultPriceListId || ''}
+                        onChange={e => setEditingTemplate({ ...editingTemplate, defaultPriceListId: e.target.value })}
+                        className="apple-input cursor-pointer bg-white"
+                      >
+                        <option value="">-- No Default Price List --</option>
+                        {priceLists
+                          .filter(pl => !pl.hidden || pl.id === editingTemplate?.defaultPriceListId)
+                          .map(pl => (
+                            <option key={pl.id} value={pl.id}>
+                              {pl.label} {pl.hidden ? '(Hidden)' : ''}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                  )}
 
                   <div className="pt-6 border-t border-[var(--apple-gray-2)]">
                     <label className="apple-label mb-4">Default Terms</label>
@@ -1890,9 +1920,13 @@ function App() {
                           className="apple-input cursor-pointer bg-[var(--apple-gray-1)]"
                         >
                           <option value="">-- Select Price List --</option>
-                          {priceLists.map(pl => (
-                            <option key={pl.id} value={pl.id}>{pl.label}</option>
-                          ))}
+                          {priceLists
+                            .filter(pl => !pl.hidden || pl.id === formData.priceListId)
+                            .map(pl => (
+                              <option key={pl.id} value={pl.id}>
+                                {pl.label} {pl.hidden ? '(Hidden)' : ''}
+                              </option>
+                            ))}
                         </select>
                       </div>
                     )}
@@ -2931,7 +2965,7 @@ function App() {
               <header className="flex flex-col md:flex-row md:items-end justify-between mb-12 gap-6">
                 <div>
                   <h1 className="apple-title-1 mb-2">Price Lists</h1>
-                  <p className="apple-subtitle">Manage and access manufacturer price lists. <span className="font-semibold text-[var(--apple-black)]">{priceLists.length}</span> total</p>
+                  <p className="apple-subtitle">Manage and access manufacturer price lists. <span className="font-semibold text-[var(--apple-black)]">{priceLists.filter(p => isManagementActive || !p.hidden).length}</span> total</p>
                 </div>
                 <div>
                   <input type="file" onChange={(e) => {
@@ -2953,39 +2987,68 @@ function App() {
 
               <div>
                 <div className="grid gap-3">
-                  {priceLists.map(item => (
-                    <div key={item.id} className="apple-card p-5 flex items-center justify-between hover:border-[var(--apple-gray-4)] transition-all">
-                      <div className="flex items-center gap-4">
-                        <div className="w-11 h-11 bg-[var(--apple-gray-1)] rounded-xl flex items-center justify-center">
-                          <FileText size={22} className="text-[var(--apple-black)]" />
+                  {priceLists
+                    .filter(item => isManagementActive || !item.hidden)
+                    .map(item => (
+                      <div 
+                        key={item.id} 
+                        className={`apple-card p-5 flex items-center justify-between hover:border-[var(--apple-gray-4)] transition-all ${
+                          item.hidden ? 'opacity-60 bg-[var(--apple-gray-1)]' : ''
+                        }`}
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className="w-11 h-11 bg-[var(--apple-gray-1)] rounded-xl flex items-center justify-center">
+                            <FileText size={22} className="text-[var(--apple-black)]" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <p className="text-[16px] font-bold text-[var(--apple-black)] leading-tight">{item.label}</p>
+                              {item.hidden && (
+                                <span className="text-[9px] font-bold uppercase tracking-wider bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded border border-amber-200">Hidden</span>
+                              )}
+                            </div>
+                            <p className="text-[12px] text-[var(--apple-gray-5)] mt-1">{item.fileName} • {item.uploadedAt}</p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="text-[16px] font-bold text-[var(--apple-black)] leading-tight">{item.label}</p>
-                          <p className="text-[12px] text-[var(--apple-gray-5)] mt-1">{item.fileName} • {item.uploadedAt}</p>
+                        <div className="flex items-center gap-2">
+                          <a href={item.data} download={item.fileName} className="w-9 h-9 flex items-center justify-center text-[var(--apple-gray-5)] hover:text-[var(--apple-black)] hover:bg-[var(--apple-gray-1)] rounded-lg transition-all" title="Download">
+                            <Download size={18} />
+                          </a>
+                          {isManagementActive && (
+                            <>
+                              <button 
+                                onClick={async () => {
+                                  const updatedItem = { ...item, hidden: !item.hidden };
+                                  setPriceLists(prev => prev.map(p => p.id === item.id ? updatedItem : p));
+                                  await syncItem('price_lists', updatedItem, false);
+                                }}
+                                className={`w-9 h-9 flex items-center justify-center rounded-lg transition-all ${
+                                  item.hidden 
+                                    ? 'text-amber-500 hover:text-amber-600 hover:bg-amber-50' 
+                                    : 'text-[var(--apple-gray-4)] hover:text-[var(--apple-black)] hover:bg-[var(--apple-gray-1)]'
+                                }`}
+                                title={item.hidden ? "Show in Menu" : "Hide from Menu"}
+                              >
+                                {item.hidden ? <EyeOff size={18} /> : <Eye size={18} />}
+                              </button>
+                              <button 
+                                onClick={() => confirmDelete(async () => {
+                                  setPriceLists(prev => prev.filter(p => p.id !== item.id));
+                                  await syncItem('price_lists', item, true);
+                                })}
+                                className="w-9 h-9 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                                title="Delete"
+                              >
+                                <Trash2 size={18} />
+                              </button>
+                            </>
+                          )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <a href={item.data} download={item.fileName} className="w-9 h-9 flex items-center justify-center text-[var(--apple-gray-5)] hover:text-[var(--apple-black)] hover:bg-[var(--apple-gray-1)] rounded-lg transition-all" title="Download">
-                          <Download size={18} />
-                        </a>
-                        {isManagementActive && (
-                          <button 
-                            onClick={() => confirmDelete(async () => {
-                              setPriceLists(prev => prev.filter(p => p.id !== item.id));
-                              await syncItem('price_lists', item, true);
-                            })}
-                            className="w-9 h-9 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
-                            title="Delete"
-                          >
-                            <Trash2 size={18} />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                  {priceLists.length === 0 && (
+                    ))}
+                  {priceLists.filter(item => isManagementActive || !item.hidden).length === 0 && (
                     <div className="text-center py-16 bg-white border border-dashed border-[var(--apple-gray-3)] rounded-2xl">
-                      <p className="text-[15px] text-[var(--apple-gray-4)]">No price lists uploaded yet.</p>
+                      <p className="text-[15px] text-[var(--apple-gray-4)]">No price lists available.</p>
                     </div>
                   )}
                 </div>
