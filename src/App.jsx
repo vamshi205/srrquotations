@@ -1245,17 +1245,17 @@ function App() {
   }
 
   return (
-    <div className="flex flex-col h-screen text-[var(--apple-black)] font-sans overflow-hidden bg-[var(--apple-bg)]">
+    <div className="flex flex-col h-screen text-[var(--text)] font-sans overflow-hidden bg-transparent">
 
       {/* ─────────────────────────────────────────
           APPLE NAV BAR (TOP)
           ───────────────────────────────────────── */}
       <nav className="apple-nav px-4 md:px-6">
-        <div className="flex items-center gap-2 mr-auto lg:mr-8">
-          <div className="w-8 h-8 bg-[var(--coral)] rounded-lg flex items-center justify-center shrink-0">
-            <FileUp className="text-white w-4 h-4" />
+        <div className="flex items-center gap-3 mr-auto lg:mr-8">
+          <div className="w-9 h-9 bg-gradient-to-tr from-emerald-600 to-teal-800 rounded-xl flex items-center justify-center shrink-0 shadow-md">
+            <FileUp className="text-white w-4.5 h-4.5" />
           </div>
-          <span className="font-bold text-base md:text-lg tracking-tight truncate">SRR Ortho Plus</span>
+          <span className="font-extrabold text-base md:text-lg tracking-tight truncate bg-clip-text text-transparent bg-gradient-to-r from-teal-800 to-emerald-600">SRR Ortho Plus</span>
         </div>
         
         {/* Desktop Nav */}
@@ -1293,18 +1293,18 @@ function App() {
                 });
               }
             }}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[13px] font-bold transition-all ${
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-[13px] font-bold transition-all border ${
               isManagementActive 
-                ? 'bg-[var(--emerald-light)] text-[var(--emerald)] border border-[var(--emerald)]' 
-                : 'bg-[var(--apple-gray-1)] text-[var(--apple-gray-5)] border border-transparent hover:border-[var(--apple-gray-3)]'
+                ? 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30' 
+                : 'bg-white/45 text-slate-600 border-white/50 hover:bg-white/65 hover:border-white/70 hover:shadow-sm'
             }`}
           >
             {isManagementActive ? <ShieldCheck size={16} /> : <LayoutDashboard size={16} />}
             <span className="hidden sm:inline">{isManagementActive ? 'Admin Active' : 'Admin'}</span>
           </button>
           
-          <span className="text-[13px] font-medium text-[var(--apple-gray-5)] hidden xl:block">{user.email}</span>
-          <button onClick={handleLogout} className="text-[13px] font-medium text-red-500 hover:text-red-600 transition-colors hidden sm:block">
+          <span className="text-[13px] font-semibold text-[var(--text2)] hidden xl:block">{user.email}</span>
+          <button onClick={handleLogout} className="text-[13px] font-bold text-red-500 hover:text-red-600 transition-colors hidden sm:block">
             Sign Out
           </button>
         </div>
@@ -1312,24 +1312,26 @@ function App() {
 
       {/* Mobile Menu Overlay */}
       {isMobileMenuOpen && (
-        <div className="fixed inset-0 z-[2000] bg-white lg:hidden flex flex-col p-6 animate-in slide-in-from-top duration-300">
+        <div className="fixed inset-0 z-[2000] bg-slate-950/80 backdrop-blur-2xl lg:hidden flex flex-col p-6 text-white animate-in slide-in-from-top duration-300">
           <div className="flex justify-between items-center mb-10">
-            <span className="font-bold text-xl">Menu</span>
-            <button onClick={() => setIsMobileMenuOpen(false)}><Plus className="rotate-45" size={32} /></button>
+            <span className="font-extrabold text-2xl tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 to-teal-200">SRR Menu</span>
+            <button onClick={() => setIsMobileMenuOpen(false)} className="w-10 h-10 flex items-center justify-center bg-white/10 rounded-full border border-white/10 hover:bg-white/20 transition-all"><Plus className="rotate-45" size={24} /></button>
           </div>
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-3">
             {['library', 'history', 'drive', 'emailer', 'emailHistory', 'pricelists', 'settings'].map(id => (
               <button
                 key={id}
                 onClick={() => { setView(id); setIsMobileMenuOpen(false); }}
-                className={`text-left p-4 rounded-2xl text-lg font-semibold uppercase tracking-wide transition-all ${
-                  view === id ? 'bg-[var(--apple-gray-1)] text-[var(--emerald)]' : 'text-[var(--apple-gray-5)]'
+                className={`text-left p-4 rounded-2xl text-lg font-bold uppercase tracking-wider transition-all border ${
+                  view === id 
+                    ? 'bg-white/10 border-white/25 text-emerald-400 shadow-md' 
+                    : 'bg-transparent border-transparent text-slate-300 hover:bg-white/5'
                 }`}
               >
-                {id}
+                {id.replace('pricelists', 'price list').replace('emailHistory', 'email history')}
               </button>
             ))}
-            <button onClick={handleLogout} className="text-left p-4 rounded-2xl text-lg font-semibold text-red-500 uppercase tracking-wide mt-4 border-t border-[var(--apple-gray-2)] pt-8">
+            <button onClick={handleLogout} className="text-left p-4 rounded-2xl text-lg font-bold text-red-400 hover:bg-red-500/10 uppercase tracking-wider mt-4 border-t border-white/10 pt-8">
               Sign Out
             </button>
           </div>
@@ -1445,25 +1447,25 @@ function App() {
         {view === 'builder' && (
           <div className="flex flex-col lg:flex-row h-full overflow-hidden">
             {/* Left Properties Panel */}
-            <div className={`${isDesignerMaximized ? 'w-0 overflow-hidden opacity-0 p-0' : (showPreview ? 'w-full lg:w-[450px]' : 'flex-1')} bg-white border-r border-[var(--apple-gray-2)] flex flex-col overflow-y-auto transition-all duration-300`}>
+            <div className={`${isDesignerMaximized ? 'w-0 overflow-hidden opacity-0 p-0' : (showPreview ? 'w-full lg:w-[450px]' : 'flex-1')} bg-white/60 backdrop-blur-xl border-r border-white/40 shadow-xl flex flex-col overflow-y-auto transition-all duration-300`}>
               <div className="p-8 pb-4">
                 <div className="flex justify-between items-center mb-8">
                   <button
                     onClick={() => { setEditingTemplate(null); setView('library'); }}
-                    className="flex items-center gap-1 text-[13px] font-semibold text-[var(--emerald)] hover:opacity-80"
+                    className="flex items-center gap-1 text-[13px] font-bold text-[var(--accent)] hover:text-emerald-700"
                   >
                     <ChevronLeft size={16} /> Library
                   </button>
                   <div className="flex gap-2">
                     <button
                       onClick={() => setShowPreview(!showPreview)}
-                      className="px-3 py-1.5 border border-[var(--apple-gray-3)] rounded-lg text-[11px] font-semibold text-[var(--apple-gray-6)] hover:bg-[var(--apple-gray-1)] transition-colors"
+                      className="px-3 py-1.5 border border-white/50 rounded-xl text-[11px] font-bold text-[var(--text2)] bg-white/45 hover:bg-white/65 hover:shadow-sm transition-all"
                     >
                       {showPreview ? 'Hide Canvas' : 'Show Canvas'}
                     </button>
                     <button
                       onClick={() => setIsDesignerMaximized(!isDesignerMaximized)}
-                      className="px-3 py-1.5 border border-[var(--apple-gray-3)] rounded-lg text-[11px] font-semibold text-[var(--apple-gray-6)] hover:bg-[var(--apple-gray-1)] transition-colors"
+                      className="px-3 py-1.5 border border-white/50 rounded-xl text-[11px] font-bold text-[var(--text2)] bg-white/45 hover:bg-white/65 hover:shadow-sm transition-all"
                       title={isDesignerMaximized ? "Restore Sidebar" : "Maximize Table"}
                     >
                       {isDesignerMaximized ? 'Minimize' : 'Maximize'}
@@ -1471,7 +1473,7 @@ function App() {
                   </div>
                 </div>
                 <h2 className="text-[28px] font-bold tracking-tight leading-tight mb-8">Designer</h2>
-
+ 
                 <div className="space-y-6">
                   <div>
                     <label className="apple-label">Template Name</label>
@@ -1502,15 +1504,15 @@ function App() {
                       className="apple-input"
                     />
                   </div>
-
-                  <div className="flex items-center justify-between p-4 bg-[var(--apple-gray-1)] rounded-2xl border border-[var(--apple-gray-2)]">
+ 
+                  <div className="flex items-center justify-between p-4 bg-white/45 rounded-2xl border border-white/50 shadow-sm">
                     <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${editingTemplate?.requiresPriceList ? 'bg-emerald-100 text-emerald-600' : 'bg-white text-[var(--apple-gray-4)]'}`}>
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center border shadow-inner ${editingTemplate?.requiresPriceList ? 'bg-emerald-500/10 border-emerald-500/20 text-[var(--accent)]' : 'bg-white/40 border-white/60 text-slate-400'}`}>
                         <FileText size={20} />
                       </div>
                       <div>
-                        <p className="text-[14px] font-bold text-[var(--apple-black)]">Price List Needed</p>
-                        <p className="text-[11px] text-[var(--apple-gray-5)] font-medium">Require selecting a price list when drafting</p>
+                        <p className="text-[14px] font-bold text-[var(--text)]">Price List Needed</p>
+                        <p className="text-[11px] text-[var(--text3)] font-semibold">Require selecting a price list when drafting</p>
                       </div>
                     </div>
                     <button
@@ -1522,19 +1524,17 @@ function App() {
                           defaultPriceListId: nextVal ? (editingTemplate?.defaultPriceListId || '') : ''
                         });
                       }}
-                      className={`w-12 h-6 rounded-full transition-all duration-300 relative ${editingTemplate?.requiresPriceList ? 'bg-emerald-500' : 'bg-[var(--apple-gray-3)]'}`}
-                    >
-                      <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all duration-300 ${editingTemplate?.requiresPriceList ? 'left-7' : 'left-1'}`} />
-                    </button>
+                      className={`apple-toggle ${editingTemplate?.requiresPriceList ? 'on' : ''}`}
+                    />
                   </div>
-
+ 
                   {editingTemplate?.requiresPriceList && (
-                    <div className="p-4 bg-[var(--apple-gray-1)] rounded-2xl border border-[var(--apple-gray-2)]">
-                      <label className="text-[11px] font-semibold text-[var(--apple-gray-5)] uppercase block mb-1">Default Price List</label>
+                    <div className="p-4 bg-white/45 rounded-2xl border border-white/50 shadow-sm">
+                      <label className="text-[11px] font-bold text-[var(--text3)] uppercase block mb-2">Default Price List</label>
                       <select
                         value={editingTemplate?.defaultPriceListId || ''}
                         onChange={e => setEditingTemplate({ ...editingTemplate, defaultPriceListId: e.target.value })}
-                        className="apple-input cursor-pointer bg-white"
+                        className="apple-input cursor-pointer bg-white/40"
                       >
                         <option value="">-- No Default Price List --</option>
                         {priceLists
@@ -1569,14 +1569,14 @@ function App() {
                     </div>
                   </div>
 
-                  <div className="pt-6 border-t border-[var(--apple-gray-2)]">
+                  <div className="pt-6 border-t border-white/20">
                     <label className="apple-label mb-4">Default Spacing</label>
                     <div className="flex gap-2">
                       {['compact', 'standard', 'relaxed'].map(s => (
                         <button
                           key={s}
                           onClick={() => setEditingTemplate({ ...editingTemplate, defaultSpacing: s })}
-                          className={`flex-1 py-2 text-[12px] font-bold border transition-all rounded-xl capitalize ${ (editingTemplate?.defaultSpacing === s || (!editingTemplate?.defaultSpacing && s === 'compact')) ? 'bg-[var(--apple-black)] text-white border-[var(--apple-black)]' : 'bg-white text-[var(--apple-gray-5)] border-[var(--apple-gray-2)] hover:border-[var(--apple-gray-4)]'}`}
+                          className={`flex-1 py-2 text-[12px] font-bold border transition-all rounded-xl capitalize ${ (editingTemplate?.defaultSpacing === s || (!editingTemplate?.defaultSpacing && s === 'compact')) ? 'bg-gradient-to-r from-emerald-600 to-teal-700 text-white border-transparent shadow-md' : 'bg-white/45 text-[var(--text2)] border-white/50 hover:bg-white/65 hover:shadow-sm'}`}
                         >
                           {s}
                         </button>
@@ -1586,7 +1586,7 @@ function App() {
 
 
 
-                  <div className="pt-6 border-t border-[var(--apple-gray-2)]">
+                  <div className="pt-6 border-t border-white/20">
                     <label className="apple-label mb-4">Add Section</label>
                     <div className="grid grid-cols-2 gap-3">
                       <button
@@ -1608,12 +1608,12 @@ function App() {
                 </div>
               </div>
 
-              <div className="p-8 mt-auto pt-4 bg-white border-t border-[var(--apple-gray-2)] sticky bottom-0 flex flex-col gap-3">
+              <div className="p-8 mt-auto pt-4 bg-white/60 backdrop-blur-md border-t border-white/40 sticky bottom-0 flex flex-col gap-3">
                 <div className="flex justify-between items-center px-1">
-                  <span className="text-[11px] font-bold text-[var(--apple-gray-5)] uppercase tracking-wider">Storage Status</span>
+                  <span className="text-[11px] font-bold text-[var(--text3)] uppercase tracking-wider">Storage Status</span>
                   <div className="flex items-center gap-2">
                     <div className={`w-2 h-2 rounded-full ${syncStatus === 'syncing' ? 'bg-amber-400 animate-pulse' : syncStatus === 'error' ? 'bg-red-500' : 'bg-emerald-500'}`} />
-                    <span className="text-[12px] font-medium text-[var(--apple-gray-6)]">
+                    <span className="text-[12px] font-medium text-[var(--text)]">
                       {syncStatus === 'syncing' ? 'Saving to Cloud...' : syncStatus === 'error' ? 'Sync Error' : 'All Changes Saved'}
                     </span>
                   </div>
@@ -1717,9 +1717,9 @@ function App() {
                           placeholder="Type paragraph content..."
                         />
                       ) : (
-                        <div className="border border-[var(--apple-gray-2)] rounded-xl overflow-x-auto shadow-sm bg-white">
+                        <div className="border border-white/50 rounded-xl overflow-x-auto shadow-sm bg-white/40 backdrop-blur-sm">
                           <table className="w-full border-collapse">
-                            <thead className="bg-[var(--apple-gray-1)] border-b border-[var(--apple-gray-2)]">
+                            <thead className="bg-white/40 backdrop-blur-sm border-b border-white/30">
                               <tr>
                                 {block.headers.map((h, hi) => (
                                   <th key={hi} className="p-3 border-r border-[var(--apple-gray-2)] last:border-none relative group">
@@ -1853,25 +1853,25 @@ function App() {
         {view === 'drafting' && (
           <div className="flex flex-col lg:flex-row h-full overflow-hidden">
             {/* Left Input Form */}
-            <div className={`${isDraftingMaximized ? 'flex-1' : (showPreview ? 'w-full lg:w-[450px]' : 'flex-1')} bg-white border-r border-[var(--apple-gray-2)] flex flex-col overflow-y-auto transition-all duration-500 ${showEmailComposer ? 'blur-md opacity-30 pointer-events-none' : ''}`}>
+            <div className={`${isDraftingMaximized ? 'flex-1' : (showPreview ? 'w-full lg:w-[450px]' : 'flex-1')} bg-white/60 backdrop-blur-xl border-r border-white/40 shadow-xl flex flex-col overflow-y-auto transition-all duration-500 ${showEmailComposer ? 'blur-md opacity-30 pointer-events-none' : ''}`}>
               <div className="p-8 pb-4">
                 <div className="flex justify-between items-center mb-8">
                   <button
                     onClick={() => setView('library')}
-                    className="flex items-center gap-1 text-[13px] font-semibold text-[var(--emerald)] hover:opacity-80"
+                    className="flex items-center gap-1 text-[13px] font-bold text-[var(--accent)] hover:text-emerald-700"
                   >
                     <ChevronLeft size={16} /> Library
                   </button>
                   <div className="flex gap-2">
                     <button
                       onClick={() => setShowPreview(!showPreview)}
-                      className="px-3 py-1.5 border border-[var(--apple-gray-3)] rounded-lg text-[11px] font-semibold text-[var(--apple-gray-6)] hover:bg-[var(--apple-gray-1)] transition-colors"
+                      className="px-3 py-1.5 border border-white/50 rounded-xl text-[11px] font-bold text-[var(--text2)] bg-white/45 hover:bg-white/65 hover:shadow-sm transition-all"
                     >
                       {showPreview ? 'Hide Preview' : 'Show Preview'}
                     </button>
                     <button
                       onClick={() => setIsDraftingMaximized(!isDraftingMaximized)}
-                      className="px-3 py-1.5 border border-[var(--apple-gray-3)] rounded-lg text-[11px] font-semibold text-[var(--apple-gray-6)] hover:bg-[var(--apple-gray-1)] transition-colors"
+                      className="px-3 py-1.5 border border-white/50 rounded-xl text-[11px] font-bold text-[var(--text2)] bg-white/45 hover:bg-white/65 hover:shadow-sm transition-all"
                       title={isDraftingMaximized ? "Restore Sidebar" : "Maximize Table"}
                     >
                       {isDraftingMaximized ? 'Minimize' : 'Maximize'}
@@ -1879,11 +1879,11 @@ function App() {
                   </div>
                 </div>
                 <h2 className="text-[28px] font-bold tracking-tight leading-tight mb-8">Draft Quotation</h2>
-
+ 
                 <div className="space-y-6">
                   {/* Hospital Details */}
                   <div className="space-y-4">
-                    <h3 className="apple-label border-b border-[var(--apple-gray-2)] pb-2">Client Details</h3>
+                    <h3 className="apple-label border-b border-white/20 pb-2">Client Details</h3>
                     <div>
                       <input name="hospitalName" value={formData.hospitalName} onChange={handleInputChange} className="apple-input" placeholder="Hospital Name" />
                     </div>
@@ -1891,33 +1891,33 @@ function App() {
                       <textarea name="address" value={formData.address} onChange={handleInputChange} rows="2" className="apple-input" placeholder="Full Address" />
                     </div>
                   </div>
-
+ 
                   {/* Document Details */}
                   <div className="space-y-4 pt-4">
-                    <h3 className="apple-label border-b border-[var(--apple-gray-2)] pb-2">Document Info</h3>
+                    <h3 className="apple-label border-b border-white/20 pb-2">Document Info</h3>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <span className="text-[11px] font-semibold text-[var(--apple-gray-5)] uppercase block mb-1">Date</span>
+                        <span className="text-[11px] font-bold text-[var(--text3)] uppercase block mb-1">Date</span>
                         <input type="text" name="date" value={formData.date} onChange={handleInputChange} placeholder="DD/MM/YYYY" className="apple-input !px-3" />
                       </div>
                       <div>
-                        <span className="text-[11px] font-semibold text-[var(--apple-gray-5)] uppercase block mb-1">Ref No.</span>
-                        <input type="text" name="referenceNumber" value={formData.referenceNumber} readOnly className="apple-input !px-3 bg-[var(--apple-gray-1)] cursor-not-allowed opacity-70" title="Reference number is automatically generated" />
+                        <span className="text-[11px] font-bold text-[var(--text3)] uppercase block mb-1">Ref No.</span>
+                        <input type="text" name="referenceNumber" value={formData.referenceNumber} readOnly className="apple-input !px-3 bg-white/30 cursor-not-allowed opacity-60 border-white/40" title="Reference number is automatically generated" />
                       </div>
                     </div>
                     <div>
-                      <span className="text-[11px] font-semibold text-[var(--apple-gray-5)] uppercase block mb-1">Subject</span>
+                      <span className="text-[11px] font-bold text-[var(--text3)] uppercase block mb-1">Subject</span>
                       <textarea name="subject" value={formData.subject} onChange={handleInputChange} rows="2" className="apple-input" />
                     </div>
-
+ 
                     {templates.find(t => t.id === formData.selectedTemplateId)?.requiresPriceList && (
                       <div>
-                        <span className="text-[11px] font-semibold text-[var(--apple-gray-5)] uppercase block mb-1">Attached Price List</span>
+                        <span className="text-[11px] font-bold text-[var(--text3)] uppercase block mb-1">Attached Price List</span>
                         <select 
                           name="priceListId" 
                           value={formData.priceListId || ''} 
                           onChange={handleInputChange}
-                          className="apple-input cursor-pointer bg-[var(--apple-gray-1)]"
+                          className="apple-input cursor-pointer bg-white/40"
                         >
                           <option value="">-- Select Price List --</option>
                           {priceLists
@@ -1931,19 +1931,19 @@ function App() {
                       </div>
                     )}
                   </div>
-
+ 
                   {/* Layout Controls */}
                   <div className="space-y-4 pt-4">
-                    <h3 className="apple-label border-b border-[var(--apple-gray-2)] pb-2">Layout & Spacing</h3>
+                    <h3 className="apple-label border-b border-white/20 pb-2">Layout & Spacing</h3>
                     <div className="flex gap-2">
                       {['compact', 'standard', 'relaxed'].map(s => (
                         <button
                           key={s}
                           onClick={() => setFormData({ ...formData, lineSpacing: s })}
-                          className={`flex-1 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all border ${
+                          className={`flex-1 py-2 rounded-xl text-[11px] font-bold uppercase tracking-wider transition-all border ${
                             formData.lineSpacing === s 
-                              ? 'bg-[var(--emerald)] text-white border-[var(--emerald)]' 
-                              : 'bg-white text-[var(--apple-gray-5)] border-[var(--apple-gray-2)] hover:bg-[var(--apple-gray-1)]'
+                              ? 'bg-gradient-to-r from-emerald-600 to-teal-700 text-white border-transparent shadow-md' 
+                              : 'bg-white/45 text-[var(--text2)] border-white/50 hover:bg-white/65 hover:shadow-sm'
                           }`}
                         >
                           {s}
@@ -2155,7 +2155,7 @@ function App() {
 
             {/* Right Live Preview Area */}
             {(showPreview && !isDraftingMaximized) && (
-              <div className="flex-1 bg-[var(--apple-gray-2)] overflow-y-auto p-4 md:p-12 relative">
+              <div className="flex-1 bg-slate-900/5 overflow-y-auto p-4 md:p-12 relative">
                 <div className="flex flex-col items-center gap-8">
                   <div className="scale-[0.85] origin-top">
                     <QuotationTemplate id="quotation-template" data={formData} content={draftContent} company={companyData} />
@@ -2992,33 +2992,33 @@ function App() {
                     .map(item => (
                       <div 
                         key={item.id} 
-                        className={`apple-card p-5 flex items-center justify-between hover:border-[var(--apple-gray-4)] transition-all ${
-                          item.hidden ? 'opacity-60 bg-[var(--apple-gray-1)]' : ''
+                        className={`apple-card p-5 flex items-center justify-between transition-all ${
+                          item.hidden ? 'opacity-50' : ''
                         }`}
                       >
                         <div className="flex items-center gap-4">
-                          <div className="w-11 h-11 bg-[var(--apple-gray-1)] rounded-xl flex items-center justify-center">
-                            <FileText size={22} className="text-[var(--apple-black)]" />
+                          <div className="w-11 h-11 bg-white/60 border border-white/50 rounded-xl flex items-center justify-center shadow-sm">
+                            <FileText size={22} className="text-[var(--text)]" />
                           </div>
                           <div>
                             <div className="flex items-center gap-2">
-                              <p className="text-[16px] font-bold text-[var(--apple-black)] leading-tight">{item.label}</p>
+                              <p className="text-[15px] font-bold text-[var(--text)] leading-tight">{item.label}</p>
                               {item.hidden && (
-                                <span className="text-[9px] font-bold uppercase tracking-wider bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded border border-amber-200">Hidden</span>
+                                <span className="text-[9px] font-bold uppercase tracking-wider bg-amber-500/10 text-amber-700 px-1.5 py-0.5 rounded border border-amber-500/20">Hidden</span>
                               )}
                             </div>
-                            <p className="text-[12px] text-[var(--apple-gray-5)] mt-1">{item.fileName} • {item.uploadedAt}</p>
+                            <p className="text-[12px] text-[var(--text3)] mt-1">{item.fileName} • {item.uploadedAt}</p>
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
                           <button 
                             onClick={() => setPreviewingDoc({ ...item, type: 'application/pdf' })} 
-                            className="w-9 h-9 flex items-center justify-center text-[var(--apple-gray-5)] hover:text-[var(--apple-black)] hover:bg-[var(--apple-gray-1)] rounded-lg transition-all" 
+                            className="w-9 h-9 flex items-center justify-center text-[var(--text3)] hover:text-[var(--text)] hover:bg-white/50 border border-transparent hover:border-white/50 rounded-xl transition-all shadow-sm bg-white/30 backdrop-blur-sm" 
                             title="View Document"
                           >
                             <Eye size={18} />
                           </button>
-                          <a href={item.data} download={item.fileName} className="w-9 h-9 flex items-center justify-center text-[var(--apple-gray-5)] hover:text-[var(--apple-black)] hover:bg-[var(--apple-gray-1)] rounded-lg transition-all" title="Download">
+                          <a href={item.data} download={item.fileName} className="w-9 h-9 flex items-center justify-center text-[var(--text3)] hover:text-[var(--text)] hover:bg-white/50 border border-transparent hover:border-white/50 rounded-xl transition-all shadow-sm bg-white/30 backdrop-blur-sm" title="Download">
                             <Download size={18} />
                           </a>
                           {isManagementActive && (
@@ -3029,10 +3029,10 @@ function App() {
                                   setPriceLists(prev => prev.map(p => p.id === item.id ? updatedItem : p));
                                   await syncItem('price_lists', updatedItem, false);
                                 }}
-                                className={`w-9 h-9 flex items-center justify-center rounded-lg transition-all ${
+                                className={`w-9 h-9 flex items-center justify-center rounded-xl border border-transparent transition-all bg-white/30 hover:bg-white/50 hover:border-white/50 shadow-sm ${
                                   item.hidden 
-                                    ? 'text-amber-500 hover:text-amber-600 hover:bg-amber-50' 
-                                    : 'text-[var(--apple-gray-4)] hover:text-[var(--apple-black)] hover:bg-[var(--apple-gray-1)]'
+                                    ? 'text-amber-500 hover:text-amber-600 hover:bg-amber-500/10' 
+                                    : 'text-[var(--text3)] hover:text-[var(--text)]'
                                 }`}
                                 title={item.hidden ? "Show in Menu" : "Hide from Menu"}
                               >
@@ -3043,10 +3043,10 @@ function App() {
                                   setPriceLists(prev => prev.filter(p => p.id !== item.id));
                                   await syncItem('price_lists', item, true);
                                 })}
-                                className="w-9 h-9 flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                                className="w-9 h-9 flex items-center justify-center text-[var(--text3)] hover:text-red-500 hover:bg-red-500/10 border border-transparent hover:border-red-200 rounded-xl transition-all shadow-sm bg-white/30"
                                 title="Delete"
                               >
-                                <Trash2 size={18} />
+                                  <Trash2 size={18} />
                               </button>
                             </>
                           )}
@@ -3054,8 +3054,8 @@ function App() {
                       </div>
                     ))}
                   {priceLists.filter(item => isManagementActive || !item.hidden).length === 0 && (
-                    <div className="text-center py-16 bg-white border border-dashed border-[var(--apple-gray-3)] rounded-2xl">
-                      <p className="text-[15px] text-[var(--apple-gray-4)]">No price lists available.</p>
+                    <div className="text-center py-16 bg-white/30 border border-dashed border-white/50 rounded-2xl">
+                      <p className="text-[15px] text-[var(--text3)] italic">No price lists available.</p>
                     </div>
                   )}
                 </div>
@@ -3073,7 +3073,7 @@ function App() {
                 <p className="apple-subtitle">Manage your company profile and application preferences.</p>
               </header>
 
-              <div className="apple-card p-8">
+              <div className="apple-card p-8 bg-white/50 backdrop-blur-md border border-white/40 shadow-2xl rounded-3xl">
                 <div className="space-y-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
@@ -3215,11 +3215,11 @@ function App() {
       )}
       {/* PREVIEW MODAL */}
       {previewingItem && (
-        <div className="fixed inset-0 z-[6000] flex flex-col bg-[var(--apple-gray-2)] animate-in slide-in-from-bottom duration-500">
-          <header className="flex-none flex items-center justify-between px-4 md:px-12 py-4 md:py-6 bg-white/80 backdrop-blur-md border-b border-[var(--apple-gray-3)] sticky top-0 z-10">
+        <div className="fixed inset-0 z-[6000] flex flex-col bg-slate-900/60 backdrop-blur-2xl animate-in slide-in-from-bottom duration-500 text-[var(--text)]">
+          <header className="flex-none flex items-center justify-between px-4 md:px-12 py-4 md:py-6 bg-white/60 backdrop-blur-xl border-b border-white/40 sticky top-0 z-10">
             <div>
-              <h2 className="text-[18px] md:text-[24px] font-bold text-[var(--apple-black)] tracking-tight leading-none">Quotation Preview</h2>
-              <p className="text-[11px] md:text-[13px] text-[var(--apple-gray-5)] mt-1 font-medium">{previewingItem.formData?.hospitalName} | {previewingItem.ref}</p>
+              <h2 className="text-[18px] md:text-[24px] font-bold tracking-tight leading-none text-[var(--text)]">Quotation Preview</h2>
+              <p className="text-[11px] md:text-[13px] text-[var(--text3)] mt-1 font-semibold">{previewingItem.formData?.hospitalName} | {previewingItem.ref}</p>
             </div>
             <div className="flex items-center gap-2 md:gap-4">
               {/* Zoom Controls */}
@@ -3265,7 +3265,7 @@ function App() {
               </button>
             </div>
           </header>
-          <main className="flex-1 overflow-auto p-2 md:p-12 bg-[var(--apple-gray-2)]">
+          <main className="flex-1 overflow-auto p-2 md:p-12 bg-transparent">
             <div className="min-w-fit md:max-w-5xl mx-auto flex flex-col items-center gap-12">
               <div className="shadow-2xl bg-white p-0 md:p-4 rounded-xl overflow-hidden">
                 <QuotationTemplate 

@@ -11,15 +11,15 @@ const HistoryView = ({ quotationHistory, searchQuery, setSearchQuery, isGenerati
   }, [quotationHistory, searchQuery]);
 
   return (
-    <div className="h-full overflow-y-auto px-8 py-12 md:px-16 md:py-16">
+    <div className="h-full overflow-y-auto px-6 py-10 md:px-16 md:py-12 bg-transparent">
       <div className="max-w-6xl mx-auto">
-        <div className="flex flex-col md:flex-row md:items-end justify-between mb-12 gap-6">
+        <div className="flex flex-col md:flex-row md:items-end justify-between mb-10 gap-6">
           <div>
             <h1 className="apple-title-1 mb-2">History</h1>
-            <p className="apple-subtitle">Recent quotations generated. <span className="font-semibold text-[var(--apple-black)]">{quotationHistory.length}</span> total</p>
+            <p className="apple-subtitle">Recent quotations generated. <span className="font-semibold text-[var(--text)]">{quotationHistory.length}</span> total</p>
           </div>
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--apple-gray-4)] w-4 h-4" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text3)] w-4 h-4" />
             <input 
               type="search" 
               placeholder="Search hospital or ref..." 
@@ -32,9 +32,9 @@ const HistoryView = ({ quotationHistory, searchQuery, setSearchQuery, isGenerati
         </div>
 
         {filteredHistory.length === 0 ? (
-          <div className="text-center py-20 opacity-40">
-            <LayoutDashboard size={48} className="mx-auto mb-4" />
-            <p className="font-semibold text-lg">No history matches found</p>
+          <div className="text-center py-20 bg-white/30 border border-dashed border-white/50 rounded-3xl">
+            <LayoutDashboard size={48} className="mx-auto mb-4 text-[var(--text3)]" />
+            <p className="font-bold text-lg text-[var(--text)]">No history matches found</p>
           </div>
         ) : (
           <div className="space-y-4">
@@ -42,54 +42,54 @@ const HistoryView = ({ quotationHistory, searchQuery, setSearchQuery, isGenerati
             <div className="hidden md:block apple-card overflow-hidden">
               <table className="w-full">
                 <thead>
-                  <tr className="bg-[var(--apple-gray-1)] border-b border-[var(--apple-gray-2)]">
-                    <th className="text-left py-3 px-5 text-[11px] font-bold uppercase tracking-wider text-[var(--apple-gray-5)]">Ref No.</th>
-                    <th className="text-left py-3 px-5 text-[11px] font-bold uppercase tracking-wider text-[var(--apple-gray-5)]">Hospital</th>
-                    <th className="text-left py-3 px-5 text-[11px] font-bold uppercase tracking-wider text-[var(--apple-gray-5)]">Template</th>
-                    <th className="text-left py-3 px-5 text-[11px] font-bold uppercase tracking-wider text-[var(--apple-gray-5)]">Date</th>
-                    <th className="text-right py-3 px-5 text-[11px] font-bold uppercase tracking-wider text-[var(--apple-gray-5)]">Actions</th>
+                  <tr className="bg-white/40 backdrop-blur-sm border-b border-white/30">
+                    <th className="text-left py-3.5 px-5 text-[11px] font-bold uppercase tracking-wider text-[var(--text3)]">Ref No.</th>
+                    <th className="text-left py-3.5 px-5 text-[11px] font-bold uppercase tracking-wider text-[var(--text3)]">Hospital</th>
+                    <th className="text-left py-3.5 px-5 text-[11px] font-bold uppercase tracking-wider text-[var(--text3)]">Template</th>
+                    <th className="text-left py-3.5 px-5 text-[11px] font-bold uppercase tracking-wider text-[var(--text3)]">Date</th>
+                    <th className="text-right py-3.5 px-5 text-[11px] font-bold uppercase tracking-wider text-[var(--text3)]">Actions</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-white/20">
                   {filteredHistory.map((item) => (
-                    <tr key={item.id} className="border-b border-[var(--apple-gray-2)] last:border-0 hover:bg-[var(--apple-gray-1)] transition-colors">
+                    <tr key={item.id} className="hover:bg-white/30 transition-colors">
                       <td className="py-4 px-5">
-                        <span className="text-[13px] font-bold text-[var(--emerald)] bg-[var(--emerald-light)] px-2.5 py-1 rounded-md whitespace-nowrap">{(item.ref || '').replace('SRR/QUOT/', '')}</span>
+                        <span className="text-[11.5px] font-bold text-[var(--accent)] bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-full whitespace-nowrap">{(item.ref || '').replace('SRR/QUOT/', '')}</span>
                       </td>
                       <td className="py-4 px-5">
-                        <span className="text-[15px] font-semibold text-[var(--apple-black)]">{item.hospital}</span>
+                        <span className="text-[15px] font-bold text-[var(--text)]">{item.hospital}</span>
                       </td>
                       <td className="py-4 px-5">
-                        <span className="text-[13px] text-[var(--apple-gray-5)] font-medium">{item.templateName}</span>
+                        <span className="text-[13px] text-[var(--text2)] font-semibold">{item.templateName}</span>
                       </td>
                       <td className="py-4 px-5">
-                        <span className="text-[13px] text-[var(--apple-gray-5)] font-medium">{item.date}</span>
+                        <span className="text-[13px] text-[var(--text3)] font-medium">{item.date}</span>
                       </td>
                       <td className="py-4 px-5">
-                        <div className="flex items-center justify-end gap-2">
+                        <div className="flex items-center justify-end gap-1.5">
                           <button 
                             onClick={() => setRegeneratingItem({ ...item, _viewMode: true })}
                             disabled={isGenerating || regeneratingItem}
-                            className="w-9 h-9 flex items-center justify-center bg-white border border-[var(--apple-gray-2)] rounded-full text-[var(--apple-gray-6)] hover:border-[var(--apple-gray-4)] hover:bg-[var(--apple-gray-1)] transition-all disabled:opacity-50 shadow-sm"
+                            className="w-9 h-9 flex items-center justify-center bg-white/50 border border-white/60 rounded-xl text-[var(--text2)] hover:border-white/80 hover:bg-white/70 transition-all disabled:opacity-50 shadow-sm"
                             title="View PDF"
                           >
-                            <Eye size={16} />
+                            <Eye size={15} />
                           </button>
                           <button 
                             onClick={() => setRegeneratingItem(item)}
                             disabled={isGenerating || regeneratingItem}
-                            className="w-9 h-9 flex items-center justify-center bg-white border border-[var(--apple-gray-2)] rounded-full text-[var(--emerald)] hover:border-[var(--emerald)] hover:bg-[var(--emerald-light)] transition-all disabled:opacity-50 shadow-sm"
+                            className="w-9 h-9 flex items-center justify-center bg-white/50 border border-white/60 rounded-xl text-[var(--accent)] hover:border-emerald-500/30 hover:bg-emerald-500/10 transition-all disabled:opacity-50 shadow-sm"
                             title="Download PDF"
                           >
-                            <Download size={16} />
+                            <Download size={15} />
                           </button>
                           <button 
                             onClick={() => setRegeneratingItem({ ...item, _shareMode: true })}
                             disabled={isGenerating || regeneratingItem}
-                            className="w-9 h-9 flex items-center justify-center bg-white border border-[var(--apple-gray-2)] rounded-full text-[var(--coral)] hover:border-[var(--coral)] hover:bg-red-50 transition-all disabled:opacity-50 shadow-sm"
+                            className="w-9 h-9 flex items-center justify-center bg-white/50 border border-white/60 rounded-xl text-[var(--coral)] hover:border-red-300 hover:bg-red-500/10 transition-all disabled:opacity-50 shadow-sm"
                             title="Email Quotation"
                           >
-                            <Mail size={16} />
+                            <Mail size={15} />
                           </button>
                         </div>
                       </td>
@@ -105,38 +105,38 @@ const HistoryView = ({ quotationHistory, searchQuery, setSearchQuery, isGenerati
                 <div key={item.id} className="apple-card p-5 space-y-4">
                   <div className="flex justify-between items-start">
                     <div className="space-y-1">
-                      <p className="text-[16px] font-bold text-[var(--apple-black)] leading-tight">{item.hospital}</p>
-                      <p className="text-[12px] text-[var(--apple-gray-5)] font-medium">{item.templateName}</p>
+                      <p className="text-[16px] font-bold text-[var(--text)] leading-tight">{item.hospital}</p>
+                      <p className="text-[12px] text-[var(--text3)] font-semibold">{item.templateName}</p>
                     </div>
-                    <span className="text-[11px] font-bold text-[var(--emerald)] bg-[var(--emerald-light)] px-2 py-0.5 rounded uppercase tracking-wider">{(item.ref || '').replace('SRR/QUOT/', '')}</span>
+                    <span className="text-[11px] font-bold text-[var(--accent)] bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full uppercase tracking-wider">{(item.ref || '').replace('SRR/QUOT/', '')}</span>
                   </div>
-                  <div className="flex items-center justify-between text-[13px] text-[var(--apple-gray-5)] font-medium">
+                  <div className="flex items-center justify-between text-[13px] text-[var(--text3)] font-medium">
                     <span>{item.date}</span>
                   </div>
-                  <div className="flex gap-2 pt-2 border-t border-[var(--apple-gray-2)]">
+                  <div className="flex gap-2 pt-2 border-t border-white/20">
                     <button 
                       onClick={() => setRegeneratingItem({ ...item, _viewMode: true })}
                       disabled={isGenerating || regeneratingItem}
-                      className="flex-1 flex items-center justify-center gap-2 py-3 bg-[var(--apple-gray-1)] rounded-xl text-[var(--apple-gray-6)] active:scale-[0.98] transition-all"
+                      className="flex-1 flex items-center justify-center gap-2 py-3 bg-white/40 border border-white/60 rounded-xl text-[var(--text)] active:scale-[0.98] transition-all hover:bg-white/65"
                       title="View"
                     >
-                      <Eye size={18} />
+                      <Eye size={16} />
                     </button>
                     <button 
                       onClick={() => setRegeneratingItem(item)}
                       disabled={isGenerating || regeneratingItem}
-                      className="flex-1 flex items-center justify-center gap-2 py-3 bg-[var(--apple-gray-1)] rounded-xl text-[var(--emerald)] active:scale-[0.98] transition-all"
+                      className="flex-1 flex items-center justify-center gap-2 py-3 bg-white/40 border border-white/60 rounded-xl text-[var(--accent)] active:scale-[0.98] transition-all hover:bg-white/65"
                       title="Download"
                     >
-                      <Download size={18} />
+                      <Download size={16} />
                     </button>
                     <button 
                       onClick={() => setRegeneratingItem({ ...item, _shareMode: true })}
                       disabled={isGenerating || regeneratingItem}
-                      className="flex-1 flex items-center justify-center gap-2 py-3 bg-[var(--apple-gray-1)] rounded-xl text-[var(--coral)] active:scale-[0.98] transition-all"
+                      className="flex-1 flex items-center justify-center gap-2 py-3 bg-white/40 border border-white/60 rounded-xl text-[var(--coral)] active:scale-[0.98] transition-all hover:bg-white/65"
                       title="Email"
                     >
-                      <Mail size={18} />
+                      <Mail size={16} />
                     </button>
                   </div>
                 </div>

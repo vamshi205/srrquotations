@@ -133,61 +133,61 @@ const EmailerView = ({ driveFiles, priceLists, onEmailSent, showAlert }) => {
   };
 
   return (
-    <div className="h-full overflow-y-auto px-8 py-12 md:px-16 md:py-16 bg-[var(--apple-gray-2)]">
-      <div className="max-w-4xl mx-auto flex flex-col lg:flex-row gap-8">
+    <div className="h-full overflow-y-auto px-6 py-10 md:px-16 md:py-12 bg-transparent">
+      <div className="max-w-6xl mx-auto flex flex-col lg:flex-row gap-8">
         
         {/* Left Side: Composer */}
-        <div className="flex-1 space-y-6">
-          <div className="bg-white shadow-2xl border border-[var(--apple-gray-3)] flex flex-col overflow-hidden">
-            <div className="bg-[var(--apple-gray-1)] px-8 py-6 border-b border-[var(--apple-gray-2)] flex items-center justify-between">
+        <div className="flex-grow space-y-6">
+          <div className="bg-white/50 backdrop-blur-md border border-white/40 shadow-2xl rounded-3xl flex flex-col overflow-hidden">
+            <div className="bg-white/45 backdrop-blur-sm px-8 py-6 border-b border-white/30 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-[var(--accent)] flex items-center justify-center">
+                <div className="w-10 h-10 bg-[var(--accent)] rounded-xl flex items-center justify-center shadow-md">
                   <Mail className={`${isSending ? 'animate-bounce' : ''} text-white`} size={20} />
                 </div>
                 <div>
-                  <h3 className="text-[17px] font-bold">Resend Dispatch</h3>
-                  <p className="text-[11px] text-[var(--apple-gray-5)] uppercase font-bold tracking-wider">
+                  <h3 className="text-[17px] font-bold text-[var(--text)]">Resend Dispatch</h3>
+                  <p className="text-[11px] text-[var(--text3)] uppercase font-bold tracking-wider">
                     {isSending ? 'Sending Message...' : 'Premium Email Service'}
                   </p>
                 </div>
               </div>
-              <div className="text-right">
-                <p className="text-[10px] font-bold text-[var(--apple-gray-4)] uppercase tracking-widest">Service Status</p>
-                <p className="text-[12px] font-semibold text-[var(--emerald)]">Active • High Deliverability</p>
+              <div className="text-right hidden sm:block">
+                <p className="text-[10px] font-bold text-[var(--text3)] uppercase tracking-widest">Service Status</p>
+                <p className="text-[12px] font-semibold text-emerald-600">Active • High Deliverability</p>
               </div>
             </div>
 
             <div className="p-8 space-y-6">
               {/* Recipient */}
-              <div className="flex items-center gap-4 border border-[var(--apple-gray-3)] px-4 py-3 bg-white focus-within:border-[var(--accent)] focus-within:ring-1 focus-within:ring-[var(--accent)] transition-all">
-                <span className="text-[13px] font-bold text-[var(--apple-gray-5)] w-10 uppercase tracking-wider">To</span>
+              <div className="flex items-center gap-4 border border-white/60 rounded-xl px-4 py-3 bg-white/30 focus-within:bg-white/70 focus-within:border-[var(--accent)] focus-within:ring-4 focus-within:ring-[var(--accent)]/5 transition-all">
+                <span className="text-[12px] font-bold text-[var(--text3)] w-10 uppercase tracking-wider">To</span>
                 <input 
                   type="email" 
                   value={emailForm.to} 
                   onChange={(e) => setEmailForm({...emailForm, to: e.target.value})}
                   placeholder="hospital-representative@email.com" 
-                  className="flex-1 bg-transparent no-internal-border text-[15px] placeholder:text-[var(--apple-gray-4)]" 
+                  className="flex-1 bg-transparent no-internal-border text-[14.5px] placeholder:text-[var(--text3)] outline-none" 
                 />
               </div>
 
               {/* Subject */}
-              <div className="flex items-center gap-4 border border-[var(--apple-gray-3)] px-4 py-3 bg-white focus-within:border-[var(--accent)] focus-within:ring-1 focus-within:ring-[var(--accent)] transition-all">
-                <span className="text-[13px] font-bold text-[var(--apple-gray-5)] w-10 uppercase tracking-wider">Sub</span>
+              <div className="flex items-center gap-4 border border-white/60 rounded-xl px-4 py-3 bg-white/30 focus-within:bg-white/70 focus-within:border-[var(--accent)] focus-within:ring-4 focus-within:ring-[var(--accent)]/5 transition-all">
+                <span className="text-[12px] font-bold text-[var(--text3)] w-10 uppercase tracking-wider">Sub</span>
                 <input 
                   type="text" 
                   value={emailForm.subject} 
                   onChange={(e) => setEmailForm({...emailForm, subject: e.target.value})}
-                  className="flex-1 bg-transparent no-internal-border text-[15px] font-semibold" 
+                  className="flex-1 bg-transparent no-internal-border text-[14.5px] font-bold text-[var(--text)] outline-none" 
                 />
               </div>
 
               {/* Body */}
-              <div className="border border-[var(--apple-gray-3)] p-4 bg-white focus-within:border-[var(--accent)] focus-within:ring-1 focus-within:ring-[var(--accent)] transition-all">
+              <div className="border border-white/60 rounded-xl p-4 bg-white/30 focus-within:bg-white/70 focus-within:border-[var(--accent)] focus-within:ring-4 focus-within:ring-[var(--accent)]/5 transition-all">
                 <textarea 
                   value={emailForm.body} 
                   onChange={(e) => setEmailForm({...emailForm, body: e.target.value})}
                   placeholder="Type your message here..."
-                  className="w-full min-h-[350px] bg-transparent no-internal-border text-[15px] leading-relaxed resize-none" 
+                  className="w-full min-h-[300px] bg-transparent no-internal-border text-[14.5px] leading-relaxed resize-none outline-none text-[var(--text)]" 
                 />
               </div>
 
@@ -211,12 +211,12 @@ const EmailerView = ({ driveFiles, priceLists, onEmailSent, showAlert }) => {
                       }))}
                       className="ml-1 hover:opacity-70 transition-opacity"
                     >
-                      <Plus className="rotate-45" size={14} />
+                      <Plus className="rotate-45 text-slate-400 hover:text-slate-600" size={14} />
                     </button>
                   </div>
                 ))}
                 {emailForm.selectedDriveFiles.length === 0 && (
-                  <p className="text-[11px] text-[var(--apple-gray-4)] font-medium">No files attached yet</p>
+                  <p className="text-[12px] text-[var(--text3)] italic">No files attached yet</p>
                 )}
               </div>
 
@@ -224,11 +224,11 @@ const EmailerView = ({ driveFiles, priceLists, onEmailSent, showAlert }) => {
                 <button 
                   onClick={handleSendEmail} 
                   disabled={isSending}
-                  className={`btn-primary w-full !py-4 text-[15px] ${isSending ? 'opacity-70 cursor-not-allowed' : ''}`}
+                  className={`btn-primary w-full !py-4 text-[15px] font-bold ${isSending ? 'opacity-70 cursor-not-allowed' : ''}`}
                 >
                   {isSending ? 'Processing...' : <><Mail size={18} /> Send with Attachments</>}
                 </button>
-                <p className="text-[11px] text-[var(--apple-gray-4)] text-center italic">
+                <p className="text-[11px] text-[var(--text3)] text-center italic">
                   {isSending 
                     ? 'Processing Attachments & Sending via Resend...' 
                     : 'Documents are converted to Base64 for instant delivery.'}
@@ -239,18 +239,18 @@ const EmailerView = ({ driveFiles, priceLists, onEmailSent, showAlert }) => {
         </div>
 
         {/* Right Side: Selection */}
-        <div className="w-full lg:w-[380px] bg-white border border-[var(--apple-gray-3)] shadow-2xl p-6 flex flex-col h-[650px] rounded-3xl">
-          <div className="flex items-center justify-between mb-4 border-b border-[var(--apple-gray-2)] pb-4">
-            <h4 className="text-[14px] font-bold text-[var(--apple-black)] flex items-center gap-2">
-              <HardDrive size={18} className="text-[var(--apple-gray-6)]" /> Attachments
+        <div className="w-full lg:w-[380px] bg-white/50 backdrop-blur-md border border-white/40 shadow-2xl p-6 flex flex-col h-[650px] rounded-3xl shrink-0">
+          <div className="flex items-center justify-between mb-4 border-b border-white/30 pb-4">
+            <h4 className="text-[14px] font-bold text-[var(--text)] flex items-center gap-2">
+              <HardDrive size={18} className="text-[var(--text3)]" /> Attachments
             </h4>
-            <span className="text-[10px] font-bold bg-[var(--apple-gray-2)] px-2.5 py-1 rounded-full text-[var(--apple-gray-6)]">
+            <span className="text-[10px] font-bold bg-[var(--accent)]/10 text-[var(--accent)] px-2.5 py-1 rounded-full border border-[var(--accent)]/20">
               {emailForm.selectedDriveFiles.length} Selected
             </span>
           </div>
 
           {/* Segmented Control (Tabs) */}
-          <div className="flex p-1 bg-[var(--apple-gray-1)] rounded-xl mb-4">
+          <div className="flex p-1 bg-white/40 border border-white/50 rounded-xl mb-4">
             {[
               { id: 'srr', label: 'SRR Docs' },
               { id: 'vendor', label: 'Manufacturer' },
@@ -261,8 +261,8 @@ const EmailerView = ({ driveFiles, priceLists, onEmailSent, showAlert }) => {
                 onClick={() => { setActiveTab(tab.id); setSearchQuery(''); }}
                 className={`flex-1 py-2 text-[10px] font-bold uppercase tracking-wider text-center rounded-lg transition-all ${
                   activeTab === tab.id 
-                    ? 'bg-white text-[var(--apple-black)] shadow-sm' 
-                    : 'text-[var(--apple-gray-5)] hover:text-[var(--apple-black)]'
+                    ? 'bg-white text-[var(--accent)] shadow-sm' 
+                    : 'text-[var(--text3)] hover:text-[var(--text)]'
                 }`}
               >
                 {tab.label}
@@ -272,18 +272,18 @@ const EmailerView = ({ driveFiles, priceLists, onEmailSent, showAlert }) => {
 
           {/* Search Bar */}
           <div className="relative mb-4">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--apple-gray-4)]" />
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text3)]" />
             <input
               type="text"
               placeholder={`Search in ${activeTab === 'srr' ? 'SRR Docs' : activeTab === 'vendor' ? 'Manufacturer Docs' : 'Price Lists'}...`}
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-8 py-2.5 border border-[var(--apple-gray-3)] rounded-xl text-[13px] bg-[var(--apple-gray-1)] focus:bg-white focus:border-[var(--accent)] focus:outline-none transition-all"
+              className="w-full pl-9 pr-8 py-2.5 border border-white/50 rounded-xl text-[13px] bg-white/30 focus:bg-white/70 focus:border-[var(--accent)] focus:outline-none transition-all"
             />
             {searchQuery && (
               <button 
                 onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--apple-gray-4)] hover:text-[var(--apple-black)]"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
               >
                 <Plus className="rotate-45" size={16} />
               </button>
@@ -305,7 +305,7 @@ const EmailerView = ({ driveFiles, priceLists, onEmailSent, showAlert }) => {
                         className={`w-full flex items-center gap-3 p-3 border rounded-2xl text-left transition-all ${
                           isSelected 
                             ? 'bg-emerald-50 border-[var(--accent)] shadow-sm' 
-                            : 'bg-white border-[var(--apple-gray-2)] hover:border-[var(--apple-gray-4)]'
+                            : 'bg-white/40 border-white/50 hover:border-white/75 hover:bg-white/60'
                         }`}
                       >
                         <div className={`w-5 h-5 border rounded flex items-center justify-center transition-all ${
@@ -314,14 +314,14 @@ const EmailerView = ({ driveFiles, priceLists, onEmailSent, showAlert }) => {
                           {isSelected && <CheckSquare size={12} className="text-white" />}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-[13px] font-semibold truncate text-[var(--apple-black)]">{file.label}</p>
-                          <p className="text-[10px] text-[var(--apple-gray-5)] mt-0.5">{file.uploadedAt || 'Cloud File'}</p>
+                          <p className="text-[13px] font-bold truncate text-[var(--text)]">{file.label}</p>
+                          <p className="text-[10px] text-[var(--text3)] mt-0.5">{file.uploadedAt || 'Cloud File'}</p>
                         </div>
                       </button>
                     );
                   })}
                 {(driveFiles.srr || []).filter(file => !searchQuery || (file.label || '').toLowerCase().includes(searchQuery.toLowerCase())).length === 0 && (
-                  <p className="text-[13px] text-[var(--apple-gray-4)] italic py-8 text-center bg-[var(--apple-gray-1)] rounded-xl">No documents match search</p>
+                  <p className="text-[13px] text-[var(--text3)] italic py-8 text-center bg-white/20 border border-dashed border-white/40 rounded-xl">No documents match search</p>
                 )}
               </div>
             )}
@@ -342,7 +342,7 @@ const EmailerView = ({ driveFiles, priceLists, onEmailSent, showAlert }) => {
                       <p className="text-[11px] font-bold text-amber-600 uppercase flex items-center gap-1">
                         <ChevronRight size={12} /> {folder.name}
                       </p>
-                      <div className="space-y-2 pl-2 border-l border-[var(--apple-gray-3)]">
+                      <div className="space-y-2 pl-2 border-l border-white/30">
                         {filteredFiles.map(file => {
                           const isSelected = emailForm.selectedDriveFiles.some(f => f.id === file.id);
                           return (
@@ -352,7 +352,7 @@ const EmailerView = ({ driveFiles, priceLists, onEmailSent, showAlert }) => {
                               className={`w-full flex items-center gap-3 p-2.5 border rounded-xl text-left transition-all ${
                                 isSelected 
                                   ? 'bg-amber-50 border-amber-400 shadow-sm' 
-                                  : 'bg-white border-[var(--apple-gray-2)] hover:border-[var(--apple-gray-4)]'
+                                  : 'bg-white/40 border-white/50 hover:border-white/75 hover:bg-white/60'
                               }`}
                             >
                               <div className={`w-4 h-4 border rounded flex items-center justify-center transition-all ${
@@ -360,7 +360,7 @@ const EmailerView = ({ driveFiles, priceLists, onEmailSent, showAlert }) => {
                               }`}>
                                 {isSelected && <CheckSquare size={10} className="text-white" />}
                               </div>
-                              <span className="text-[12px] font-medium truncate text-[var(--apple-black)] flex-1">{file.fileName}</span>
+                              <span className="text-[12.5px] font-semibold truncate text-[var(--text)] flex-1">{file.fileName}</span>
                             </button>
                           );
                         })}
@@ -375,7 +375,7 @@ const EmailerView = ({ driveFiles, priceLists, onEmailSent, showAlert }) => {
                     (folder.name || '').toLowerCase().includes(searchQuery.toLowerCase())
                   ).length === 0)
                 ) && (
-                  <p className="text-[13px] text-[var(--apple-gray-4)] italic py-8 text-center bg-[var(--apple-gray-1)] rounded-xl">No manufacturer files match search</p>
+                  <p className="text-[13px] text-[var(--text3)] italic py-8 text-center bg-white/20 border border-dashed border-white/40 rounded-xl">No manufacturer files match search</p>
                 )}
               </div>
             )}
@@ -393,7 +393,7 @@ const EmailerView = ({ driveFiles, priceLists, onEmailSent, showAlert }) => {
                         className={`w-full flex items-center gap-3 p-3 border rounded-2xl text-left transition-all ${
                           isSelected 
                             ? 'bg-blue-50 border-blue-400 shadow-sm' 
-                            : 'bg-white border-[var(--apple-gray-2)] hover:border-[var(--apple-gray-4)]'
+                            : 'bg-white/40 border-white/50 hover:border-white/75 hover:bg-white/60'
                         }`}
                       >
                         <div className={`w-4 h-4 border rounded flex items-center justify-center transition-all ${
@@ -402,14 +402,14 @@ const EmailerView = ({ driveFiles, priceLists, onEmailSent, showAlert }) => {
                           {isSelected && <CheckSquare size={10} className="text-white" />}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-[12px] font-semibold truncate text-[var(--apple-black)]">{file.label}</p>
-                          <span className="text-[10px] text-[var(--apple-gray-5)] block truncate mt-0.5">{file.fileName}</span>
+                          <p className="text-[12.5px] font-bold truncate text-[var(--text)]">{file.label}</p>
+                          <span className="text-[10px] text-[var(--text3)] block truncate mt-0.5">{file.fileName}</span>
                         </div>
                       </button>
                     );
                   })}
                 {(priceLists || []).filter(file => !searchQuery || (file.label || '').toLowerCase().includes(searchQuery.toLowerCase()) || (file.fileName || '').toLowerCase().includes(searchQuery.toLowerCase())).length === 0 && (
-                  <p className="text-[13px] text-[var(--apple-gray-4)] italic py-8 text-center bg-[var(--apple-gray-1)] rounded-xl">No price lists match search</p>
+                  <p className="text-[13px] text-[var(--text3)] italic py-8 text-center bg-white/20 border border-dashed border-white/40 rounded-xl">No price lists match search</p>
                 )}
               </div>
             )}
