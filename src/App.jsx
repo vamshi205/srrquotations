@@ -3011,6 +3011,9 @@ function App() {
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
+                          <a href={item.data} target="_blank" rel="noreferrer" className="w-9 h-9 flex items-center justify-center text-[var(--apple-gray-5)] hover:text-[var(--apple-black)] hover:bg-[var(--apple-gray-1)] rounded-lg transition-all" title="View Document">
+                            <Eye size={18} />
+                          </a>
                           <a href={item.data} download={item.fileName} className="w-9 h-9 flex items-center justify-center text-[var(--apple-gray-5)] hover:text-[var(--apple-black)] hover:bg-[var(--apple-gray-1)] rounded-lg transition-all" title="Download">
                             <Download size={18} />
                           </a>
