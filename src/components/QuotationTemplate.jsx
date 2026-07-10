@@ -290,7 +290,7 @@ const QuotationTemplate = memo(({ id = "quotation-template", data, company, cont
                 {payment && <tr><td className="w-32 font-bold py-0.5">Payment</td><td className="w-4 text-center">:</td><td>{payment}</td></tr>}
                 {gst && <tr><td className="w-32 font-bold py-0.5">GST</td><td className="w-4 text-center">:</td><td>{gst}</td></tr>}
                 {warranty && <tr><td className="w-32 font-bold py-0.5">Warranty</td><td className="w-4 text-center">:</td><td>{warranty}</td></tr>}
-                {discount && <tr><td className="w-32 font-bold py-0.5">Discount</td><td className="w-4 text-center">:</td><td><span className="bg-yellow-200 font-bold px-1.5 border border-yellow-400">{discount} on MRP Price</span></td></tr>}
+                {discount && <tr><td className="w-32 font-bold py-0.5">Discount</td><td className="w-4 text-center">:</td><td><span className="bg-yellow-200 font-bold px-1.5 border border-yellow-400">{discount}</span></td></tr>}
                 {validity && <tr><td className="w-32 font-bold py-0.5">Validity</td><td className="w-4 text-center">:</td><td>{formatDate(validity)}</td></tr>}
               </tbody>
             </table>
