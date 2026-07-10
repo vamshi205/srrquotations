@@ -51,11 +51,16 @@ import {
   CheckSquare,
   Menu,
   RefreshCw,
-  ChevronRight
+  ChevronRight,
+  Home
 } from 'lucide-react';
+import DashboardView from './components/DashboardView';
 
 function App() {
-  const [view, setView] = useState('library');
+  const [view, setView] = useState('dashboard');
+  const [draftingTab, setDraftingTab] = useState('info');
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [suggestions, setSuggestions] = useState([]);
   const [user, setUser] = useState(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [authError, setAuthError] = useState('');
@@ -218,6 +223,8 @@ function App() {
     return saved ? JSON.parse(saved) : [];
   });
 
+  const [hospitalsDirectory, setHospitalsDirectory] = useState([]);
+
   const [driveFiles, setDriveFiles] = useState(() => {
     const saved = localStorage.getItem('srr_drive');
     const parsed = saved ? JSON.parse(saved) : { srr: [], vendor: [], personal: [], personalFolders: [] };
@@ -292,6 +299,31 @@ function App() {
       setPreviewPriceListUrl(null);
     }
   }, [previewingItem, priceLists]);
+
+  useEffect(() => {
+    if (quotationHistory && quotationHistory.length > 0) {
+      const dir = [];
+      const seen = new Set();
+      quotationHistory.forEach(item => {
+        const hospitalName = (item.hospital || item.formData?.hospitalName || '').trim();
+        const nameLower = hospitalName.toLowerCase();
+        if (nameLower && !seen.has(nameLower)) {
+          seen.add(nameLower);
+          dir.push({
+            name: hospitalName,
+            address: item.address || item.formData?.address || '',
+            defaultDiscount: item.formData?.defaultDiscount || item.discount || '',
+            defaultPayment: item.formData?.defaultPayment || item.payment || '',
+            defaultDelivery: item.formData?.defaultDelivery || item.delivery || '',
+            defaultValidity: item.formData?.defaultValidity || item.validity || '',
+            defaultWarranty: item.formData?.defaultWarranty || item.warranty || '',
+            defaultGst: item.formData?.defaultGst || item.gst || '',
+          });
+        }
+      });
+      setHospitalsDirectory(dir);
+    }
+  }, [quotationHistory]);
 
   const refreshData = async (currentUser = user) => {
     if (!currentUser) return;
@@ -841,7 +873,35 @@ function App() {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
+  const handleHospitalNameChange = (val) => {
+    setFormData(prev => ({ ...prev, hospitalName: val }));
+    if (val.trim().length > 0) {
+      const filtered = hospitalsDirectory.filter(h => h.name.toLowerCase().includes(val.toLowerCase()));
+      setSuggestions(filtered);
+      setShowSuggestions(true);
+    } else {
+      setSuggestions([]);
+      setShowSuggestions(false);
+    }
+  };
+
+  const selectHospital = (hospital) => {
+    setFormData(prev => ({
+      ...prev,
+      hospitalName: hospital.name,
+      address: hospital.address,
+      discount: hospital.defaultDiscount || prev.discount || '',
+      payment: hospital.defaultPayment || prev.payment || '',
+      delivery: hospital.defaultDelivery || prev.delivery || '',
+      validity: hospital.defaultValidity || prev.validity || '',
+      warranty: hospital.defaultWarranty || prev.warranty || '',
+      gst: hospital.defaultGst || prev.gst || '',
+    }));
+    setShowSuggestions(false);
+  };
+
   const useTemplate = (template) => {
+    setDraftingTab('info');
     setFormData({
       hospitalName: '',
       address: '',
@@ -864,6 +924,7 @@ function App() {
   };
 
   const editHistoryItem = (item) => {
+    setDraftingTab('info');
     setFormData(JSON.parse(JSON.stringify(item.formData)));
     setDraftContent(JSON.parse(JSON.stringify(item.content)));
     setView('drafting');
@@ -1182,6 +1243,16 @@ function App() {
     </span>
   );
 
+  const SidebarLink = ({ id, label, icon }) => (
+    <button
+      onClick={() => { setView(id); setIsMobileMenuOpen(false); }}
+      className={`saas-sidebar-link w-full text-left ${view === id ? 'SaasActive' : ''}`}
+    >
+      {icon}
+      <span>{label}</span>
+    </button>
+  );
+
   const handleLogout = async () => {
     try {
       await signOut(auth);
@@ -1245,103 +1316,117 @@ function App() {
   }
 
   return (
-    <div className="flex flex-col h-screen text-[var(--text)] font-sans overflow-hidden bg-transparent">
+    <div className="flex flex-col lg:flex-row h-screen text-[var(--text)] font-sans overflow-hidden bg-transparent">
 
-      {/* ─────────────────────────────────────────
-          APPLE NAV BAR (TOP)
-          ───────────────────────────────────────── */}
-      <nav className="apple-nav px-4 md:px-6">
-        <div className="flex items-center gap-3 mr-auto lg:mr-8">
+      {/* Mobile Top Navbar */}
+      <div className="lg:hidden flex items-center justify-between px-6 py-4 bg-white/70 backdrop-blur-xl border-b border-white/40 shadow-sm z-30 shrink-0">
+        <div className="flex items-center gap-3">
           <div className="w-9 h-9 bg-gradient-to-tr from-emerald-600 to-teal-800 rounded-xl flex items-center justify-center shrink-0 shadow-md">
             <FileUp className="text-white w-4.5 h-4.5" />
           </div>
-          <span className="font-extrabold text-base md:text-lg tracking-tight truncate bg-clip-text text-transparent bg-gradient-to-r from-teal-800 to-emerald-600">SRR Ortho Plus</span>
+          <span className="font-extrabold text-md tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-teal-800 to-emerald-600">SRR Ortho Plus</span>
         </div>
-        
-        {/* Desktop Nav */}
-        <div className="hidden lg:flex gap-1 xl:gap-4">
-          <NavItem id="library" label="Library" />
-          <NavItem id="history" label="History" />
-          <NavItem id="drive" label="Drive" />
-          <NavItem id="emailer" label="Emailer" />
-          <NavItem id="emailHistory" label="Email History" />
-          <NavItem id="pricelists" label="Price List" />
-          <NavItem id="settings" label="Settings" />
-        </div>
-
-        {/* Mobile Nav Toggle */}
         <button 
-          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-          className="lg:hidden p-2 text-[var(--apple-gray-6)] hover:bg-[var(--apple-gray-1)] rounded-xl"
+          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} 
+          className="p-2 text-[var(--text2)] hover:bg-white/50 border border-white/50 rounded-xl transition-colors"
         >
-          {isMobileMenuOpen ? <Plus className="rotate-45" size={24} /> : <Menu size={24} />}
+          {isMobileMenuOpen ? <Plus className="rotate-45" size={20} /> : <Menu size={20} />}
         </button>
+      </div>
 
-        <div className="ml-4 lg:ml-auto flex items-center gap-3 md:gap-4">
+      {/* Navigation Sidebar */}
+      <aside className={`saas-sidebar fixed lg:static top-0 bottom-0 left-0 ${
+        isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+      } z-[3000] lg:z-10 shadow-2xl lg:shadow-none`}>
+        {/* Brand Logo Header */}
+        <div className="flex items-center justify-between px-6 py-6 border-b border-white/5 shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 bg-gradient-to-tr from-emerald-500 to-teal-700 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/10 shrink-0">
+              <FileUp className="text-white w-4.5 h-4.5" />
+            </div>
+            <div className="min-w-0">
+              <span className="font-extrabold text-md tracking-tight block text-white">SRR Ortho Plus</span>
+              <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest block font-sans">Workspace</span>
+            </div>
+          </div>
           <button 
-            onClick={() => {
-              if (isManagementActive) {
-                setIsManagementActive(false);
-              } else {
-                showPrompt('Admin Access', 'Enter Admin Password to enable management tools:', (pass) => {
-                  if (pass === ADMIN_PASSWORD) {
-                    setIsManagementActive(true);
-                    showAlert('Access Granted', 'Management tools are now active.', 'success');
-                  } else if (pass !== null) {
-                    showAlert('Access Denied', 'The password you entered is incorrect.', 'error');
-                  }
-                });
-              }
-            }}
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-[13px] font-bold transition-all border ${
-              isManagementActive 
-                ? 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30' 
-                : 'bg-white/45 text-slate-600 border-white/50 hover:bg-white/65 hover:border-white/70 hover:shadow-sm'
-            }`}
+            onClick={() => setIsMobileMenuOpen(false)} 
+            className="lg:hidden p-1.5 hover:bg-white/5 border border-white/5 rounded-lg text-slate-400"
           >
-            {isManagementActive ? <ShieldCheck size={16} /> : <LayoutDashboard size={16} />}
-            <span className="hidden sm:inline">{isManagementActive ? 'Admin Active' : 'Admin'}</span>
+            <Plus className="rotate-45" size={18} />
           </button>
-          
-          <span className="text-[13px] font-semibold text-[var(--text2)] hidden xl:block">{user.email}</span>
-          <button onClick={handleLogout} className="text-[13px] font-bold text-red-500 hover:text-red-600 transition-colors hidden sm:block">
+        </div>
+
+        {/* Navigation Items */}
+        <div className="flex-1 overflow-y-auto px-4 py-6 space-y-1.5">
+          <SidebarLink id="dashboard" label="Dashboard" icon={<Home size={18} />} />
+          <SidebarLink id="library" label="Templates" icon={<LayoutDashboard size={18} />} />
+          <SidebarLink id="history" label="History Logs" icon={<FileText size={18} />} />
+          <SidebarLink id="drive" label="Drive Storage" icon={<HardDrive size={18} />} />
+          <SidebarLink id="emailer" label="Email Dispatch" icon={<Send size={18} />} />
+          <SidebarLink id="emailHistory" label="Email History" icon={<Mail size={18} />} />
+          <SidebarLink id="pricelists" label="Price Lists" icon={<Database size={18} />} />
+          <SidebarLink id="settings" label="Settings" icon={<Settings size={18} />} />
+        </div>
+
+        {/* Profile Footer */}
+        <div className="p-4 border-t border-white/5 space-y-3 bg-slate-950/25 shrink-0">
+          <div className="flex items-center gap-2.5 px-2">
+            <div className="w-8.5 h-8.5 rounded-xl bg-slate-800 flex items-center justify-center font-bold text-white text-[12px] border border-white/10 shrink-0 shadow-inner">
+              {user.email ? user.email.charAt(0).toUpperCase() : 'U'}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[12px] font-bold text-slate-200 truncate leading-tight">{user.email}</p>
+              <button 
+                onClick={() => {
+                  setIsMobileMenuOpen(false);
+                  if (isManagementActive) {
+                    setIsManagementActive(false);
+                  } else {
+                    showPrompt('Admin Access', 'Enter Admin Password to enable management tools:', (pass) => {
+                      if (pass === ADMIN_PASSWORD) {
+                        setIsManagementActive(true);
+                        showAlert('Access Granted', 'Management tools are now active.', 'success');
+                      } else if (pass !== null) {
+                        showAlert('Access Denied', 'The password you entered is incorrect.', 'error');
+                      }
+                    });
+                  }
+                }}
+                className="text-[10px] font-bold text-emerald-400 hover:text-emerald-300 block text-left mt-0.5"
+              >
+                {isManagementActive ? 'Admin Mode Enabled' : 'Unlock Admin Tools'}
+              </button>
+            </div>
+          </div>
+          <button 
+            onClick={handleLogout} 
+            className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 rounded-xl text-[12px] font-bold text-red-400 transition-all active:scale-[0.98]"
+          >
             Sign Out
           </button>
         </div>
-      </nav>
+      </aside>
 
-      {/* Mobile Menu Overlay */}
-      {isMobileMenuOpen && (
-        <div className="fixed inset-0 z-[2000] bg-slate-950/80 backdrop-blur-2xl lg:hidden flex flex-col p-6 text-white animate-in slide-in-from-top duration-300">
-          <div className="flex justify-between items-center mb-10">
-            <span className="font-extrabold text-2xl tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 to-teal-200">SRR Menu</span>
-            <button onClick={() => setIsMobileMenuOpen(false)} className="w-10 h-10 flex items-center justify-center bg-white/10 rounded-full border border-white/10 hover:bg-white/20 transition-all"><Plus className="rotate-45" size={24} /></button>
-          </div>
-          <div className="flex flex-col gap-3">
-            {['library', 'history', 'drive', 'emailer', 'emailHistory', 'pricelists', 'settings'].map(id => (
-              <button
-                key={id}
-                onClick={() => { setView(id); setIsMobileMenuOpen(false); }}
-                className={`text-left p-4 rounded-2xl text-lg font-bold uppercase tracking-wider transition-all border ${
-                  view === id 
-                    ? 'bg-white/10 border-white/25 text-emerald-400 shadow-md' 
-                    : 'bg-transparent border-transparent text-slate-300 hover:bg-white/5'
-                }`}
-              >
-                {id.replace('pricelists', 'price list').replace('emailHistory', 'email history')}
-              </button>
-            ))}
-            <button onClick={handleLogout} className="text-left p-4 rounded-2xl text-lg font-bold text-red-400 hover:bg-red-500/10 uppercase tracking-wider mt-4 border-t border-white/10 pt-8">
-              Sign Out
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Right Side Workspace Area */}
+      <div className="flex-1 h-full overflow-hidden flex flex-col relative bg-transparent">
 
-      {/* ─────────────────────────────────────────
-          MAIN CONTENT AREA
-          ───────────────────────────────────────── */}
-      <main className="flex-1 overflow-hidden mt-[var(--nav-height)]">
+        {/* VIEW: DASHBOARD */}
+        {view === 'dashboard' && (
+          <DashboardView 
+            stats={{
+              templates: templates.length,
+              history: quotationHistory.length,
+              drive: (driveFiles.srr || []).length + (driveFiles.vendor || []).reduce((acc, f) => acc + (f.files || []).length, 0),
+              emails: emailHistory.length
+            }}
+            recentHistory={quotationHistory}
+            setView={setView}
+            setRegeneratingItem={setRegeneratingItem}
+            isGenerating={isGenerating}
+            regeneratingItem={regeneratingItem}
+          />
+        )}
 
         {/* VIEW: LIBRARY */}
         {view === 'library' && (
@@ -1881,259 +1966,330 @@ function App() {
                 <h2 className="text-[28px] font-bold tracking-tight leading-tight mb-8">Draft Quotation</h2>
  
                 <div className="space-y-6">
-                  {/* Hospital Details */}
-                  <div className="space-y-4">
-                    <h3 className="apple-label border-b border-white/20 pb-2">Client Details</h3>
-                    <div>
-                      <input name="hospitalName" value={formData.hospitalName} onChange={handleInputChange} className="apple-input" placeholder="Hospital Name" />
-                    </div>
-                    <div>
-                      <textarea name="address" value={formData.address} onChange={handleInputChange} rows="2" className="apple-input" placeholder="Full Address" />
-                    </div>
-                  </div>
- 
-                  {/* Document Details */}
-                  <div className="space-y-4 pt-4">
-                    <h3 className="apple-label border-b border-white/20 pb-2">Document Info</h3>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <span className="text-[11px] font-bold text-[var(--text3)] uppercase block mb-1">Date</span>
-                        <input type="text" name="date" value={formData.date} onChange={handleInputChange} placeholder="DD/MM/YYYY" className="apple-input !px-3" />
-                      </div>
-                      <div>
-                        <span className="text-[11px] font-bold text-[var(--text3)] uppercase block mb-1">Ref No.</span>
-                        <input type="text" name="referenceNumber" value={formData.referenceNumber} readOnly className="apple-input !px-3 bg-white/30 cursor-not-allowed opacity-60 border-white/40" title="Reference number is automatically generated" />
-                      </div>
-                    </div>
-                    <div>
-                      <span className="text-[11px] font-bold text-[var(--text3)] uppercase block mb-1">Subject</span>
-                      <textarea name="subject" value={formData.subject} onChange={handleInputChange} rows="2" className="apple-input" />
-                    </div>
- 
-                    {templates.find(t => t.id === formData.selectedTemplateId)?.requiresPriceList && (
-                      <div>
-                        <span className="text-[11px] font-bold text-[var(--text3)] uppercase block mb-1">Attached Price List</span>
-                        <select 
-                          name="priceListId" 
-                          value={formData.priceListId || ''} 
-                          onChange={handleInputChange}
-                          className="apple-input cursor-pointer bg-white/40"
-                        >
-                          <option value="">-- Select Price List --</option>
-                          {priceLists
-                            .filter(pl => !pl.hidden || pl.id === formData.priceListId)
-                            .map(pl => (
-                              <option key={pl.id} value={pl.id}>
-                                {pl.label} {pl.hidden ? '(Hidden)' : ''}
-                              </option>
-                            ))}
-                        </select>
-                      </div>
-                    )}
-                  </div>
- 
-                  {/* Layout Controls */}
-                  <div className="space-y-4 pt-4">
-                    <h3 className="apple-label border-b border-white/20 pb-2">Layout & Spacing</h3>
-                    <div className="flex gap-2">
-                      {['compact', 'standard', 'relaxed'].map(s => (
-                        <button
-                          key={s}
-                          onClick={() => setFormData({ ...formData, lineSpacing: s })}
-                          className={`flex-1 py-2 rounded-xl text-[11px] font-bold uppercase tracking-wider transition-all border ${
-                            formData.lineSpacing === s 
-                              ? 'bg-gradient-to-r from-emerald-600 to-teal-700 text-white border-transparent shadow-md' 
-                              : 'bg-white/45 text-[var(--text2)] border-white/50 hover:bg-white/65 hover:shadow-sm'
-                          }`}
-                        >
-                          {s}
-                        </button>
-                      ))}
-                    </div>
+                  {/* Wizard Tab Navigation Header */}
+                  <div className="flex border-b border-white/20 mb-6 shrink-0">
+                    <button 
+                      onClick={() => setDraftingTab('info')}
+                      className={`editor-tab-btn flex-1 ${draftingTab === 'info' ? 'editor-active font-extrabold text-[var(--accent)] border-b-2 border-[var(--accent)]' : ''}`}
+                    >
+                      1. Client Info
+                    </button>
+                    <button 
+                      onClick={() => setDraftingTab('items')}
+                      className={`editor-tab-btn flex-1 ${draftingTab === 'items' ? 'editor-active font-extrabold text-[var(--accent)] border-b-2 border-[var(--accent)]' : ''}`}
+                    >
+                      2. Line Items
+                    </button>
+                    <button 
+                      onClick={() => setDraftingTab('terms')}
+                      className={`editor-tab-btn flex-1 ${draftingTab === 'terms' ? 'editor-active font-extrabold text-[var(--accent)] border-b-2 border-[var(--accent)]' : ''}`}
+                    >
+                      3. Terms
+                    </button>
                   </div>
 
-                  {/* Template Editor */}
-                  <div className="space-y-4 pt-4">
-                    <h3 className="apple-label border-b border-[var(--apple-gray-2)] pb-2">Content Blocks</h3>
-                    {draftContent.map((block, idx) => (
-                      <div key={idx} className="bg-[var(--apple-gray-1)] p-4 rounded-xl border border-[var(--apple-gray-2)]">
-                        <div className="flex items-center justify-between mb-3">
-                          <div className="flex items-center gap-2">
-                            <span className="w-5 h-5 rounded flex items-center justify-center bg-[var(--coral)] text-white text-[10px] font-bold">{idx + 1}</span>
-                            <span className="text-[11px] font-bold text-[var(--apple-gray-5)] uppercase tracking-wider">
-                              {block.type === 'text' ? 'Text' : 'Table'}
-                            </span>
-                          </div>
-                          {block.type === 'table' && (
-                            <button
-                              onClick={() => setIsDraftingMaximized(!isDraftingMaximized)}
-                              className="flex items-center gap-2 px-3 py-1 bg-white hover:bg-[var(--apple-gray-1)] border border-[var(--apple-gray-2)] rounded-lg text-[10px] font-bold text-[var(--apple-gray-5)] transition-all"
-                            >
-                              <LayoutDashboard size={12} />
-                              {isDraftingMaximized ? 'MINIMIZE' : 'MAXIMIZE'}
-                            </button>
+                  {/* TAB 1: CLIENT & DOCUMENT INFO */}
+                  {draftingTab === 'info' && (
+                    <div className="space-y-6 animate-in fade-in duration-300">
+                      {/* Hospital Details */}
+                      <div className="space-y-4">
+                        <h3 className="apple-label border-b border-white/20 pb-2">Client Details</h3>
+                        <div className="relative">
+                          <span className="text-[11px] font-bold text-[var(--text3)] uppercase block mb-1">Hospital / Client Name</span>
+                          <input 
+                            name="hospitalName" 
+                            value={formData.hospitalName} 
+                            onChange={(e) => handleHospitalNameChange(e.target.value)} 
+                            onFocus={() => {
+                              if (formData.hospitalName.trim().length > 0) setShowSuggestions(true);
+                            }}
+                            className="apple-input" 
+                            placeholder="Hospital Name" 
+                            autoComplete="off"
+                          />
+                          {/* Autocomplete Suggestions */}
+                          {showSuggestions && suggestions.length > 0 && (
+                            <div className="autocomplete-suggestions">
+                              {suggestions.map((s, idx) => (
+                                <div 
+                                  key={idx} 
+                                  onMouseDown={() => selectHospital(s)}
+                                  className="autocomplete-suggestion-item border-b border-slate-100 last:border-none"
+                                >
+                                  <div className="font-bold text-[13.5px]">{s.name}</div>
+                                  <div className="text-[11px] text-slate-400 truncate">{s.address}</div>
+                                </div>
+                              ))}
+                            </div>
                           )}
                         </div>
-                        {block.type === 'text' ? (
-                          <textarea
-                            value={block.value}
-                            onChange={e => {
-                              const nc = [...draftContent]; nc[idx].value = e.target.value;
-                              setDraftContent(nc);
-                            }}
-                            className="apple-input !bg-white !p-3 text-[13px]"
-                            rows={3}
+                        <div>
+                          <span className="text-[11px] font-bold text-[var(--text3)] uppercase block mb-1">Billing & Shipping Address</span>
+                          <textarea 
+                            name="address" 
+                            value={formData.address} 
+                            onChange={handleInputChange} 
+                            rows="3" 
+                            className="apple-input" 
+                            placeholder="Full Address" 
                           />
-                        ) : (
-                          <div className="overflow-x-auto rounded-xl border border-[var(--apple-gray-2)] bg-white shadow-sm mt-2">
-                            <table className="w-full border-collapse">
-                              <thead className="bg-[var(--apple-gray-1)] border-b border-[var(--apple-gray-2)]">
-                                <tr>
-                                  {block.headers.map((h, hi) => (
-                                    <th key={hi} className="p-3 border-r border-[var(--apple-gray-2)] last:border-none relative group">
-                                      <input
-                                        value={h}
-                                        onChange={e => {
-                                          const nc = [...draftContent]; nc[idx].headers[hi] = e.target.value;
-                                          setDraftContent(nc);
-                                        }}
-                                        className="w-full bg-transparent outline-none uppercase font-bold text-[var(--apple-gray-6)] text-center text-[11px] tracking-wider"
-                                        placeholder={`Col ${hi + 1}`}
-                                      />
-                                      <button
-                                        onClick={() => {
-                                          if (block.headers.length <= 1) return;
-                                          const nc = [...draftContent];
-                                          nc[idx].headers.splice(hi, 1);
-                                          nc[idx].rows.forEach(r => r.splice(hi, 1));
-                                          setDraftContent(nc);
-                                        }}
-                                        className="absolute -top-2 -right-2 w-5 h-5 bg-white border border-[var(--apple-gray-2)] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 hover:text-red-500 shadow-sm transition-all z-10"
-                                        title="Delete Column"
-                                      >
-                                        <Trash2 size={10} />
-                                      </button>
-                                    </th>
-                                  ))}
-                                  <th className="w-8 bg-[var(--apple-gray-1)]"></th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {block.rows.map((row, ri) => (
-                                  <tr key={ri} className="border-b border-[var(--apple-gray-2)] last:border-none hover:bg-[var(--apple-gray-1)] transition-colors">
-                                    {row.map((cell, ci) => (
-                                      <td key={ci} className="p-0 border-r border-[var(--apple-gray-2)] last:border-none">
-                                        {block.headers[ci]?.toLowerCase().includes('item') || block.headers[ci]?.toLowerCase().includes('desc') || block.headers[ci]?.toLowerCase().includes('hsn') ? (
-                                          <textarea
-                                            value={cell}
-                                            rows={cell.toString().split('\n').length || 1}
-                                            onChange={e => {
-                                              const nc = [...draftContent];
-                                              const newRows = nc[idx].rows.map(r => [...r]);
-                                              newRows[ri][ci] = e.target.value;
-                                              nc[idx] = { ...nc[idx], rows: newRows };
-                                              setDraftContent(nc);
-                                            }}
-                                            className={`w-full py-2.5 px-3 bg-transparent outline-none ${block.headers[ci]?.toLowerCase().includes('hsn') ? 'text-center' : 'text-left'} text-[13px] hover:bg-black/5 focus:bg-white focus:ring-1 focus:ring-[var(--emerald)] transition-all resize-none overflow-hidden`}
-                                            placeholder={block.headers[ci]?.toLowerCase().includes('hsn') ? "HSN..." : "Enter set details..."}
-                                          />
-                                        ) : (
-                                          <input
-                                            value={cell}
-                                            onChange={e => {
-                                              const nc = [...draftContent];
-                                              const newRows = nc[idx].rows.map(r => [...r]);
-                                              newRows[ri][ci] = e.target.value;
+                        </div>
+                      </div>
 
-                                              const headers = nc[idx].headers.map(h => h.toLowerCase());
-                                              const qtyIdx = headers.findIndex(h => h === 'qty' || h === 'quantity');
-                                              const rateIdx = headers.findIndex(h => h === 'rate' || h === 'mrp' || h === 'price');
-                                              const amountIdx = headers.findIndex(h => h === 'amount' || h === 'total');
+                      {/* Document Details */}
+                      <div className="space-y-4 pt-4">
+                        <h3 className="apple-label border-b border-white/20 pb-2">Document Info</h3>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <span className="text-[11px] font-bold text-[var(--text3)] uppercase block mb-1">Date</span>
+                            <input type="text" name="date" value={formData.date} onChange={handleInputChange} placeholder="DD/MM/YYYY" className="apple-input !px-3" />
+                          </div>
+                          <div>
+                            <span className="text-[11px] font-bold text-[var(--text3)] uppercase block mb-1">Ref No.</span>
+                            <input type="text" name="referenceNumber" value={formData.referenceNumber} readOnly className="apple-input !px-3 bg-white/30 cursor-not-allowed opacity-60 border-white/40" title="Reference number is automatically generated" />
+                          </div>
+                        </div>
+                        <div>
+                          <span className="text-[11px] font-bold text-[var(--text3)] uppercase block mb-1">Subject</span>
+                          <textarea name="subject" value={formData.subject} onChange={handleInputChange} rows="2" className="apple-input" />
+                        </div>
 
-                                              if (qtyIdx !== -1 && rateIdx !== -1 && amountIdx !== -1 && (ci === qtyIdx || ci === rateIdx)) {
-                                                const qty = parseFloat(newRows[ri][qtyIdx]) || 0;
-                                                const rate = parseFloat(newRows[ri][rateIdx]) || 0;
-                                                newRows[ri][amountIdx] = (qty * rate).toFixed(2);
-                                              }
-
-                                              nc[idx] = { ...nc[idx], rows: newRows };
-                                              setDraftContent(nc);
-                                            }}
-                                            className={`w-full py-2.5 px-3 bg-transparent outline-none ${((block.headers[ci] || '').toLowerCase().includes('amount') || (block.headers[ci] || '').toLowerCase().includes('rate') || (block.headers[ci] || '').toLowerCase().includes('price') || (block.headers[ci] || '').toLowerCase().includes('qty')) ? 'text-right' : 'text-center'} text-[13px] hover:bg-black/5 focus:bg-white focus:ring-1 focus:ring-[var(--emerald)] transition-all`}
-                                          />
-                                        )}
-                                      </td>
-                                    ))}
-                                    <td className="p-0 text-center w-8">
-                                      <button
-                                        onClick={() => {
-                                          const nc = [...draftContent];
-                                          const newRows = nc[idx].rows.filter((_, i) => i !== ri);
-                                          nc[idx] = { ...nc[idx], rows: newRows };
-                                          setDraftContent(nc);
-                                        }}
-                                        className="w-full h-full flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 hover:bg-red-50 py-2.5 transition-colors"
-                                        title="Delete Row"
-                                      >
-                                        <Trash2 size={14} />
-                                      </button>
-                                    </td>
-                                  </tr>
+                        {templates.find(t => t.id === formData.selectedTemplateId)?.requiresPriceList && (
+                          <div>
+                            <span className="text-[11px] font-bold text-[var(--text3)] uppercase block mb-1">Attached Price List</span>
+                            <select 
+                              name="priceListId" 
+                              value={formData.priceListId || ''} 
+                              onChange={handleInputChange}
+                              className="apple-input cursor-pointer bg-white/40"
+                            >
+                              <option value="">-- Select Price List --</option>
+                              {priceLists
+                                .filter(pl => !pl.hidden || pl.id === formData.priceListId)
+                                .map(pl => (
+                                  <option key={pl.id} value={pl.id}>
+                                    {pl.label} {pl.hidden ? '(Hidden)' : ''}
+                                  </option>
                                 ))}
-                              </tbody>
-                            </table>
-                            <div className="flex border-t border-[var(--apple-gray-2)]">
-                              <button
-                                onClick={() => {
-                                  const nc = [...draftContent];
-                                  const newRows = [...nc[idx].rows, Array(block.headers.length).fill('')];
-                                  nc[idx] = { ...nc[idx], rows: newRows };
-                                  setDraftContent(nc);
-                                }}
-                                className="flex-1 py-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--emerald)] hover:bg-[var(--emerald-light)] transition-colors border-r border-[var(--apple-gray-2)]"
-                              >
-                                + Add Row
-                              </button>
-                              <button
-                                onClick={() => {
-                                  const nc = [...draftContent];
-                                  nc[idx].headers.push('New Col');
-                                  nc[idx].rows.forEach(row => row.push(''));
-                                  setDraftContent(nc);
-                                }}
-                                className="flex-1 py-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--coral)] hover:bg-red-50 transition-colors"
-                              >
-                                + Add Column
-                              </button>
-                            </div>
+                            </select>
                           </div>
                         )}
                       </div>
-                    ))}
-                  </div>
-
-                  {/* Terms */}
-                  <div className="space-y-4 pt-4">
-                    <h3 className="apple-label border-b border-[var(--apple-gray-2)] pb-2">Terms & Conditions</h3>
-                    <div className="grid grid-cols-2 gap-4">
-                      {['make', 'delivery', 'discount', 'gst', 'payment', 'validity', 'warranty'].map(term => (
-                        <div key={term}>
-                          <span className="text-[11px] font-semibold text-[var(--apple-gray-5)] uppercase block mb-1">{term}</span>
-                          <input
-                            type="text"
-                            name={term}
-                            value={formData[term]}
-                            onChange={handleInputChange}
-                            placeholder={term === 'validity' ? 'DD/MM/YYYY' : ''}
-                            className="apple-input !px-3"
-                          />
-                        </div>
-                      ))}
                     </div>
-                  </div>
+                  )}
 
+                  {/* TAB 2: LINE ITEMS EDITOR */}
+                  {draftingTab === 'items' && (
+                    <div className="space-y-6 animate-in fade-in duration-300">
+                      {/* Template Editor */}
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between border-b border-[var(--apple-gray-2)] pb-2">
+                          <h3 className="apple-label">Content Blocks</h3>
+                          <span className="text-[11px] font-bold text-[var(--text3)]">{draftContent.length} blocks total</span>
+                        </div>
+                        {draftContent.map((block, idx) => (
+                          <div key={idx} className="bg-white/40 backdrop-blur-sm p-4 rounded-xl border border-white/60 shadow-sm">
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center gap-2">
+                                <span className="w-5 h-5 rounded-lg flex items-center justify-center bg-gradient-to-tr from-teal-600 to-emerald-600 text-white text-[10px] font-bold">{idx + 1}</span>
+                                <span className="text-[11px] font-bold text-[var(--text2)] uppercase tracking-wider">
+                                  {block.type === 'text' ? 'Text block' : 'Items Table'}
+                                </span>
+                              </div>
+                              {block.type === 'table' && (
+                                <button
+                                  onClick={() => setIsDraftingMaximized(!isDraftingMaximized)}
+                                  className="flex items-center gap-1.5 px-3 py-1 bg-white hover:bg-[var(--apple-gray-1)] border border-[var(--apple-gray-2)] rounded-lg text-[10px] font-bold text-[var(--text2)] transition-all shadow-sm"
+                                >
+                                  <LayoutDashboard size={12} />
+                                  {isDraftingMaximized ? 'MINIMIZE' : 'MAXIMIZE'}
+                                </button>
+                              )}
+                            </div>
+                            {block.type === 'text' ? (
+                              <textarea
+                                value={block.value}
+                                onChange={e => {
+                                  const nc = [...draftContent]; nc[idx].value = e.target.value;
+                                  setDraftContent(nc);
+                                }}
+                                className="apple-input !bg-white !p-3 text-[13px]"
+                                rows={3}
+                              />
+                            ) : (
+                              <div className="overflow-x-auto rounded-xl border border-[var(--apple-gray-2)] bg-white shadow-sm mt-2">
+                                <table className="w-full border-collapse">
+                                  <thead className="bg-[var(--apple-gray-1)] border-b border-[var(--apple-gray-2)]">
+                                    <tr>
+                                      {block.headers.map((h, hi) => (
+                                        <th key={hi} className="p-3 border-r border-[var(--apple-gray-2)] last:border-none relative group">
+                                          <input
+                                            value={h}
+                                            onChange={e => {
+                                              const nc = [...draftContent]; nc[idx].headers[hi] = e.target.value;
+                                              setDraftContent(nc);
+                                            }}
+                                            className="w-full bg-transparent outline-none uppercase font-bold text-[var(--apple-gray-6)] text-center text-[11px] tracking-wider"
+                                            placeholder={`Col ${hi + 1}`}
+                                          />
+                                          <button
+                                            onClick={() => {
+                                              if (block.headers.length <= 1) return;
+                                              const nc = [...draftContent];
+                                              nc[idx].headers.splice(hi, 1);
+                                              nc[idx].rows.forEach(r => r.splice(hi, 1));
+                                              setDraftContent(nc);
+                                            }}
+                                            className="absolute -top-2 -right-2 w-5 h-5 bg-white border border-[var(--apple-gray-2)] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 hover:text-red-500 shadow-sm transition-all z-10"
+                                            title="Delete Column"
+                                          >
+                                            <Trash2 size={10} />
+                                          </button>
+                                        </th>
+                                      ))}
+                                      <th className="w-8 bg-[var(--apple-gray-1)]"></th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {block.rows.map((row, ri) => (
+                                      <tr key={ri} className="border-b border-[var(--apple-gray-2)] last:border-none hover:bg-[var(--apple-gray-1)] transition-colors">
+                                        {row.map((cell, ci) => (
+                                          <td key={ci} className="p-0 border-r border-[var(--apple-gray-2)] last:border-none">
+                                            {block.headers[ci]?.toLowerCase().includes('item') || block.headers[ci]?.toLowerCase().includes('desc') || block.headers[ci]?.toLowerCase().includes('hsn') ? (
+                                              <textarea
+                                                value={cell}
+                                                rows={cell.toString().split('\n').length || 1}
+                                                onChange={e => {
+                                                  const nc = [...draftContent];
+                                                  const newRows = nc[idx].rows.map(r => [...r]);
+                                                  newRows[ri][ci] = e.target.value;
+                                                  nc[idx] = { ...nc[idx], rows: newRows };
+                                                  setDraftContent(nc);
+                                                }}
+                                                className={`w-full py-2.5 px-3 bg-transparent outline-none ${block.headers[ci]?.toLowerCase().includes('hsn') ? 'text-center' : 'text-left'} text-[13px] hover:bg-black/5 focus:bg-white focus:ring-1 focus:ring-[var(--emerald)] transition-all resize-none overflow-hidden`}
+                                                placeholder={block.headers[ci]?.toLowerCase().includes('hsn') ? "HSN..." : "Enter item details..."}
+                                              />
+                                            ) : (
+                                              <input
+                                                value={cell}
+                                                onChange={e => {
+                                                  const nc = [...draftContent];
+                                                  const newRows = nc[idx].rows.map(r => [...r]);
+                                                  newRows[ri][ci] = e.target.value;
 
+                                                  const headers = nc[idx].headers.map(h => h.toLowerCase());
+                                                  const qtyIdx = headers.findIndex(h => h === 'qty' || h === 'quantity');
+                                                  const rateIdx = headers.findIndex(h => h === 'rate' || h === 'mrp' || h === 'price');
+                                                  const amountIdx = headers.findIndex(h => h === 'amount' || h === 'total');
 
+                                                  if (qtyIdx !== -1 && rateIdx !== -1 && amountIdx !== -1 && (ci === qtyIdx || ci === rateIdx)) {
+                                                    const qty = parseFloat(newRows[ri][qtyIdx]) || 0;
+                                                    const rate = parseFloat(newRows[ri][rateIdx]) || 0;
+                                                    newRows[ri][amountIdx] = (qty * rate).toFixed(2);
+                                                  }
+
+                                                  nc[idx] = { ...nc[idx], rows: newRows };
+                                                  setDraftContent(nc);
+                                                }}
+                                                className={`w-full py-2.5 px-3 bg-transparent outline-none ${((block.headers[ci] || '').toLowerCase().includes('amount') || (block.headers[ci] || '').toLowerCase().includes('rate') || (block.headers[ci] || '').toLowerCase().includes('price') || (block.headers[ci] || '').toLowerCase().includes('qty')) ? 'text-right' : 'text-center'} text-[13px] hover:bg-black/5 focus:bg-white focus:ring-1 focus:ring-[var(--emerald)] transition-all`}
+                                              />
+                                            )}
+                                          </td>
+                                        ))}
+                                        <td className="p-0 text-center w-8">
+                                          <button
+                                            onClick={() => {
+                                              const nc = [...draftContent];
+                                              const newRows = nc[idx].rows.filter((_, i) => i !== ri);
+                                              nc[idx] = { ...nc[idx], rows: newRows };
+                                              setDraftContent(nc);
+                                            }}
+                                            className="w-full h-full flex items-center justify-center text-[var(--apple-gray-4)] hover:text-red-500 hover:bg-red-50 py-2.5 transition-colors"
+                                            title="Delete Row"
+                                          >
+                                            <Trash2 size={14} />
+                                          </button>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                                <div className="flex border-t border-[var(--apple-gray-2)]">
+                                  <button
+                                    onClick={() => {
+                                      const nc = [...draftContent];
+                                      const newRows = [...nc[idx].rows, Array(block.headers.length).fill('')];
+                                      nc[idx] = { ...nc[idx], rows: newRows };
+                                      setDraftContent(nc);
+                                    }}
+                                    className="flex-1 py-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--emerald)] hover:bg-[var(--emerald-light)] transition-colors border-r border-[var(--apple-gray-2)]"
+                                  >
+                                    + Add Row
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      const nc = [...draftContent];
+                                      nc[idx].headers.push('New Col');
+                                      nc[idx].rows.forEach(row => row.push(''));
+                                      setDraftContent(nc);
+                                    }}
+                                    className="flex-1 py-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--coral)] hover:bg-red-50 transition-colors"
+                                  >
+                                    + Add Column
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TAB 3: TERMS & LAYOUT SPACING */}
+                  {draftingTab === 'terms' && (
+                    <div className="space-y-6 animate-in fade-in duration-300">
+                      {/* Layout Controls */}
+                      <div className="space-y-4">
+                        <h3 className="apple-label border-b border-white/20 pb-2">Layout & Spacing</h3>
+                        <div className="flex gap-2">
+                          {['compact', 'standard', 'relaxed'].map(s => (
+                            <button
+                              key={s}
+                              onClick={() => setFormData({ ...formData, lineSpacing: s })}
+                              className={`flex-1 py-2 rounded-xl text-[11px] font-bold uppercase tracking-wider transition-all border ${
+                                formData.lineSpacing === s 
+                                  ? 'bg-gradient-to-r from-emerald-600 to-teal-700 text-white border-transparent shadow-md' 
+                                  : 'bg-white/45 text-[var(--text2)] border-white/50 hover:bg-white/65 hover:shadow-sm'
+                              }`}
+                            >
+                              {s}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Terms */}
+                      <div className="space-y-4 pt-4">
+                        <h3 className="apple-label border-b border-[var(--apple-gray-2)] pb-2">Terms & Conditions</h3>
+                        <div className="grid grid-cols-2 gap-4">
+                          {['make', 'delivery', 'discount', 'gst', 'payment', 'validity', 'warranty'].map(term => (
+                            <div key={term}>
+                              <span className="text-[11px] font-semibold text-[var(--apple-gray-5)] uppercase block mb-1">{term}</span>
+                              <input
+                                type="text"
+                                name={term}
+                                value={formData[term]}
+                                onChange={handleInputChange}
+                                placeholder={term === 'validity' ? 'DD/MM/YYYY' : ''}
+                                className="apple-input !px-3"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -3172,7 +3328,7 @@ function App() {
             />
           </div>
         )}
-      </main>
+      </div>
 
       {/* UPLOAD PROGRESS OVERLAY */}
       {isUploading && (
