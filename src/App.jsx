@@ -52,7 +52,8 @@ import {
   Menu,
   RefreshCw,
   ChevronRight,
-  Home
+  Home,
+  Send
 } from 'lucide-react';
 import DashboardView from './components/DashboardView';
 
@@ -1263,39 +1264,23 @@ function App() {
 
   if (isAuthLoading) {
     return (
-      <div className="min-h-screen bg-[var(--bg)] flex items-center justify-center font-sans">
-        <div className="flex flex-col items-center gap-10 p-16 bg-white border-b-8 border-[var(--accent)] shadow-[0_40px_100px_-20px_rgba(0,0,0,0.1)] animate-in fade-in zoom-in-95 duration-1000">
-          <div className="relative">
-            {/* Pulsing Aura */}
-            <div className="absolute inset-0 bg-[var(--accent)]/10 rounded-full blur-3xl animate-pulse"></div>
-            
-            {/* Technical Gear Container */}
-            <div className="relative w-32 h-32 border-4 border-[var(--bg3)] flex items-center justify-center">
-               <div className="absolute inset-[-8px] border border-dashed border-[var(--accent)] animate-[spin_20s_linear_infinite]"></div>
-               <div className="w-20 h-20 bg-[var(--accent)] flex items-center justify-center shadow-xl">
-                  <FileUp className="text-white" size={40} strokeWidth={2} />
-               </div>
-            </div>
-          </div>
-          
-          <div className="flex flex-col items-center gap-3 text-center">
-            <h3 className="text-[32px] font-black uppercase tracking-tighter text-[var(--text)] leading-none mb-2" style={{ fontFamily: "'Jost', sans-serif" }}>
-              SRR Ortho Plus
-            </h3>
-            <div className="h-1.5 w-24 bg-[var(--accent)] mb-2"></div>
-            <p className="text-[13px] text-[var(--text3)] font-bold uppercase tracking-[0.2em]">
-              Initializing Platform
-            </p>
-          </div>
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center font-sans relative overflow-hidden">
+        {/* Floating Glowing Blobs */}
+        <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-emerald-500/5 rounded-full blur-[120px] pointer-events-none"></div>
+        <div className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-blue-500/5 rounded-full blur-[120px] pointer-events-none"></div>
 
-          {/* Industrial Progress Bar */}
-          <div className="w-[300px] h-2 bg-[var(--bg2)] overflow-hidden border border-[var(--border)]">
-            <div className="h-full bg-[var(--accent)] animate-progress-sweep"></div>
+        <div className="flex flex-col items-center gap-6 p-12 bg-white/50 backdrop-blur-2xl border border-white/60 shadow-[0_20px_50px_rgba(15,23,42,0.05)] rounded-[32px] text-center max-w-sm w-full mx-4 animate-in fade-in zoom-in-95 duration-500">
+          <div className="relative">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-700 flex items-center justify-center shadow-lg shadow-emerald-500/10 shrink-0 mx-auto">
+              <FileUp className="text-white w-7 h-7" />
+            </div>
+            {/* Spinning ring highlight */}
+            <div className="absolute -inset-2.5 border-2 border-teal-500/35 border-t-transparent rounded-full animate-spin"></div>
           </div>
-          
-          <p className="text-[11px] font-bold text-[var(--text3)] uppercase tracking-widest animate-pulse">
-            Establishing Secure Connection...
-          </p>
+          <div>
+            <h3 className="text-[20px] font-extrabold text-slate-800 leading-none">SRR Ortho Plus</h3>
+            <p className="text-[11.5px] text-teal-600 font-extrabold uppercase tracking-widest mt-2">Loading Workspace...</p>
+          </div>
         </div>
       </div>
     );
