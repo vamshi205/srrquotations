@@ -134,7 +134,7 @@ const EmailerView = ({ driveFiles, priceLists, onEmailSent, showAlert }) => {
 
   return (
     <div className="h-full overflow-y-auto px-8 py-12 md:px-16 md:py-16 bg-[var(--apple-gray-2)]">
-      <div className="max-w-4xl mx-auto flex flex-col lg:flex-row gap-8">
+      <div className="max-w-7xl mx-auto flex flex-col lg:flex-row gap-8 w-full">
         
         {/* Left Side: Composer */}
         <div className="flex-1 space-y-6">
@@ -191,33 +191,50 @@ const EmailerView = ({ driveFiles, priceLists, onEmailSent, showAlert }) => {
                 />
               </div>
 
-              {/* Attachment Badges */}
-              <div className="flex items-center flex-wrap gap-2">
-                {emailForm.selectedDriveFiles.map(file => (
-                  <div 
-                    key={file.id} 
-                    className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full border text-[11px] font-semibold transition-all ${
-                      file.isGenerated 
-                        ? 'bg-emerald-50 border-[var(--accent)] text-[var(--accent)]' 
-                        : 'bg-amber-50 border-amber-200 text-amber-700'
-                    }`}
-                  >
-                    {file.isGenerated ? <FileText size={14} /> : <FileCheck size={14} />}
-                    {file.label || file.fileName}
+              {/* Attachment Badges - Scrollable Shelf */}
+              <div className="border border-[var(--apple-gray-2)] rounded-xl p-3 bg-[var(--apple-gray-1)]/30">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[11px] font-bold text-[var(--apple-gray-5)] uppercase tracking-wider">
+                    Attached Files ({emailForm.selectedDriveFiles.length})
+                  </span>
+                  {emailForm.selectedDriveFiles.length > 0 && (
                     <button 
-                      onClick={() => setEmailForm(prev => ({ 
-                        ...prev, 
-                        selectedDriveFiles: prev.selectedDriveFiles.filter(f => f.id !== file.id) 
-                      }))}
-                      className="ml-1 hover:opacity-70 transition-opacity"
+                      onClick={() => setEmailForm(prev => ({ ...prev, selectedDriveFiles: [] }))}
+                      className="text-[10px] font-bold text-red-500 hover:underline"
                     >
-                      <Plus className="rotate-45" size={14} />
+                      Clear All
                     </button>
-                  </div>
-                ))}
-                {emailForm.selectedDriveFiles.length === 0 && (
-                  <p className="text-[11px] text-[var(--apple-gray-4)] font-medium">No files attached yet</p>
-                )}
+                  )}
+                </div>
+                <div className="max-h-[140px] overflow-y-auto pr-1 grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {emailForm.selectedDriveFiles.map(file => (
+                    <div 
+                      key={file.id} 
+                      className={`flex items-center justify-between gap-2 p-2 rounded-lg border text-[11px] font-semibold transition-all ${
+                        file.isGenerated 
+                          ? 'bg-emerald-50/50 border-[var(--accent)] text-[var(--text)]' 
+                          : 'bg-amber-50/50 border-amber-300 text-[var(--text)]'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        {file.isGenerated ? <FileText size={13} className="text-[var(--emerald)]" /> : <FileCheck size={13} className="text-amber-500" />}
+                        <span className="truncate">{file.label || file.fileName}</span>
+                      </div>
+                      <button 
+                        onClick={() => setEmailForm(prev => ({ 
+                          ...prev, 
+                          selectedDriveFiles: prev.selectedDriveFiles.filter(f => f.id !== file.id) 
+                        }))}
+                        className="hover:text-red-500 transition-colors"
+                      >
+                        <Plus className="rotate-45" size={14} />
+                      </button>
+                    </div>
+                  ))}
+                  {emailForm.selectedDriveFiles.length === 0 && (
+                    <p className="text-[11px] text-[var(--apple-gray-5)] font-medium col-span-full text-center py-2">No files attached yet</p>
+                  )}
+                </div>
               </div>
 
               <div className="flex flex-col gap-3">
@@ -239,7 +256,7 @@ const EmailerView = ({ driveFiles, priceLists, onEmailSent, showAlert }) => {
         </div>
 
         {/* Right Side: Selection */}
-        <div className="w-full lg:w-[380px] bg-white border border-[var(--apple-gray-3)] shadow-2xl p-6 flex flex-col h-[650px] rounded-3xl">
+        <div className="w-full lg:w-[420px] bg-white border border-[var(--apple-gray-3)] shadow-2xl p-6 flex flex-col h-[700px] rounded-3xl">
           <div className="flex items-center justify-between mb-4 border-b border-[var(--apple-gray-2)] pb-4">
             <h4 className="text-[14px] font-bold text-[var(--apple-black)] flex items-center gap-2">
               <HardDrive size={18} className="text-[var(--apple-gray-6)]" /> Attachments
