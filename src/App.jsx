@@ -1270,9 +1270,9 @@ function App() {
           APPLE NAV BAR (TOP)
           ───────────────────────────────────────── */}
       <nav className="apple-nav px-4 md:px-6">
-        <div className="flex items-center gap-2 mr-auto lg:mr-8">
-          <div className="w-8 h-8 bg-[var(--coral)] rounded-lg flex items-center justify-center shrink-0">
-            <FileUp className="text-white w-4 h-4" />
+        <div className="flex items-center gap-3 mr-auto lg:mr-8">
+          <div className="h-8 w-16 bg-white border border-[var(--apple-gray-3)] rounded-lg flex items-center justify-center overflow-hidden p-0.5 shrink-0 shadow-sm">
+            <img src="/srr_logo.jpg" alt="SRR Logo" className="max-w-full max-h-full object-contain" />
           </div>
           <span className="font-bold text-base md:text-lg tracking-tight truncate">SRR Ortho Plus</span>
         </div>

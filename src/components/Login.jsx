@@ -80,8 +80,8 @@ const Login = () => {
   return (
     <div className="w-full flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans z-10">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="w-20 h-20 bg-white shadow-sm rounded-3xl flex items-center justify-center mx-auto mb-6">
-          <img src="/logo.png" alt="Logo" className="w-14 h-14 object-contain" />
+        <div className="w-48 h-24 flex items-center justify-center mx-auto mb-6 bg-white shadow-sm rounded-2xl p-3 border border-[var(--apple-gray-3)]">
+          <img src="/srr_logo.jpg" alt="SRR Ortho Logo" className="max-w-full max-h-full object-contain" />
         </div>
         <h2 className="text-center text-[28px] font-semibold tracking-tight text-[var(--apple-black)] mb-2">
           Sign in to your account
