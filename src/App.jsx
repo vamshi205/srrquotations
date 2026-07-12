@@ -1233,19 +1233,25 @@ function App() {
   // If Firebase is configured but no user is logged in, OR if Firebase is completely missing its config (in which case Login shows the setup guide)
   if (!user) {
     return (
-      <>
+      <div className="min-h-screen bg-[var(--apple-bg)] relative flex items-center justify-center overflow-hidden w-full">
+        {/* Ambient background blobs matching whatsappconnect */}
+        <div className="blob blob-1"></div>
+        <div className="blob blob-2"></div>
         {authError && (
           <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-red-100 border border-red-200 text-red-700 px-6 py-3 rounded-2xl shadow-lg font-medium text-[14px]">
             {authError}
           </div>
         )}
         <Login />
-      </>
+      </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-screen text-[var(--apple-black)] font-sans overflow-hidden bg-[var(--apple-bg)]">
+    <div className="flex flex-col h-screen text-[var(--apple-black)] font-sans overflow-hidden bg-[var(--apple-bg)] relative">
+      {/* Ambient background blobs matching whatsappconnect */}
+      <div className="blob blob-1"></div>
+      <div className="blob blob-2"></div>
 
       {/* ─────────────────────────────────────────
           APPLE NAV BAR (TOP)

@@ -12,7 +12,7 @@ const Login = () => {
   // If Firebase is not configured yet, show the setup instructions instead of the login form
   if (!hasFirebaseConfig) {
     return (
-      <div className="min-h-screen bg-[var(--apple-gray-1)] flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans">
+      <div className="w-full flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans z-10">
         <div className="sm:mx-auto sm:w-full sm:max-w-xl">
           <div className="bg-white py-10 px-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] rounded-3xl border border-[var(--apple-gray-2)]">
             <div className="w-16 h-16 bg-[var(--apple-gray-1)] rounded-2xl flex items-center justify-center mb-6">
@@ -78,7 +78,7 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[var(--apple-gray-1)] flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans">
+    <div className="w-full flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans z-10">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="w-20 h-20 bg-white shadow-sm rounded-3xl flex items-center justify-center mx-auto mb-6">
           <img src="/logo.png" alt="Logo" className="w-14 h-14 object-contain" />
