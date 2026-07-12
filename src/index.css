@@ -7,34 +7,34 @@
 @tailwind utilities;
 
 /* ─────────────────────────────────────────
-   Concept Design Tokens - Premium Dark Mode Glassmorphism
+   Concept Design Tokens - Premium Light Theme Glassmorphism
    ───────────────────────────────────────── */
 :root {
-  --bg: #060913;
-  --bg2: rgba(0, 0, 0, 0.35);
-  --bg3: rgba(255, 255, 255, 0.05);
-  --surface: rgba(13, 20, 38, 0.6);
-  --border: rgba(255, 255, 255, 0.08);
-  --border2: rgba(255, 255, 255, 0.15);
-  --text: #f8fafc;
-  --text2: #94a3b8;
+  --bg: #f1f5f9;
+  --bg2: rgba(255, 255, 255, 0.95);
+  --bg3: rgba(79, 70, 229, 0.04);
+  --surface: rgba(255, 255, 255, 0.7);
+  --border: rgba(0, 0, 0, 0.08);
+  --border2: rgba(0, 0, 0, 0.12);
+  --text: #0f172a;
+  --text2: #475569;
   --text3: #64748b;
   
   --primary: #4f46e5;
   --primary-hover: #4338ca;
-  --primary-glow: rgba(79, 70, 229, 0.35);
+  --primary-glow: rgba(79, 70, 229, 0.15);
 
   --accent: #4f46e5;
   --accentFg: #ffffff;
   
-  --danger: #f43f5e;
-  --dangerBg: rgba(244, 63, 94, 0.15);
-  --warn: #fbbf24;
-  --warnBg: rgba(251, 191, 36, 0.15);
-  --success: #10b981;
-  --successBg: rgba(16, 185, 129, 0.15);
-  --info: #60a5fa;
-  --infoBg: rgba(96, 165, 250, 0.15);
+  --danger: #e11d48;
+  --dangerBg: rgba(225, 29, 72, 0.08);
+  --warn: #d97706;
+  --warnBg: rgba(217, 119, 6, 0.08);
+  --success: #059669;
+  --successBg: rgba(5, 150, 105, 0.08);
+  --info: #1d4ed8;
+  --infoBg: rgba(29, 78, 216, 0.08);
 
   /* Legacy Apple mapping to prevent Tailwind/Class breaks */
   --apple-bg: var(--bg);
@@ -47,10 +47,10 @@
   --apple-gray-5: var(--text2);
   --apple-gray-6: var(--text);
   
-  --emerald: #10b981;
-  --emerald-dark: #059669;
-  --emerald-light: rgba(16, 185, 129, 0.15);
-  --coral: #f43f5e;
+  --emerald: #059669;
+  --emerald-dark: #047857;
+  --emerald-light: rgba(5, 150, 105, 0.08);
+  --coral: #e11d48;
 
   /* Spacing & radius */
   --radius-sm: 8px;
@@ -58,11 +58,11 @@
   --radius-lg: 16px;
   --radius-xl: 20px;
 
-  /* Shadows */
-  --shadow-sm:  0 4px 12px rgba(0, 0, 0, 0.25);
-  --shadow-md:  0 8px 32px 0 rgba(0, 0, 0, 0.35);
-  --shadow-lg:  0 20px 60px rgba(0, 0, 0, 0.45);
-  --shadow-hover: 0 12px 40px 0 rgba(0, 0, 0, 0.5);
+  /* Shadows - softer for light mode */
+  --shadow-sm:  0 2px 8px rgba(15, 23, 42, 0.04);
+  --shadow-md:  0 8px 32px 0 rgba(15, 23, 42, 0.06);
+  --shadow-lg:  0 20px 60px rgba(15, 23, 42, 0.08);
+  --shadow-hover: 0 12px 40px 0 rgba(15, 23, 42, 0.1);
 
   /* Nav height */
   --nav-height: 60px;
@@ -97,7 +97,7 @@ body {
   border-radius: 50%;
   filter: blur(120px);
   z-index: 0;
-  opacity: 0.25;
+  opacity: 0.12; /* Low opacity for light mode */
   animation: float-blob 20s infinite alternate;
   pointer-events: none;
 }
@@ -169,7 +169,7 @@ body {
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .apple-card:hover {
-  border-color: rgba(255, 255, 255, 0.15);
+  border-color: rgba(0, 0, 0, 0.12);
   box-shadow: var(--shadow-hover);
 }
 
@@ -209,7 +209,7 @@ input:not([type="file"]):focus, textarea:focus, select:focus {
 
 .apple-input:focus {
   border-color: var(--primary);
-  background-color: rgba(0, 0, 0, 0.5);
+  background-color: rgba(255, 255, 255, 1);
   box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
 }
 .apple-input::placeholder {
@@ -254,7 +254,7 @@ textarea.apple-input {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(255, 255, 255, 0.4);
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -266,8 +266,8 @@ textarea.apple-input {
   transition: all 0.3s ease;
 }
 .btn-outline:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.6);
+  border-color: rgba(0, 0, 0, 0.15);
 }
 
 .btn-emerald {
@@ -285,7 +285,7 @@ textarea.apple-input {
   font-family: inherit;
   cursor: pointer;
   transition: all 0.3s ease;
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
+  box-shadow: 0 4px 12px rgba(5, 150, 105, 0.2);
 }
 .btn-emerald:hover {
   background: var(--emerald-dark);
@@ -312,7 +312,7 @@ textarea.apple-input {
   font-size: 24px;
   font-weight: 800;
   letter-spacing: -0.03em;
-  background: linear-gradient(135deg, var(--text) 30%, #a5b4fc 100%);
+  background: linear-gradient(135deg, var(--text) 30%, #4f46e5 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   line-height: 1.2;
@@ -426,7 +426,7 @@ textarea.apple-input {
 }
 .apple-nav-link:hover {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(0, 0, 0, 0.04);
 }
 .apple-nav-link.active {
   background: var(--primary);
@@ -455,13 +455,13 @@ textarea.apple-input {
 }
 
 .bg-white\/90:not(.quotation-page):not(.quotation-page *) {
-  background-color: rgba(13, 20, 38, 0.8) !important;
+  background-color: rgba(255, 255, 255, 0.9) !important;
   backdrop-filter: blur(16px);
   border: 1px solid var(--border);
 }
 
 .bg-white\/80:not(.quotation-page):not(.quotation-page *) {
-  background-color: rgba(13, 20, 38, 0.8) !important;
+  background-color: rgba(255, 255, 255, 0.8) !important;
   backdrop-filter: blur(16px);
   border: 1px solid var(--border);
 }
