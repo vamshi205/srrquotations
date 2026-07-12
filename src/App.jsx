@@ -195,13 +195,25 @@ function App() {
   // Persistent Storage
   const [companyData, setCompanyData] = useState(() => {
     const saved = localStorage.getItem('srr_company_data');
-    return saved ? JSON.parse(saved) : {
+    const defaultData = {
       name: 'Sri Raja Rajeshwari Ortho Plus',
       address: 'H.No. 6-2-599 | Khairthabad | Hyderabad | Telangana - 500004',
       phone: '9396857455, 9397857455 | 040-65557455',
       email: 'srrorthoplus999@gmail.com',
-      website: 'www.srrorthoplus.com'
+      website: 'www.srrorthoplus.com',
+      signatoryName: 'A. Padmavathi',
+      signatoryRole: 'Proprietor',
+      signature: ''
     };
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        return { ...defaultData, ...parsed };
+      } catch (e) {
+        return defaultData;
+      }
+    }
+    return defaultData;
   });
 
   const [priceLists, setPriceLists] = useState(() => {
@@ -1173,11 +1185,12 @@ function App() {
     );
   };
 
-  const NavItem = ({ id, label }) => (
+  const NavItem = ({ id, label, icon }) => (
     <span
       onClick={() => setView(id)}
       className={`apple-nav-link ${view === id ? 'active' : ''}`}
     >
+      {icon}
       {label}
     </span>
   );
@@ -1266,13 +1279,13 @@ function App() {
         
         {/* Desktop Nav */}
         <div className="hidden lg:flex gap-1 xl:gap-4">
-          <NavItem id="library" label="Library" />
-          <NavItem id="history" label="History" />
-          <NavItem id="drive" label="Drive" />
-          <NavItem id="emailer" label="Emailer" />
-          <NavItem id="emailHistory" label="Email History" />
-          <NavItem id="pricelists" label="Price List" />
-          <NavItem id="settings" label="Settings" />
+          <NavItem id="library" label="Library" icon={<LayoutDashboard size={15} />} />
+          <NavItem id="history" label="History" icon={<Database size={15} />} />
+          <NavItem id="drive" label="Drive" icon={<HardDrive size={15} />} />
+          <NavItem id="emailer" label="Emailer" icon={<Mail size={15} />} />
+          <NavItem id="emailHistory" label="Email History" icon={<RefreshCw size={15} />} />
+          <NavItem id="pricelists" label="Price List" icon={<FileText size={15} />} />
+          <NavItem id="settings" label="Settings" icon={<Settings size={15} />} />
         </div>
 
         {/* Mobile Nav Toggle */}
@@ -2161,7 +2174,7 @@ function App() {
 
             {/* Right Live Preview Area */}
             {(showPreview && !isDraftingMaximized) && (
-              <div className="flex-1 bg-[var(--apple-gray-2)] overflow-y-auto p-4 md:p-12 relative">
+              <div className="flex-1 bg-[var(--apple-bg)] overflow-y-auto p-4 md:p-12 relative">
                 <div className="flex flex-col items-center gap-8">
                   <div className="scale-[0.85] origin-top">
                     <QuotationTemplate id="quotation-template" data={formData} content={draftContent} company={companyData} />
@@ -3130,6 +3143,96 @@ function App() {
                       />
                     </div>
                   </div>
+                  <div className="pt-6 border-t border-[var(--apple-gray-2)] space-y-6">
+                    <h3 className="text-[14px] font-bold text-[var(--apple-black)] uppercase tracking-wider mb-2 flex items-center gap-2">
+                      <Award size={16} className="text-[var(--accent)]" />
+                      Authorized Signatory
+                    </h3>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div>
+                        <label className="apple-label">Signatory Name</label>
+                        <input
+                          type="text"
+                          value={companyData.signatoryName || ''}
+                          onChange={e => setCompanyData({ ...companyData, signatoryName: e.target.value })}
+                          className="apple-input"
+                          placeholder="e.g. A. Padmavathi"
+                        />
+                      </div>
+                      <div>
+                        <label className="apple-label">Signatory Designation / Role</label>
+                        <input
+                          type="text"
+                          value={companyData.signatoryRole || ''}
+                          onChange={e => setCompanyData({ ...companyData, signatoryRole: e.target.value })}
+                          className="apple-input"
+                          placeholder="e.g. Proprietor"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col md:flex-row items-center gap-6 p-6 bg-[var(--apple-gray-1)] rounded-2xl border border-[var(--apple-gray-2)]">
+                      <div className="flex-1 space-y-3">
+                        <div>
+                          <p className="text-[14px] font-bold text-[var(--apple-black)]">Upload Signature Image</p>
+                          <p className="text-[12px] text-[var(--apple-gray-5)] mt-1">
+                            Recommended format: PNG with transparent background. Max size 200KB.
+                          </p>
+                        </div>
+                        
+                        <div className="flex items-center gap-4">
+                          <label className="btn-outline !py-2.5 cursor-pointer flex items-center gap-2 select-none">
+                            <UploadCloud size={16} />
+                            Choose Image
+                            <input 
+                              type="file" 
+                              accept="image/*" 
+                              className="hidden" 
+                              onChange={(e) => {
+                                const file = e.target.files[0];
+                                if (!file) return;
+                                if (file.size > 204800) {
+                                  showAlert('File Too Large', 'Please upload a signature image under 200KB.', 'error');
+                                  return;
+                                }
+                                const reader = new FileReader();
+                                reader.onload = () => {
+                                  setCompanyData(prev => ({
+                                    ...prev,
+                                    signature: reader.result
+                                  }));
+                                };
+                                reader.readAsDataURL(file);
+                              }}
+                            />
+                          </label>
+                          
+                          {companyData.signature && (
+                            <button
+                              onClick={() => setCompanyData(prev => ({ ...prev, signature: '' }))}
+                              className="text-[12px] font-bold text-red-500 hover:underline cursor-pointer"
+                            >
+                              Remove Image
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="w-48 h-20 bg-white border border-[var(--apple-gray-3)] rounded-xl flex items-center justify-center overflow-hidden shrink-0 shadow-inner">
+                        {companyData.signature ? (
+                          <img 
+                            src={companyData.signature} 
+                            alt="Signature Preview" 
+                            className="max-w-full max-h-full object-contain p-2" 
+                          />
+                        ) : (
+                          <span className="text-[11px] text-[var(--apple-gray-4)] italic">No signature uploaded</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="pt-6 border-t border-[var(--apple-gray-2)]">
                     <button
                       onClick={async () => {
@@ -3221,7 +3324,7 @@ function App() {
       )}
       {/* PREVIEW MODAL */}
       {previewingItem && (
-        <div className="fixed inset-0 z-[6000] flex flex-col bg-[var(--apple-gray-2)] animate-in slide-in-from-bottom duration-500">
+        <div className="fixed inset-0 z-[6000] flex flex-col bg-[var(--apple-bg)] animate-in slide-in-from-bottom duration-500">
           <header className="flex-none flex items-center justify-between px-4 md:px-12 py-4 md:py-6 bg-white/80 backdrop-blur-md border-b border-[var(--apple-gray-3)] sticky top-0 z-10">
             <div>
               <h2 className="text-[18px] md:text-[24px] font-bold text-[var(--apple-black)] tracking-tight leading-none">Quotation Preview</h2>
@@ -3271,7 +3374,7 @@ function App() {
               </button>
             </div>
           </header>
-          <main className="flex-1 overflow-auto p-2 md:p-12 bg-[var(--apple-gray-2)]">
+          <main className="flex-1 overflow-auto p-2 md:p-12 bg-[var(--apple-bg)]">
             <div className="min-w-fit md:max-w-5xl mx-auto flex flex-col items-center gap-12">
               <div className="shadow-2xl bg-white p-0 md:p-4 rounded-xl overflow-hidden">
                 <QuotationTemplate 
@@ -3414,7 +3517,7 @@ function App() {
 
       {/* DOCUMENT VIEWER OVERLAY */}
       {previewingDoc && (
-        <div className="fixed inset-0 z-[6500] flex flex-col bg-[var(--apple-gray-2)] animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-[6500] flex flex-col bg-[var(--apple-bg)] animate-in fade-in duration-300">
           <header className="flex-none flex items-center justify-between px-4 md:px-12 py-4 bg-white border-b border-[var(--apple-gray-3)] shadow-sm">
             <div className="flex items-center gap-3 min-w-0">
               <div className="w-10 h-10 bg-[var(--accent)] text-white rounded-xl flex items-center justify-center shadow-md shrink-0">

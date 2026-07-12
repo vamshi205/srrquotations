@@ -166,11 +166,12 @@ body {
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-md);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .apple-card:hover {
-  border-color: rgba(0, 0, 0, 0.12);
-  box-shadow: var(--shadow-hover);
+  border-color: rgba(79, 70, 229, 0.25);
+  box-shadow: var(--shadow-hover), 0 0 20px rgba(79, 70, 229, 0.05);
+  transform: translateY(-3px) scale(1.01);
 }
 
 /* ─────────────────────────────────────────
@@ -418,20 +419,29 @@ textarea.apple-input {
   font-size: 13px;
   color: var(--text2);
   text-decoration: none;
-  padding: 9px 12px;
+  padding: 9px 16px;
   cursor: pointer;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   font-weight: 600;
+  border: 1px solid transparent;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 .apple-nav-link:hover {
   color: var(--text);
-  background: rgba(0, 0, 0, 0.04);
+  background: rgba(79, 70, 229, 0.05);
+  border-color: rgba(79, 70, 229, 0.1);
+  transform: translateY(-0.5px);
 }
 .apple-nav-link.active {
-  background: var(--primary);
-  color: #ffffff !important;
-  box-shadow: 0 0 15px var(--primary-glow);
+  background: var(--surface) !important;
+  backdrop-filter: blur(12px);
+  color: var(--primary) !important;
+  border-color: rgba(79, 70, 229, 0.25) !important;
+  box-shadow: 0 4px 15px rgba(79, 70, 229, 0.12), inset 0 0 0 1px rgba(255, 255, 255, 0.8);
+  transform: translateY(-0.5px);
 }
 
 @keyframes progress-sweep {

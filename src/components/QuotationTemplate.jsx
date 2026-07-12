@@ -2,7 +2,16 @@ import React, { memo } from 'react';
 
 const QuotationTemplate = memo(({ id = "quotation-template", data, company, content, forceScale }) => {
   const { hospitalName, address, date, referenceNumber, discount, payment, gst, validity, warranty, make, delivery, subject, lineSpacing = 'standard' } = data;
-  const { name: companyName, address: companyAddress, phone: companyPhone, email: companyEmail, website: companyWebsite } = company;
+  const { 
+    name: companyName, 
+    address: companyAddress, 
+    phone: companyPhone, 
+    email: companyEmail, 
+    website: companyWebsite,
+    signature,
+    signatoryName = 'A. Padmavathi',
+    signatoryRole = 'Proprietor'
+  } = company || {};
 
   // Dynamic Spacing Config
   const spacing = {
@@ -104,7 +113,7 @@ const QuotationTemplate = memo(({ id = "quotation-template", data, company, cont
   }, [data, company, content]);
 
   return (
-    <div ref={containerRef} className="w-full h-full flex items-start justify-center overflow-auto p-4 md:p-8 bg-[var(--apple-gray-2)]">
+    <div ref={containerRef} className="w-full h-full flex items-start justify-center overflow-auto p-4 md:p-8 bg-[var(--apple-bg)]">
       {/* UI Wrapper with Shadow */}
       <div 
         style={{ 
@@ -310,11 +319,21 @@ const QuotationTemplate = memo(({ id = "quotation-template", data, company, cont
                   <p><span className="font-bold">IFSC:</span> HDFC0004348</p>
                 </div>
               </div>
-              <div className="text-center w-72">
-                <p className="font-bold text-[10pt]">For {companyName.toUpperCase()}</p>
-                <div className="h-12"></div>
-                <p className="font-bold text-[11pt] border-t border-black pt-1">(A. Padmavathi)</p>
-                <p className="text-[9pt] font-medium italic">Proprietor</p>
+              <div className="text-center w-72 flex flex-col items-center">
+                <p className="font-bold text-[10pt] w-full text-center">For {companyName.toUpperCase()}</p>
+                <div className="h-12 w-full flex items-center justify-center overflow-hidden">
+                  {signature ? (
+                    <img 
+                      src={signature} 
+                      alt="Signature" 
+                      className="max-h-12 max-w-[200px] object-contain block" 
+                    />
+                  ) : (
+                    <div className="h-12"></div>
+                  )}
+                </div>
+                <p className="font-bold text-[11pt] border-t border-black pt-1 w-full text-center">({signatoryName})</p>
+                <p className="text-[9pt] font-medium italic w-full text-center">{signatoryRole}</p>
               </div>
             </div>
           </div>
