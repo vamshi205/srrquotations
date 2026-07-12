@@ -2,12 +2,22 @@ import React, { useState, useEffect } from 'react';
 import { Mail, FileText, FileCheck, CheckSquare, ChevronRight, HardDrive, Plus, Search } from 'lucide-react';
 import { sendEmailWithResend } from '../utils/emailService';
 
-const EmailerView = ({ driveFiles, priceLists, onEmailSent, showAlert }) => {
-  const [emailForm, setEmailForm] = useState({
-    to: '',
-    subject: 'Documents from Sri Raja Rajeshwari Ortho Plus',
-    body: 'Dear Sir/Madam,\n\nPlease find the attached documents for your reference.\n\nRegards,\nSri Raja Rajeshwari Ortho Plus',
-    selectedDriveFiles: []
+const EmailerView = ({ driveFiles, priceLists, onEmailSent, showAlert, initialForm = null, isModal = false }) => {
+  const [emailForm, setEmailForm] = useState(() => {
+    if (initialForm) {
+      return {
+        to: initialForm.to || '',
+        subject: initialForm.subject || '',
+        body: initialForm.body || '',
+        selectedDriveFiles: initialForm.selectedDriveFiles || []
+      };
+    }
+    return {
+      to: '',
+      subject: 'Documents from Sri Raja Rajeshwari Ortho Plus',
+      body: 'Dear Sir/Madam,\n\nPlease find the attached documents for your reference.\n\nRegards,\nSri Raja Rajeshwari Ortho Plus',
+      selectedDriveFiles: []
+    };
   });
 
   const [activeTab, setActiveTab] = useState('srr');
@@ -132,9 +142,8 @@ const EmailerView = ({ driveFiles, priceLists, onEmailSent, showAlert }) => {
     }
   };
 
-  return (
-    <div className="h-full overflow-y-auto px-8 py-12 md:px-16 md:py-16 bg-[var(--apple-gray-2)]">
-      <div className="max-w-7xl mx-auto flex flex-col lg:flex-row gap-8 w-full">
+  const innerLayout = (
+    <div className="flex flex-col lg:flex-row gap-8 w-full">
         
         {/* Left Side: Composer */}
         <div className="flex-1 space-y-6">
@@ -433,6 +442,17 @@ const EmailerView = ({ driveFiles, priceLists, onEmailSent, showAlert }) => {
           </div>
         </div>
 
+    </div>
+  );
+
+  if (isModal) {
+    return innerLayout;
+  }
+
+  return (
+    <div className="h-full overflow-y-auto px-8 py-12 md:px-16 md:py-16 bg-[var(--apple-gray-2)]">
+      <div className="max-w-7xl mx-auto w-full">
+        {innerLayout}
       </div>
     </div>
   );

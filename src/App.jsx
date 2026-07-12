@@ -3319,187 +3319,29 @@ function App() {
       )}
       {/* GLOBAL EMAIL COMPOSER OVERLAY */}
       {showEmailComposer && (
-        <div className="fixed inset-0 z-[2000] flex flex-col bg-white overflow-hidden animate-in slide-in-from-bottom duration-500">
-          <header className="px-8 py-4 bg-[var(--apple-gray-1)] border-b border-[var(--apple-gray-2)] flex items-center justify-between shadow-sm">
+        <div className="fixed inset-0 z-[2000] flex flex-col bg-[var(--apple-bg)] overflow-hidden animate-in slide-in-from-bottom duration-500 relative">
+          {/* Ambient background blobs matching whatsappconnect */}
+          <div className="blob blob-1"></div>
+          <div className="blob blob-2"></div>
+
+          <header className="px-8 py-4 bg-[var(--apple-surface)] backdrop-blur-md border-b border-[var(--apple-gray-2)] flex items-center justify-between shadow-sm z-10">
             <div className="flex items-center gap-4">
               <div className="w-10 h-10 bg-[var(--accent)] rounded-xl flex items-center justify-center text-white shadow-lg">
                 <Mail size={20} />
               </div>
               <div>
-                <h3 className="text-[17px] font-bold">Compose Email</h3>
+                <h3 className="text-[17px] font-bold text-[var(--apple-black)]">Compose Email</h3>
                 <p className="text-[11px] text-[var(--apple-gray-5)] uppercase font-bold tracking-wider">New Dispatched Document</p>
               </div>
             </div>
             <button 
               onClick={() => setShowEmailComposer(false)}
-              className="w-10 h-10 flex items-center justify-center bg-white border border-[var(--apple-gray-3)] rounded-full text-[var(--apple-gray-5)] hover:bg-[var(--apple-gray-1)] transition-all"
+              className="w-10 h-10 flex items-center justify-center bg-white border border-[var(--apple-gray-3)] rounded-full text-[var(--apple-gray-5)] hover:bg-[var(--apple-gray-1)] transition-all z-10"
             >
               <Plus className="rotate-45" size={24} />
             </button>
           </header>
           
-          <main className="flex-1 overflow-y-auto bg-[var(--apple-gray-2)] p-4 md:p-12">
-            <div className="max-w-7xl mx-auto bg-white shadow-2xl rounded-3xl overflow-hidden border border-[var(--apple-gray-3)] flex flex-col lg:flex-row min-h-[720px] w-full">
-              
-              {/* Left Form Area */}
-              <div className="flex-1 p-8 space-y-6 border-r border-[var(--apple-gray-2)]">
-                {/* Recipient */}
-                <div className="space-y-1.5">
-                  <span className="text-[11px] font-bold text-[var(--apple-gray-5)] uppercase tracking-widest ml-1">Recipient</span>
-                  <div className="flex items-center gap-4 border border-[var(--apple-gray-3)] px-4 py-3 bg-white focus-within:border-[var(--accent)] focus-within:ring-2 focus-within:ring-[var(--accent)] transition-all rounded-xl">
-                    <Mail size={16} className="text-[var(--apple-gray-4)]" />
-                    <input
-                      type="email"
-                      value={emailForm.to}
-                      onChange={(e) => setEmailForm({ ...emailForm, to: e.target.value })}
-                      placeholder="hospital-representative@email.com"
-                      className="flex-1 bg-transparent no-internal-border text-[15px] placeholder:text-[var(--apple-gray-4)]"
-                    />
-                  </div>
-                </div>
-
-                {/* Subject */}
-                <div className="space-y-1.5">
-                  <span className="text-[11px] font-bold text-[var(--apple-gray-5)] uppercase tracking-widest ml-1">Subject</span>
-                  <div className="flex items-center gap-4 border border-[var(--apple-gray-3)] px-4 py-3 bg-white focus-within:border-[var(--accent)] focus-within:ring-2 focus-within:ring-[var(--accent)] transition-all rounded-xl">
-                    <Type size={16} className="text-[var(--apple-gray-4)]" />
-                    <input
-                      type="text"
-                      value={emailForm.subject}
-                      onChange={(e) => setEmailForm({ ...emailForm, subject: e.target.value })}
-                      className="flex-1 bg-transparent no-internal-border text-[15px] font-semibold"
-                    />
-                  </div>
-                </div>
-
-                {/* Body */}
-                <div className="space-y-1.5">
-                  <span className="text-[11px] font-bold text-[var(--apple-gray-5)] uppercase tracking-widest ml-1">Message Body</span>
-                  <div className="border border-[var(--apple-gray-3)] p-6 bg-white focus-within:border-[var(--accent)] focus-within:ring-2 focus-within:ring-[var(--accent)] transition-all rounded-xl shadow-inner">
-                    <textarea
-                      value={emailForm.body}
-                      onChange={(e) => setEmailForm({ ...emailForm, body: e.target.value })}
-                      placeholder="Type your message here..."
-                      className="w-full min-h-[350px] bg-transparent no-internal-border text-[15px] leading-relaxed resize-none"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Right Attachments Area */}
-              <div className="w-full lg:w-[420px] bg-[var(--apple-gray-1)] p-6 md:p-8 flex flex-col h-[720px]">
-                <div className="flex-none flex items-center justify-between mb-3">
-                  <h4 className="text-[13px] font-bold text-[var(--apple-black)] uppercase tracking-wider flex items-center gap-2">
-                     <FolderOpen size={16} className="text-[var(--accent)]" />
-                     Attachments ({emailForm.selectedDriveFiles.length})
-                  </h4>
-                  {emailForm.selectedDriveFiles.filter(f => !f.isGenerated).length > 0 && (
-                    <button 
-                      onClick={() => setEmailForm(prev => ({ ...prev, selectedDriveFiles: prev.selectedDriveFiles.filter(f => f.isGenerated) }))}
-                      className="text-[10px] font-bold text-red-500 hover:underline cursor-pointer"
-                    >
-                      Clear Extra
-                    </button>
-                  )}
-                </div>
-                
-                {/* Active Attachments list - scroll-restricted */}
-                <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1 mb-4 flex-none border-b border-[var(--apple-gray-2)] pb-4">
-                  {/* Generated PDF Badge */}
-                  {emailForm.selectedDriveFiles.filter(f => f.isGenerated).map(file => (
-                    <div key={file.id} className="bg-white p-3 border border-emerald-200 rounded-xl shadow-sm relative group overflow-hidden">
-                      <div className="absolute top-0 left-0 w-1 h-full bg-[var(--emerald)]"></div>
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-emerald-50/50 text-[var(--emerald)] flex items-center justify-center rounded-lg">
-                          <FileText size={16} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[12px] font-bold text-[var(--apple-black)] truncate">{file.fileName}</p>
-                          <p className="text-[9px] text-[var(--emerald)] font-bold uppercase tracking-widest">Auto-Generated</p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-
-                  {/* Manual Attachments List */}
-                  {emailForm.selectedDriveFiles.filter(f => !f.isGenerated).map(file => (
-                    <div key={file.id} className="bg-white p-3 border border-amber-200 rounded-xl shadow-sm relative group">
-                      <div className="absolute top-0 left-0 w-1 h-full bg-amber-500"></div>
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-amber-50/50 text-amber-600 flex items-center justify-center rounded-lg">
-                          <FileCheck size={16} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[12px] font-bold text-[var(--apple-black)] truncate">{file.label || file.fileName}</p>
-                          <p className="text-[9px] text-amber-600 font-bold uppercase tracking-widest">Drive Document</p>
-                        </div>
-                        <button 
-                          onClick={() => setEmailForm(prev => ({ ...prev, selectedDriveFiles: prev.selectedDriveFiles.filter(f => f.id !== file.id) }))}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-red-500 hover:bg-red-50 rounded-lg"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Drive Picker Shortcut - fills remaining space */}
-                <div className="flex-1 flex flex-col min-h-0">
-                  <p className="text-[11px] font-bold text-[var(--apple-gray-5)] uppercase tracking-widest mb-3">Add More from Drive</p>
-                  <div className="space-y-4 overflow-y-auto pr-1 flex-1 min-h-[220px]">
-                     {/* SRR Section */}
-                     <div>
-                       <p className="text-[9px] font-bold text-[var(--emerald)] uppercase tracking-tighter mb-2">SRR Certificates</p>
-                       <div className="grid grid-cols-2 lg:grid-cols-1 gap-2">
-                          {(driveFiles.srr || []).map(file => (
-                             <button
-                               key={file.id}
-                               onClick={() => {
-                                 const exists = emailForm.selectedDriveFiles.find(f => f.id === file.id);
-                                 if (exists) {
-                                   setEmailForm(prev => ({ ...prev, selectedDriveFiles: prev.selectedDriveFiles.filter(f => f.id !== file.id) }));
-                                 } else {
-                                   setEmailForm(prev => ({ ...prev, selectedDriveFiles: [...prev.selectedDriveFiles, file] }));
-                                 }
-                               }}
-                               className={`flex items-center gap-2 p-2 border text-left transition-all rounded-lg ${emailForm.selectedDriveFiles.find(f => f.id === file.id) ? 'bg-emerald-50 border-[var(--accent)] shadow-sm' : 'bg-white border-[var(--apple-gray-2)] hover:bg-[var(--apple-gray-1)]'}`}
-                             >
-                                <div className={`w-4 h-4 border flex items-center justify-center rounded ${emailForm.selectedDriveFiles.find(f => f.id === file.id) ? 'bg-[var(--accent)] border-[var(--accent)]' : 'border-[var(--apple-gray-3)]'}`}>
-                                   {emailForm.selectedDriveFiles.find(f => f.id === file.id) && <CheckSquare size={10} className="text-white" />}
-                                </div>
-                                <span className="text-[11px] font-semibold truncate">{file.label}</span>
-                             </button>
-                          ))}
-                       </div>
-                     </div>
-
-                     {/* Vendor Sections */}
-                     {(driveFiles.vendor || []).map(folder => (
-                       <div key={folder.id}>
-                         <p className="text-[9px] font-bold text-amber-600 uppercase tracking-tighter mb-2">{folder.name} Docs</p>
-                         <div className="grid grid-cols-2 lg:grid-cols-1 gap-2">
-                            {(folder.files || []).map(file => (
-                               <button
-                                 key={file.id}
-                                 onClick={() => {
-                                   const exists = emailForm.selectedDriveFiles.find(f => f.id === file.id);
-                                   if (exists) {
-                                     setEmailForm(prev => ({ ...prev, selectedDriveFiles: prev.selectedDriveFiles.filter(f => f.id !== file.id) }));
-                                   } else {
-                                     setEmailForm(prev => ({ ...prev, selectedDriveFiles: [...prev.selectedDriveFiles, file] }));
-                                   }
-                                 }}
-                                 className={`flex items-center gap-2 p-2 border text-left transition-all rounded-lg ${emailForm.selectedDriveFiles.find(f => f.id === file.id) ? 'bg-amber-50 border-amber-400 shadow-sm' : 'bg-white border-[var(--apple-gray-2)] hover:bg-[var(--apple-gray-1)]'}`}
-                               >
-                                  <div className={`w-4 h-4 border flex items-center justify-center rounded ${emailForm.selectedDriveFiles.find(f => f.id === file.id) ? 'bg-amber-500 border-amber-500' : 'border-[var(--apple-gray-3)]'}`}>
-                                     {emailForm.selectedDriveFiles.find(f => f.id === file.id) && <CheckSquare size={10} className="text-white" />}
-                                  </div>
-                                  <span className="text-[11px] font-semibold truncate">{file.fileName}</span>
-                               </button>
-                            ))}
-                         </div>
-                       </div>
                      ))}
                   </div>
                 </div>
