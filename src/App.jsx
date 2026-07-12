@@ -3342,31 +3342,30 @@ function App() {
             </button>
           </header>
           
-                     ))}
-                  </div>
-                </div>
-                
-                <div className="pt-8 mt-auto">
-                  <button
-                    onClick={handleGlobalSendEmail}
-                    disabled={isSendingEmail}
-                    className="w-full btn-primary !py-4 shadow-xl hover:shadow-2xl active:scale-[0.98] transition-all"
-                  >
-                    {isSendingEmail ? 'Sending...' : 'Dispatch Email Now'}
-                  </button>
-                  <p className="text-center text-[10px] text-[var(--apple-gray-5)] mt-4 font-medium uppercase tracking-widest">Powered by Resend API</p>
-                </div>
-              </div>
-            </div>
+          <main className="flex-1 overflow-y-auto p-4 md:p-12 z-10">
+            <EmailerView 
+              key={emailForm.subject + '-' + emailForm.selectedDriveFiles.length}
+              driveFiles={driveFiles}
+              priceLists={priceLists}
+              onEmailSent={async (item) => {
+                setEmailHistory(prev => [item, ...prev]);
+                await saveEmailHistoryItem(item);
+                setShowEmailComposer(false);
+                setView('history');
+              }}
+              showAlert={showAlert}
+              initialForm={emailForm}
+              isModal={true}
+            />
           </main>
         </div>
       )}
       {/* GENERATING QUOTATION OVERLAY */}
       {isGenerating && !regeneratingItem && (
         <div className="fixed inset-0 z-[7000] flex items-center justify-center bg-black/20 backdrop-blur-sm animate-in fade-in duration-500">
-          <div className="flex flex-col items-center gap-8 p-12 bg-white rounded-[32px] shadow-2xl border border-[var(--apple-gray-2)] animate-in zoom-in-95 duration-400">
+          <div className="apple-card flex flex-col items-center gap-8 p-12 !bg-[var(--apple-surface)]/95 backdrop-blur-xl rounded-[32px] shadow-2xl border border-[var(--apple-gray-3)]/60 animate-in zoom-in-95 duration-400">
             <div className="relative">
-              <div className="w-24 h-24 bg-emerald-50 text-emerald-600 rounded-3xl flex items-center justify-center shadow-inner">
+              <div className="w-24 h-24 bg-emerald-500/10 text-emerald-600 rounded-3xl flex items-center justify-center shadow-inner ring-4 ring-emerald-500/5">
                 <FileText className="animate-bounce" size={40} strokeWidth={1.5} />
               </div>
             </div>
@@ -3390,9 +3389,9 @@ function App() {
       {/* GLOBAL DISPATCHING OVERLAY */}
       {isSendingEmail && (
         <div className="fixed inset-0 z-[7000] flex items-center justify-center bg-black/20 backdrop-blur-sm animate-in fade-in duration-500">
-          <div className="flex flex-col items-center gap-8 p-12 bg-white rounded-[32px] shadow-2xl border border-[var(--apple-gray-2)] animate-in zoom-in-95 duration-400">
+          <div className="apple-card flex flex-col items-center gap-8 p-12 !bg-[var(--apple-surface)]/95 backdrop-blur-xl rounded-[32px] shadow-2xl border border-[var(--apple-gray-3)]/60 animate-in zoom-in-95 duration-400">
             <div className="relative">
-              <div className="w-24 h-24 bg-indigo-50 text-indigo-600 rounded-3xl flex items-center justify-center shadow-inner">
+              <div className="w-24 h-24 bg-indigo-500/10 text-indigo-600 rounded-3xl flex items-center justify-center shadow-inner ring-4 ring-indigo-500/5">
                 <Mail className="animate-pulse" size={40} strokeWidth={1.5} />
               </div>
             </div>
@@ -3504,13 +3503,13 @@ function App() {
             }}
           ></div>
           
-          <div className="relative bg-white w-full max-w-[400px] rounded-[32px] shadow-2xl border border-[var(--apple-gray-2)] overflow-hidden animate-in zoom-in-95 fade-in duration-300">
+          <div className="apple-card relative w-full max-w-[400px] !bg-[var(--apple-surface)]/95 backdrop-blur-2xl rounded-[32px] shadow-2xl border border-[var(--apple-gray-3)]/60 overflow-hidden animate-in zoom-in-95 fade-in duration-300 z-10">
             <div className="p-8 md:p-10">
               <div className="flex flex-col items-center text-center gap-6 mb-8">
-                <div className={`w-16 h-16 rounded-2xl flex items-center justify-center shrink-0 ${
-                  alertModal.type === 'success' ? 'bg-emerald-50 text-emerald-600' :
-                  alertModal.type === 'error' ? 'bg-red-50 text-red-600' :
-                  'bg-indigo-50 text-indigo-600'
+                <div className={`w-16 h-16 rounded-2xl flex items-center justify-center shrink-0 ring-4 ${
+                  alertModal.type === 'success' ? 'bg-emerald-500/10 text-emerald-600 ring-emerald-500/5' :
+                  alertModal.type === 'error' ? 'bg-rose-500/10 text-rose-600 ring-rose-500/5' :
+                  'bg-indigo-500/10 text-indigo-600 ring-indigo-500/5'
                 }`}>
                   {alertModal.type === 'success' ? <FileCheck size={32} strokeWidth={1.5} /> :
                    alertModal.type === 'error' ? <Plus className="rotate-45" size={32} strokeWidth={1.5} /> :
@@ -3536,7 +3535,7 @@ function App() {
                     placeholder="Enter Admin Password"
                     autoComplete="one-time-code"
                     autoFocus
-                    className="w-full bg-[var(--apple-gray-1)] border-2 border-[var(--apple-gray-2)] focus:border-[var(--apple-black)] text-[16px] font-bold p-4 rounded-xl transition-all outline-none text-center tracking-[0.3em]"
+                    className="apple-input w-full text-center font-mono text-lg font-bold p-4 tracking-[0.3em] !bg-white/40 focus:!bg-white"
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
                         const val = e.target.value;
@@ -3559,7 +3558,7 @@ function App() {
                     if (onConfirm) onConfirm();
                   }}
                   className={`btn-primary w-full !py-3.5 rounded-xl text-[14px] font-bold transition-all shadow-md active:scale-95 ${
-                    alertModal.type === 'error' ? '!bg-red-600 hover:!bg-red-700' : ''
+                    alertModal.type === 'error' ? '!bg-rose-600 hover:!bg-rose-700' : ''
                   }`}
                 >
                   {alertModal.confirmText || 'Confirm'}
@@ -3572,7 +3571,7 @@ function App() {
                       setAlertModal(null);
                       if (onCancel) onCancel();
                     }}
-                    className="w-full py-3 rounded-xl text-[13px] font-bold text-[var(--apple-gray-5)] hover:text-[var(--apple-black)] hover:bg-[var(--apple-gray-1)] transition-all"
+                    className="btn-outline w-full !py-3 rounded-xl text-[13px] font-bold text-[var(--text2)] transition-all hover:bg-white/60"
                   >
                     {alertModal.cancelText || 'Cancel'}
                   </button>
