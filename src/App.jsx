@@ -1936,21 +1936,59 @@ function App() {
                     {templates.find(t => t.id === formData.selectedTemplateId)?.requiresPriceList && (
                       <div>
                         <span className="text-[11px] font-semibold text-[var(--apple-gray-5)] uppercase block mb-1">Attached Price List</span>
-                        <select 
-                          name="priceListId" 
-                          value={formData.priceListId || ''} 
-                          onChange={handleInputChange}
-                          className="apple-input cursor-pointer bg-[var(--apple-gray-1)]"
-                        >
-                          <option value="">-- Select Price List --</option>
-                          {priceLists
-                            .filter(pl => !pl.hidden || pl.id === formData.priceListId)
-                            .map(pl => (
-                              <option key={pl.id} value={pl.id}>
-                                {pl.label} {pl.hidden ? '(Hidden)' : ''}
-                              </option>
-                            ))}
-                        </select>
+                        <div className="flex gap-2">
+                          <select 
+                            name="priceListId" 
+                            value={formData.priceListId || ''} 
+                            onChange={handleInputChange}
+                            className="apple-input cursor-pointer bg-[var(--apple-gray-1)] flex-grow"
+                          >
+                            <option value="">-- Select Price List --</option>
+                            {priceLists
+                              .filter(pl => !pl.hidden || pl.id === formData.priceListId)
+                              .map(pl => (
+                                <option key={pl.id} value={pl.id}>
+                                  {pl.label} {pl.hidden ? '(Hidden)' : ''}
+                                </option>
+                              ))}
+                          </select>
+                          <input 
+                            type="file" 
+                            accept="application/pdf"
+                            onChange={async (e) => {
+                              const file = e.target.files[0];
+                              if (!file) return;
+                              showPrompt(
+                                'New Price List', 
+                                'Enter a name for this Price List (e.g. Stryker 2024):', 
+                                async (label) => {
+                                  if (!label) return;
+                                  const newItem = { 
+                                    id: Date.now().toString(), 
+                                    label: label, 
+                                    fileName: file.name, 
+                                    uploadedAt: new Date().toLocaleDateString('en-GB') 
+                                  };
+                                  const success = await syncItem('price_lists', newItem, false, file);
+                                  if (success) {
+                                    setPriceLists(prev => [...prev, newItem]);
+                                    setFormData(prev => ({ ...prev, priceListId: newItem.id }));
+                                  }
+                                }
+                              );
+                              e.target.value = '';
+                            }} 
+                            className="hidden" 
+                            id="quick-price-list-upload" 
+                          />
+                          <label 
+                            htmlFor="quick-price-list-upload" 
+                            className="btn-outline cursor-pointer flex items-center gap-1.5 shrink-0 hover:border-[var(--emerald)] hover:bg-[var(--emerald-light)] hover:text-[var(--emerald)] active:scale-95 transition-all select-none"
+                            title="Attach a new price list"
+                          >
+                            <Plus size={15} /> Attach
+                          </label>
+                        </div>
                       </div>
                     )}
                   </div>
