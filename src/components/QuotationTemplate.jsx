@@ -149,8 +149,8 @@ const QuotationTemplate = memo(({ id = "quotation-template", data, company, cont
                 <p>Email: {companyEmail} | Website: {companyWebsite}</p>
               </div>
             </div>
-            <div className="w-[60mm] ml-4 flex justify-end overflow-visible">
-              <img src="/logo.png?v=2" alt="Logo" className="w-full object-contain max-h-[22mm]" style={{ transform: 'translateX(35px)' }} onError={(e) => e.target.style.display = 'none'} />
+            <div className="w-[72mm] ml-4 flex justify-end overflow-visible">
+              <img src="/logo.png?v=2" alt="Logo" className="w-full object-contain max-h-[26mm]" style={{ transform: 'translateX(45px)' }} onError={(e) => e.target.style.display = 'none'} />
             </div>
           </div>
 
