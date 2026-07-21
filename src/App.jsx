@@ -1282,10 +1282,9 @@ function App() {
           ───────────────────────────────────────── */}
       <nav className="apple-nav px-4 md:px-6">
         <div className="flex items-center gap-3 mr-auto lg:mr-8">
-          <div className="h-10 w-20 flex items-center justify-center overflow-hidden p-0.5 shrink-0">
+          <div className="h-14 w-28 flex items-center justify-center overflow-hidden p-0.5 shrink-0">
             <img src={logoImg} alt="SRR Logo" className="max-w-full max-h-full object-contain mix-blend-multiply" />
           </div>
-          <span className="font-bold text-base md:text-lg tracking-tight truncate">SRR Ortho Plus</span>
         </div>
         
         {/* Desktop Nav */}
