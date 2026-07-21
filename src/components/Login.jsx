@@ -84,21 +84,18 @@ const Login = () => {
 
   return (
     <div className="w-full flex flex-col justify-center py-10 px-4 sm:px-6 lg:px-8 font-sans z-10 animate-in fade-in slide-in-from-bottom-8 duration-700">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md flex flex-col items-center">
-        {/* Glowing Logo Container */}
-        <div className="relative group mb-6 flex justify-center">
-          <div className="absolute inset-0 bg-[var(--srr-green)]/5 rounded-[28px] blur-2xl group-hover:bg-[var(--srr-green)]/15 transition-all duration-500"></div>
-          <div className="relative w-56 h-28 flex items-center justify-center p-2 transition-all duration-300 group-hover:scale-105">
-            <img src={logoImg} alt="SRR Ortho Plus Logo" className="max-w-full max-h-full object-contain mix-blend-multiply" />
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-[420px]">
+      <div className="sm:mx-auto sm:w-full sm:max-w-[420px]">
         {/* Glassmorphic Form Container */}
         <div className="bg-white/80 backdrop-blur-xl py-10 px-8 sm:px-10 shadow-[0_20px_50px_rgba(0,0,0,0.06)] rounded-[32px] border border-white/60">
           <form className="space-y-6" onSubmit={handleLogin}>
             
+            {/* Logo inside card, on white background */}
+            <div className="flex justify-center mb-6">
+              <div className="w-48 h-24 flex items-center justify-center bg-white rounded-2xl p-2.5 border border-[var(--apple-gray-3)] shadow-sm">
+                <img src={logoImg} alt="SRR Ortho Plus Logo" className="max-w-full max-h-full object-contain" />
+              </div>
+            </div>
+
             {error && (
               <div className="bg-red-50/80 backdrop-blur-sm text-red-600 p-4 rounded-2xl flex items-start gap-3 text-[14px] leading-snug border border-red-100 animate-in fade-in duration-300">
                 <AlertCircle size={18} className="mt-0.5 shrink-0 text-red-500" />
