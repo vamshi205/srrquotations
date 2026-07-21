@@ -1205,37 +1205,40 @@ function App() {
 
   if (isAuthLoading) {
     return (
-      <div className="min-h-screen bg-[var(--bg)] flex items-center justify-center font-sans">
-        <div className="flex flex-col items-center gap-10 p-16 bg-white border-b-8 border-[var(--accent)] shadow-[0_40px_100px_-20px_rgba(0,0,0,0.1)] animate-in fade-in zoom-in-95 duration-1000">
-          <div className="relative">
-            {/* Pulsing Aura */}
-            <div className="absolute inset-0 bg-[var(--accent)]/10 rounded-full blur-3xl animate-pulse"></div>
+      <div className="min-h-screen bg-[var(--apple-bg)] relative flex items-center justify-center overflow-hidden w-full font-sans">
+        {/* Ambient background blobs matching whatsappconnect */}
+        <div className="blob blob-1"></div>
+        <div className="blob blob-2"></div>
+        
+        <div className="flex flex-col items-center gap-8 p-12 bg-white/80 backdrop-blur-xl rounded-[32px] shadow-[0_20px_50px_rgba(0,0,0,0.05)] border border-white/60 w-full max-w-sm animate-in fade-in zoom-in-95 duration-1000 z-10">
+          <div className="relative group">
+            {/* Glowing Aura */}
+            <div className="absolute inset-0 bg-[var(--srr-green)]/15 rounded-[28px] blur-xl animate-pulse"></div>
             
-            {/* Technical Gear Container */}
-            <div className="relative w-32 h-32 border-4 border-[var(--bg3)] flex items-center justify-center">
-               <div className="absolute inset-[-8px] border border-dashed border-[var(--accent)] animate-[spin_20s_linear_infinite]"></div>
-               <div className="w-20 h-20 bg-[var(--accent)] flex items-center justify-center shadow-xl">
-                  <FileUp className="text-white" size={40} strokeWidth={2} />
-               </div>
+            {/* Logo Container with breathing scaling animation */}
+            <div className="relative w-44 h-22 flex items-center justify-center bg-white shadow-[0_10px_30px_rgba(0,96,57,0.08)] rounded-[24px] p-3.5 border border-[var(--apple-gray-3)] animate-[pulse_3s_infinite_ease-in-out]">
+              <img src="/logo.png" alt="SRR Ortho Plus Logo" className="max-w-full max-h-full object-contain" />
             </div>
           </div>
           
-          <div className="flex flex-col items-center gap-3 text-center">
-            <h3 className="text-[32px] font-black uppercase tracking-tighter text-[var(--text)] leading-none mb-2" style={{ fontFamily: "'Jost', sans-serif" }}>
-              SRR Ortho Plus
+          <div className="flex flex-col items-center gap-2.5 text-center mt-2">
+            <h3 className="text-[28px] font-extrabold tracking-tight text-[var(--apple-black)] leading-tight">
+              SRR Quotations
             </h3>
-            <div className="h-1.5 w-24 bg-[var(--accent)] mb-2"></div>
-            <p className="text-[13px] text-[var(--text3)] font-bold uppercase tracking-[0.2em]">
+            <div className="bg-[var(--srr-green-light)] text-[var(--srr-green)] px-3.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider border border-[var(--srr-green)]/10">
+              SRR Ortho Plus
+            </div>
+            <p className="text-[14px] text-[var(--apple-gray-5)] font-medium mt-1">
               Initializing Platform
             </p>
           </div>
 
-          {/* Industrial Progress Bar */}
-          <div className="w-[300px] h-2 bg-[var(--bg2)] overflow-hidden border border-[var(--border)]">
-            <div className="h-full bg-[var(--accent)] animate-progress-sweep"></div>
+          {/* Premium Progress Bar */}
+          <div className="w-[240px] h-1.5 bg-[var(--apple-gray-1)] rounded-full overflow-hidden border border-[var(--apple-gray-2)]">
+            <div className="h-full bg-gradient-to-r from-[var(--srr-green)] to-[#10b981] animate-progress-sweep"></div>
           </div>
           
-          <p className="text-[11px] font-bold text-[var(--text3)] uppercase tracking-widest animate-pulse">
+          <p className="text-[11px] font-bold text-[var(--srr-green)]/80 uppercase tracking-widest animate-pulse">
             Establishing Secure Connection...
           </p>
         </div>
@@ -1272,7 +1275,7 @@ function App() {
       <nav className="apple-nav px-4 md:px-6">
         <div className="flex items-center gap-3 mr-auto lg:mr-8">
           <div className="h-8 w-16 bg-white border border-[var(--apple-gray-3)] rounded-lg flex items-center justify-center overflow-hidden p-0.5 shrink-0 shadow-sm">
-            <img src="/srr_logo.jpg" alt="SRR Logo" className="max-w-full max-h-full object-contain" />
+            <img src="/logo.png" alt="SRR Logo" className="max-w-full max-h-full object-contain" />
           </div>
           <span className="font-bold text-base md:text-lg tracking-tight truncate">SRR Ortho Plus</span>
         </div>

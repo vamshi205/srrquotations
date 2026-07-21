@@ -66,6 +66,12 @@
 
   /* Nav height */
   --nav-height: 60px;
+
+  /* SRR Ortho Plus Brand Colors */
+  --srr-green: #006039;
+  --srr-green-hover: #004d2e;
+  --srr-green-light: rgba(0, 96, 57, 0.08);
+  --srr-green-glow: rgba(0, 96, 57, 0.15);
 }
 
 /* ─────────────────────────────────────────
