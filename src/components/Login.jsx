@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { auth, hasFirebaseConfig } from '../firebase';
 import { signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { Lock, Mail, AlertCircle, Loader2, Key } from 'lucide-react';
+import logoImg from '../assets/logo.png';
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -15,8 +16,13 @@ const Login = () => {
       <div className="w-full flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8 font-sans z-10">
         <div className="sm:mx-auto sm:w-full sm:max-w-xl">
           <div className="bg-white/80 backdrop-blur-xl py-10 px-8 sm:px-10 shadow-[0_20px_50px_rgba(0,0,0,0.05)] rounded-[32px] border border-white/60">
-            <div className="w-16 h-16 bg-[var(--srr-green-light)] rounded-2xl flex items-center justify-center mb-6">
-              <Key size={32} className="text-[var(--srr-green)]" />
+            <div className="flex items-center justify-between mb-6">
+              <div className="relative w-36 h-18 flex items-center justify-center bg-white shadow-[0_10px_30px_rgba(0,96,57,0.08)] rounded-[20px] p-2.5 border border-[var(--apple-gray-3)]">
+                <img src={logoImg} alt="SRR Ortho Plus Logo" className="max-w-full max-h-full object-contain" />
+              </div>
+              <div className="w-12 h-12 bg-[var(--srr-green-light)] rounded-xl flex items-center justify-center">
+                <Key size={24} className="text-[var(--srr-green)]" />
+              </div>
             </div>
             <h2 className="text-[26px] font-bold tracking-tight text-[var(--apple-black)] mb-3">
               Firebase Configuration Required
@@ -83,7 +89,7 @@ const Login = () => {
         <div className="relative group mb-6">
           <div className="absolute inset-0 bg-[var(--srr-green)]/15 rounded-[28px] blur-xl group-hover:bg-[var(--srr-green)]/25 transition-all duration-500"></div>
           <div className="relative w-44 h-22 flex items-center justify-center bg-white shadow-[0_10px_30px_rgba(0,96,57,0.08)] rounded-[24px] p-3.5 border border-[var(--apple-gray-3)] transition-all duration-300 group-hover:scale-105">
-            <img src="/logo.png" alt="SRR Ortho Plus Logo" className="max-w-full max-h-full object-contain" />
+            <img src={logoImg} alt="SRR Ortho Plus Logo" className="max-w-full max-h-full object-contain" />
           </div>
         </div>
         

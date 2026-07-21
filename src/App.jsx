@@ -16,6 +16,7 @@ import { ref, getBlob } from 'firebase/storage';
 import { doc, getDoc, setDoc, collection, getDocs, deleteDoc, query, orderBy, writeBatch } from 'firebase/firestore';
 import { validateFile } from './utils/fileValidation';
 import { uploadFile, deleteFile, saveFileMetadata, deleteFileMetadata, getFileData, getFileMetadataFromStorage } from './utils/storageService';
+import logoImg from './assets/logo.png';
 
 import {
   Download,
@@ -1217,7 +1218,7 @@ function App() {
             
             {/* Logo Container with breathing scaling animation */}
             <div className="relative w-44 h-22 flex items-center justify-center bg-white shadow-[0_10px_30px_rgba(0,96,57,0.08)] rounded-[24px] p-3.5 border border-[var(--apple-gray-3)] animate-[pulse_3s_infinite_ease-in-out]">
-              <img src="/logo.png" alt="SRR Ortho Plus Logo" className="max-w-full max-h-full object-contain" />
+              <img src={logoImg} alt="SRR Ortho Plus Logo" className="max-w-full max-h-full object-contain" />
             </div>
           </div>
           
@@ -1275,7 +1276,7 @@ function App() {
       <nav className="apple-nav px-4 md:px-6">
         <div className="flex items-center gap-3 mr-auto lg:mr-8">
           <div className="h-8 w-16 bg-white border border-[var(--apple-gray-3)] rounded-lg flex items-center justify-center overflow-hidden p-0.5 shrink-0 shadow-sm">
-            <img src="/logo.png" alt="SRR Logo" className="max-w-full max-h-full object-contain" />
+            <img src={logoImg} alt="SRR Logo" className="max-w-full max-h-full object-contain" />
           </div>
           <span className="font-bold text-base md:text-lg tracking-tight truncate">SRR Ortho Plus</span>
         </div>
