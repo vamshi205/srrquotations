@@ -1217,8 +1217,8 @@ function App() {
             <div className="absolute inset-0 bg-[var(--srr-green)]/15 rounded-[28px] blur-xl animate-pulse"></div>
             
             {/* Logo Container with breathing scaling animation */}
-            <div className="relative w-44 h-22 flex items-center justify-center bg-white shadow-[0_10px_30px_rgba(0,96,57,0.08)] rounded-[24px] p-3.5 border border-[var(--apple-gray-3)] animate-[pulse_3s_infinite_ease-in-out]">
-              <img src={logoImg} alt="SRR Ortho Plus Logo" className="max-w-full max-h-full object-contain" />
+            <div className="relative w-48 h-24 flex items-center justify-center p-2 animate-[pulse_3s_infinite_ease-in-out]">
+              <img src={logoImg} alt="SRR Ortho Plus Logo" className="max-w-full max-h-full object-contain mix-blend-multiply" />
             </div>
           </div>
           
@@ -1275,8 +1275,8 @@ function App() {
           ───────────────────────────────────────── */}
       <nav className="apple-nav px-4 md:px-6">
         <div className="flex items-center gap-3 mr-auto lg:mr-8">
-          <div className="h-8 w-16 bg-white border border-[var(--apple-gray-3)] rounded-lg flex items-center justify-center overflow-hidden p-0.5 shrink-0 shadow-sm">
-            <img src={logoImg} alt="SRR Logo" className="max-w-full max-h-full object-contain" />
+          <div className="h-10 w-20 flex items-center justify-center overflow-hidden p-0.5 shrink-0">
+            <img src={logoImg} alt="SRR Logo" className="max-w-full max-h-full object-contain mix-blend-multiply" />
           </div>
           <span className="font-bold text-base md:text-lg tracking-tight truncate">SRR Ortho Plus</span>
         </div>

@@ -17,8 +17,8 @@ const Login = () => {
         <div className="sm:mx-auto sm:w-full sm:max-w-xl">
           <div className="bg-white/80 backdrop-blur-xl py-10 px-8 sm:px-10 shadow-[0_20px_50px_rgba(0,0,0,0.05)] rounded-[32px] border border-white/60">
             <div className="flex items-center justify-between mb-6">
-              <div className="relative w-36 h-18 flex items-center justify-center bg-white shadow-[0_10px_30px_rgba(0,96,57,0.08)] rounded-[20px] p-2.5 border border-[var(--apple-gray-3)]">
-                <img src={logoImg} alt="SRR Ortho Plus Logo" className="max-w-full max-h-full object-contain" />
+              <div className="relative w-40 h-20 flex items-center justify-center p-1">
+                <img src={logoImg} alt="SRR Ortho Plus Logo" className="max-w-full max-h-full object-contain mix-blend-multiply" />
               </div>
               <div className="w-12 h-12 bg-[var(--srr-green-light)] rounded-xl flex items-center justify-center">
                 <Key size={24} className="text-[var(--srr-green)]" />
@@ -86,10 +86,10 @@ const Login = () => {
     <div className="w-full flex flex-col justify-center py-10 px-4 sm:px-6 lg:px-8 font-sans z-10 animate-in fade-in slide-in-from-bottom-8 duration-700">
       <div className="sm:mx-auto sm:w-full sm:max-w-md flex flex-col items-center">
         {/* Glowing Logo Container */}
-        <div className="relative group mb-2">
-          <div className="absolute inset-0 bg-[var(--srr-green)]/15 rounded-[28px] blur-xl group-hover:bg-[var(--srr-green)]/25 transition-all duration-500"></div>
-          <div className="relative w-48 h-24 flex items-center justify-center bg-white shadow-[0_10px_30px_rgba(0,96,57,0.08)] rounded-[24px] p-3.5 border border-[var(--apple-gray-3)] transition-all duration-300 group-hover:scale-105">
-            <img src={logoImg} alt="SRR Ortho Plus Logo" className="max-w-full max-h-full object-contain" />
+        <div className="relative group mb-6 flex justify-center">
+          <div className="absolute inset-0 bg-[var(--srr-green)]/5 rounded-[28px] blur-2xl group-hover:bg-[var(--srr-green)]/15 transition-all duration-500"></div>
+          <div className="relative w-56 h-28 flex items-center justify-center p-2 transition-all duration-300 group-hover:scale-105">
+            <img src={logoImg} alt="SRR Ortho Plus Logo" className="max-w-full max-h-full object-contain mix-blend-multiply" />
           </div>
         </div>
       </div>
