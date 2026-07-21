@@ -740,6 +740,13 @@ function App() {
           return;
         }
 
+        if (regeneratingItem._printMode) {
+          printDocument(blobUrl, fileName, 'application/pdf');
+          setRegeneratingItem(null);
+          setIsGenerating(false);
+          return;
+        }
+
         if (regeneratingItem._shareMode) {
           // If native share is available and user is likely on mobile, try it first
           if (navigator.share && navigator.canShare) {
@@ -1958,23 +1965,47 @@ function App() {
                             onChange={async (e) => {
                               const file = e.target.files[0];
                               if (!file) return;
-                              showPrompt(
-                                'New Price List', 
-                                'Enter a name for this Price List (e.g. Stryker 2024):', 
-                                async (label) => {
-                                  if (!label) return;
+                              showConfirm(
+                                'Save to Database?', 
+                                'Do you want to save this document to the Price List database for future use?',
+                                () => {
+                                  showPrompt(
+                                    'New Price List', 
+                                    'Enter a name for this Price List (e.g. Stryker 2024):', 
+                                    async (label) => {
+                                      if (!label) return;
+                                      const newItem = { 
+                                        id: Date.now().toString(), 
+                                        label: label, 
+                                        fileName: file.name, 
+                                        uploadedAt: new Date().toLocaleDateString('en-GB'),
+                                        hidden: false
+                                      };
+                                      const success = await syncItem('price_lists', newItem, false, file);
+                                      if (success) {
+                                        setPriceLists(prev => [...prev, newItem]);
+                                        setFormData(prev => ({ ...prev, priceListId: newItem.id }));
+                                      }
+                                    }
+                                  );
+                                },
+                                async () => {
                                   const newItem = { 
                                     id: Date.now().toString(), 
-                                    label: label, 
+                                    label: file.name || 'Temporary Attachment', 
                                     fileName: file.name, 
-                                    uploadedAt: new Date().toLocaleDateString('en-GB') 
+                                    uploadedAt: new Date().toLocaleDateString('en-GB'),
+                                    hidden: true
                                   };
                                   const success = await syncItem('price_lists', newItem, false, file);
                                   if (success) {
                                     setPriceLists(prev => [...prev, newItem]);
                                     setFormData(prev => ({ ...prev, priceListId: newItem.id }));
                                   }
-                                }
+                                },
+                                'confirm',
+                                'Yes, Save permanently',
+                                'No, just attach to this doc'
                               );
                               e.target.value = '';
                             }} 
@@ -3673,14 +3704,20 @@ function App() {
 
               {alertModal.showInput && (
                 <div className="mb-8">
-                  <label className="text-[11px] font-bold text-[var(--apple-gray-4)] uppercase tracking-widest block mb-2 px-1">Verification Required</label>
+                  <label className="text-[11px] font-bold text-[var(--apple-gray-4)] uppercase tracking-widest block mb-2 px-1">
+                    {alertModal.title?.toLowerCase().includes('admin') || alertModal.title?.toLowerCase().includes('verification') ? 'Verification Required' : 'Input Required'}
+                  </label>
                   <input 
                     id="admin-verification-input"
-                    type="password"
-                    placeholder="Enter Admin Password"
-                    autoComplete="one-time-code"
+                    type={alertModal.title?.toLowerCase().includes('admin') || alertModal.title?.toLowerCase().includes('verification') ? 'password' : 'text'}
+                    placeholder={alertModal.title?.toLowerCase().includes('admin') || alertModal.title?.toLowerCase().includes('verification') ? 'Enter Admin Password' : 'Enter a name/label...'}
+                    autoComplete="off"
                     autoFocus
-                    className="apple-input w-full text-center font-mono text-lg font-bold p-4 tracking-[0.3em] !bg-white/40 focus:!bg-white"
+                    className={`apple-input w-full text-center p-4 focus:!bg-white ${
+                      alertModal.title?.toLowerCase().includes('admin') || alertModal.title?.toLowerCase().includes('verification')
+                        ? 'font-mono text-lg font-bold tracking-[0.3em] !bg-white/40' 
+                        : '!bg-white/90 text-sm font-semibold'
+                    }`}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
                         const val = e.target.value;

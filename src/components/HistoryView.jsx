@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Search, LayoutDashboard, Download, Mail, Eye } from 'lucide-react';
+import { Search, LayoutDashboard, Download, Mail, Eye, Printer } from 'lucide-react';
 
 const HistoryView = ({ quotationHistory, searchQuery, setSearchQuery, isGenerating, regeneratingItem, setRegeneratingItem }) => {
   const filteredHistory = useMemo(() => {
@@ -84,6 +84,14 @@ const HistoryView = ({ quotationHistory, searchQuery, setSearchQuery, isGenerati
                             <Download size={16} />
                           </button>
                           <button 
+                            onClick={() => setRegeneratingItem({ ...item, _printMode: true })}
+                            disabled={isGenerating || regeneratingItem}
+                            className="w-9 h-9 flex items-center justify-center bg-white border border-[var(--apple-gray-2)] rounded-full text-indigo-600 hover:border-indigo-600 hover:bg-indigo-50 transition-all disabled:opacity-50 shadow-sm"
+                            title="Print Quotation"
+                          >
+                            <Printer size={16} />
+                          </button>
+                          <button 
                             onClick={() => setRegeneratingItem({ ...item, _shareMode: true })}
                             disabled={isGenerating || regeneratingItem}
                             className="w-9 h-9 flex items-center justify-center bg-white border border-[var(--apple-gray-2)] rounded-full text-[var(--coral)] hover:border-[var(--coral)] hover:bg-red-50 transition-all disabled:opacity-50 shadow-sm"
@@ -129,6 +137,14 @@ const HistoryView = ({ quotationHistory, searchQuery, setSearchQuery, isGenerati
                       title="Download"
                     >
                       <Download size={18} />
+                    </button>
+                    <button 
+                      onClick={() => setRegeneratingItem({ ...item, _printMode: true })}
+                      disabled={isGenerating || regeneratingItem}
+                      className="flex-1 flex items-center justify-center gap-2 py-3 bg-[var(--apple-gray-1)] rounded-xl text-indigo-600 active:scale-[0.98] transition-all"
+                      title="Print"
+                    >
+                      <Printer size={18} />
                     </button>
                     <button 
                       onClick={() => setRegeneratingItem({ ...item, _shareMode: true })}
