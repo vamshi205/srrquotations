@@ -86,23 +86,12 @@ const Login = () => {
     <div className="w-full flex flex-col justify-center py-10 px-4 sm:px-6 lg:px-8 font-sans z-10 animate-in fade-in slide-in-from-bottom-8 duration-700">
       <div className="sm:mx-auto sm:w-full sm:max-w-md flex flex-col items-center">
         {/* Glowing Logo Container */}
-        <div className="relative group mb-6">
+        <div className="relative group mb-2">
           <div className="absolute inset-0 bg-[var(--srr-green)]/15 rounded-[28px] blur-xl group-hover:bg-[var(--srr-green)]/25 transition-all duration-500"></div>
-          <div className="relative w-44 h-22 flex items-center justify-center bg-white shadow-[0_10px_30px_rgba(0,96,57,0.08)] rounded-[24px] p-3.5 border border-[var(--apple-gray-3)] transition-all duration-300 group-hover:scale-105">
+          <div className="relative w-48 h-24 flex items-center justify-center bg-white shadow-[0_10px_30px_rgba(0,96,57,0.08)] rounded-[24px] p-3.5 border border-[var(--apple-gray-3)] transition-all duration-300 group-hover:scale-105">
             <img src={logoImg} alt="SRR Ortho Plus Logo" className="max-w-full max-h-full object-contain" />
           </div>
         </div>
-        
-        {/* Typography */}
-        <h2 className="text-center text-[30px] font-extrabold tracking-tight text-[var(--apple-black)] leading-tight">
-          SRR Quotations
-        </h2>
-        <div className="mt-2.5 mb-1 bg-[var(--srr-green-light)] text-[var(--srr-green)] px-3.5 py-1 rounded-full text-[12px] font-bold uppercase tracking-wider border border-[var(--srr-green)]/10">
-          SRR Ortho Plus
-        </div>
-        <p className="text-center text-[14px] text-[var(--apple-gray-5)] max-w-xs mt-2">
-          Secure Quotation Maker & Document Dispatch System
-        </p>
       </div>
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-[420px]">
