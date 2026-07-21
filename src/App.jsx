@@ -734,7 +734,14 @@ function App() {
         const blobUrl = URL.createObjectURL(blob);
 
         if (regeneratingItem._viewMode) {
-          window.open(blobUrl, '_blank');
+          setPreviewingDoc({
+            id: regeneratingItem.id,
+            label: `Quotation - ${regeneratingItem.formData.hospitalName}`,
+            fileName: fileName,
+            uploadedAt: regeneratingItem.date,
+            data: blobUrl,
+            type: 'application/pdf'
+          });
           setRegeneratingItem(null);
           setIsGenerating(false);
           return;
